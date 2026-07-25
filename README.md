@@ -1,6 +1,6 @@
 # Super Extraordinary X
 
-Dự án **P-078** của nhóm **Super Extraordinary X** thuộc chương trình **VinUni AI20K Build Phase — Cohort 3**.
+Dự án **P-078** của nhóm **Super Extraordinary X** thuộc chương trình **VinUni AI20K Build Phase — Cohort 3 & 4**.
 
 ## Thành viên
 
