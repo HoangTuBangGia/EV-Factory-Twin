@@ -22,6 +22,11 @@ flowchart TD
     F --> G[Focus camera vào vị trí]
     G --> C
 
+    E -->|Chọn AGV trên canvas| Y[Robot Inspector]
+    Y --> Z[Telemetry + task + destination + ETA]
+    Z --> ZA[Highlight tuyến và hướng di chuyển]
+    ZA --> C
+
     E -->|Bật WOW layer| H[Bottleneck / Drift overlay]
     H --> C
 

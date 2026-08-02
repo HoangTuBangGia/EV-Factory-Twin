@@ -43,6 +43,7 @@
 Tương tác chính:
 
 - Chọn alert → camera focus vào AGV/zone và mở Alert Detail.
+- Chọn trực tiếp AGV → highlight robot, hiện tuyến có mũi tên và cập nhật Robot Inspector với pin, tốc độ, nhiệm vụ, điểm đến, hướng đi và ETA.
 - `WOW` → bật/tắt Bottleneck Predictor và Drift Test overlay.
 - `Benchmark` → lưu snapshot KPI làm baseline, không thay đổi hệ thống thật.
 - `New Scenario` → tạo draft từ site/layout hiện tại.

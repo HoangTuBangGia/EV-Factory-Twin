@@ -30,6 +30,11 @@ Mở trực tiếp `prototype/index.html` trong trình duyệt. Prototype chỉ 
 5. Bật lớp hiển thị Bottleneck/Drift.
 6. Gửi duyệt, phê duyệt hoặc từ chối.
 7. Mô phỏng bước xếp hàng triển khai; không gửi lệnh thật.
+8. Chọn AGV trên mặt bằng để xem telemetry, nhiệm vụ, đích đến và hướng di chuyển.
+
+## Visual direction
+
+Prototype sử dụng phong cách **Modern SaaS · Glassmorphism · Structured Grid · Data-Driven · Corporate Blue · Light**. Hệ thống design token tập trung ở `prototype/styles.css`; phần HTML và luồng nghiệp vụ không phụ thuộc vào theme này.
 
 ## Quy ước an toàn UX
 

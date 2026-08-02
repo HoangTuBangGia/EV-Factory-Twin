@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Factory Twin — Wireframe Prototype</title>
+  <title>Factory Twin — Operations Intelligence</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="prototype-note">LOW-FIDELITY PROTOTYPE · Dữ liệu giả lập · Không kết nối robot thật</div>
+  <div class="prototype-note"><span>INTERACTIVE UI CONCEPT</span><span>Sandbox data</span><span>Robot connection: OFFLINE</span></div>
 
   <section class="screen active" data-screen="login">
     <main class="centered">
@@ -38,11 +38,38 @@
         <button class="nav">Settings</button>
       </nav>
       <main class="canvas box">
-        <div class="canvas-label">THREE.JS / DIGITAL TWIN CANVAS PLACEHOLDER</div>
+        <div class="canvas-label"><b>LIVE DIGITAL TWIN</b><span>Warehouse A · Ground floor</span></div>
         <div class="factory-map">
-          <div class="zone">ZONE A</div><div class="zone warning">ZONE B</div>
-          <i class="agv a1">AGV-01</i><i class="agv a2">AGV-07</i><i class="agv a3">AGV-12</i>
-          <div id="overlay" class="overlay hidden">WOW OVERLAY: Bottleneck + Drift prediction</div>
+          <div class="map-meta"><span>● 3 AGVs online</span><span>Scale 1:500</span></div>
+          <svg class="route-layer" viewBox="0 0 1000 600" aria-label="Các tuyến di chuyển của robot">
+            <defs>
+              <marker id="arrow-blue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" /></marker>
+              <marker id="arrow-red" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" /></marker>
+              <marker id="arrow-gray" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" /></marker>
+            </defs>
+            <path id="route-agv-01" class="robot-route route-blue" d="M 218 133 H 465 V 495 H 835" marker-end="url(#arrow-blue)" />
+            <path id="route-agv-07" class="robot-route route-red" d="M 690 265 H 835 V 455 H 925" marker-end="url(#arrow-red)" />
+            <path id="route-agv-12" class="robot-route route-gray" d="M 385 420 H 175 V 292" marker-end="url(#arrow-gray)" />
+          </svg>
+
+          <div class="facility inbound"><b>INBOUND</b><small>Dock 01–03</small></div>
+          <div class="facility outbound"><b>OUTBOUND</b><small>Dispatch</small></div>
+          <div class="facility charging"><b>CHARGING</b><small>4 bays</small></div>
+          <div class="facility packing"><b>PACKING</b><small>Station P-02</small></div>
+          <div class="facility control-room"><b>CONTROL</b><small>Operator room</small></div>
+
+          <div class="rack-block rack-a"><span>A1</span><span>A2</span><span>A3</span><span>A4</span></div>
+          <div class="rack-block rack-b"><span>B1</span><span>B2</span><span>B3</span><span>B4</span></div>
+          <div class="rack-block rack-c"><span>C1</span><span>C2</span><span>C3</span></div>
+          <div class="crosswalk">PEDESTRIAN CROSSING</div>
+          <div class="safety-zone">SAFETY ZONE</div>
+          <div class="aisle-label aisle-north">AISLE 01</div>
+          <div class="aisle-label aisle-south">AISLE 02</div>
+
+          <button class="agv a1 selected" data-robot="agv-01" aria-label="Xem AGV-01" aria-pressed="true"><span>➜</span><b>01</b></button>
+          <button class="agv a2" data-robot="agv-07" aria-label="Xem AGV-07" aria-pressed="false"><span>↘</span><b>07</b></button>
+          <button class="agv a3" data-robot="agv-12" aria-label="Xem AGV-12" aria-pressed="false"><span>↑</span><b>12</b></button>
+          <div id="overlay" class="overlay hidden"><b>BOTTLENECK RISK</b><span>Zone B · 78%</span></div>
         </div>
         <div class="controls">
           <button id="play">⏸ Pause</button>
@@ -58,8 +85,18 @@
           <button class="alert">Warning · Zone B congestion</button>
         </div>
         <div class="box panel">
-          <h2>Live Fleet</h2>
-          <p>AGV-01 · 81% · Running</p><p>AGV-07 · 66% · Warning</p><p>AGV-12 · 64% · Idle</p>
+          <div class="inspector-title"><h2>Robot Inspector</h2><span id="robot-health" class="health healthy">Healthy</span></div>
+          <div class="robot-identity"><span id="robot-icon">01</span><div><b id="robot-name">AGV-01</b><small id="robot-model">MiR250 · AMR</small></div></div>
+          <dl class="robot-details">
+            <dt>Status</dt><dd id="robot-status">Running</dd>
+            <dt>Battery</dt><dd><span id="robot-battery">81%</span><i class="battery"><i id="battery-level" style="width:81%"></i></i></dd>
+            <dt>Speed</dt><dd id="robot-speed">1.2 m/s</dd>
+            <dt>Task</dt><dd id="robot-task">Move pallet #P-204</dd>
+            <dt>Destination</dt><dd id="robot-destination">Outbound dock</dd>
+            <dt>Direction</dt><dd id="robot-direction">East → South</dd>
+            <dt>ETA</dt><dd id="robot-eta">02:18</dd>
+          </dl>
+          <div class="fleet-selector" aria-label="Chọn robot"><button data-robot="agv-01" class="selected">AGV-01</button><button data-robot="agv-07">AGV-07</button><button data-robot="agv-12">AGV-12</button></div>
           <hr><div class="kpis"><b>120<small>tasks/h</small></b><b>45s<small>cycle</small></b></div>
         </div>
       </aside>
@@ -78,7 +115,7 @@
         <label>Max speed (m/s)<input type="number" value="1.5" step="0.1"></label>
         <button>Edit layout</button> <button>Validate</button>
       </div>
-      <div class="box preview"><span>SIMULATION CANVAS PLACEHOLDER</span></div>
+      <div class="box preview"><div class="scenario-floor"><b>SIMULATION FLOOR · CANDIDATE v3</b><div class="mini-racks"></div><div class="mini-route">AGV FLOW → → →</div><span>Zone B route changes highlighted</span></div></div>
       <div class="box results">
         <h2>Benchmark & Guardrails</h2>
         <table><tr><th>Metric</th><th>Baseline</th><th>Candidate</th><th>Delta</th></tr><tr><td>Throughput</td><td>107/h</td><td>120/h</td><td>+12%</td></tr><tr><td>Cycle time</td><td>48s</td><td>45s</td><td>-6%</td></tr><tr><td>Congestion</td><td>18%</td><td>11%</td><td>-7pp</td></tr></table>
