@@ -1,10 +1,9 @@
 [project]
-name = "ev-factory-simulation"
+name = "ev-twin-evaluation"
 version = "0.1.0"
-description = "Discrete event simulation engine for EV factory logistics"
+description = "Evaluation and benchmark suite for EV Factory Digital Twin"
 requires-python = ">=3.12"
 dependencies = [
-    "simpy>=4.1",
     "numpy>=2.0",
     "pandas>=2.2",
     "twin-core",
@@ -18,4 +17,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/ev_sim"]
+packages = ["src/ev_evaluation"]

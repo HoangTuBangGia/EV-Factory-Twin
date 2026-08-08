@@ -9,6 +9,7 @@ After a successful submit, the live log is rotated:
 
 If the POST fails, the pending file is restored so nothing is lost.
 """
+
 import json
 import os
 import shutil
@@ -21,6 +22,7 @@ from pathlib import Path
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass
@@ -71,9 +73,7 @@ def _recover_orphaned_pending() -> None:
     """Restore batches left behind if a previous submit crashed unexpectedly."""
     # Restore newest first so older batches are ultimately prepended and the
     # resulting session file remains in chronological order.
-    pending_files = sorted(
-        LOG_DIR.glob("session.pending.*.jsonl"), reverse=True
-    )
+    pending_files = sorted(LOG_DIR.glob("session.pending.*.jsonl"), reverse=True)
     for pending in pending_files:
         _restore_pending(pending)
 
