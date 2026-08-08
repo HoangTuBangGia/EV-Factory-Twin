@@ -1,0 +1,21 @@
+[project]
+name = "ev-factory-simulation"
+version = "0.1.0"
+description = "Discrete event simulation engine for EV factory logistics"
+requires-python = ">=3.12"
+dependencies = [
+    "simpy>=4.1",
+    "numpy>=2.0",
+    "pandas>=2.2",
+    "twin-core",
+]
+
+[tool.uv.sources]
+twin-core = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ev_sim"]

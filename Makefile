@@ -1,23 +1,34 @@
-.PHONY: run test lint format typecheck check clean
+.PHONY: sync lint format test typecheck check backend
 
-run:
-	uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
-
-test:
-	pytest tests/ -v
+sync:
+	uv sync --all-packages --dev
 
 lint:
-	ruff check src/ tests/
+	uv run ruff check .
 
 format:
-	ruff format src/ tests/
+	uv run ruff format .
+
+format-check:
+	uv run ruff format --check .
 
 typecheck:
-	mypy src/
+	uv run mypy packages/twin-core/src apps/backend/src
 
-check: lint format test
+test:
+	uv run pytest
 
-clean:
-	find . -type d -name __pycache__ -exec rm -rf {} +
-	find . -type d -name .pytest_cache -exec rm -rf {} +
-	find . -type d -name .ruff_cache -exec rm -rf {} +
+test-cov:
+	uv run pytest \
+		--cov=ev_twin_api \
+		--cov=twin_core \
+		--cov-report=term-missing \
+		--cov-report=xml
+
+check: lint format-check typecheck test
+
+backend:
+	uv run --package ev-twin-api \
+		uvicorn ev_twin_api.main:app \
+		--app-dir apps/backend/src \
+		--reload

@@ -1,0 +1,20 @@
+[project]
+name = "ev-twin-api"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.116",
+    "uvicorn[standard]>=0.35",
+    "pydantic>=2.11",
+    "sqlalchemy>=2.0",
+    "asyncpg>=0.30",
+    "websockets>=15",
+    "twin-core",
+]
+
+[tool.uv.sources]
+twin-core = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
