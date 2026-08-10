@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Shared AI hook logger — works with Claude Code, Gemini CLI, Codex, Cursor, Copilot.
+Shared AI hook logger — works with Claude Code, Gemini CLI, Codex, OpenCode,
+Cursor, and Copilot.
 Reads JSON from stdin, normalizes to common format, appends to .ai-log/session.jsonl
 """
 
@@ -134,6 +135,14 @@ def normalize(data: dict, tool: str) -> dict | None:
             }
         )
 
+    elif tool == "opencode":
+        base.update(
+            {
+                "prompt": data.get("prompt", "")[:1000],
+                "message_id": data.get("message_id", ""),
+            }
+        )
+
     elif tool == "cursor":
         base.update(
             {
@@ -164,7 +173,14 @@ def normalize(data: dict, tool: str) -> dict | None:
         "tool_args",
         "files_context",
     )
-    _LIFECYCLE_EVENTS = ("Stop", "stop", "SessionEnd", "sessionEnd", "AfterModel")
+    _LIFECYCLE_EVENTS = (
+        "Stop",
+        "stop",
+        "SessionEnd",
+        "sessionEnd",
+        "AfterModel",
+        "session.idle",
+    )
     has_payload = any(base.get(k) for k in _PAYLOAD_KEYS)
     if not has_payload and event not in _LIFECYCLE_EVENTS:
         return None
