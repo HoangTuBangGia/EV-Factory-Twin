@@ -11,6 +11,7 @@ from ev_twin_api.schemas.metrics import FactoryMetrics
 from ev_twin_api.schemas.robot import RobotStatus
 from ev_twin_api.schemas.task import Task
 from ev_twin_api.schemas.telemetry import RobotTelemetry
+from ev_twin_api.services.battery_service import CHARGE_TARGET_PERCENT
 from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.mock_factory import MockFactory
 from ev_twin_api.services.websocket_manager import WebSocketManager
@@ -355,6 +356,39 @@ async def test_metrics_updated_is_broadcast_at_one_hertz_of_simulated_time() -> 
     metrics_events = [msg for msg in websocket.sent if msg["type"] == "metrics.updated"]
     assert len(metrics_events) == 1
     FactoryMetrics.model_validate(metrics_events[0]["data"])
+
+
+@pytest.mark.asyncio
+async def test_low_battery_robot_charges_and_returns_to_idle() -> None:
+    # deterministic, no real-time sleep: drive tick() directly with a fixed dt,
+    # matching the state-machine test style used for the task delivery cycle.
+    factory = _make_factory(task_interval_seconds=60.0, robot_speed_mps=3.0)
+    robot = factory._state.get_robot("AMR-01")
+    assert robot is not None
+    robot.battery = 15.0
+    factory._state.update_robot(robot)
+
+    seen_statuses: list[str] = []
+    for _ in range(500):
+        await factory.tick(0.5)
+        robot = factory._state.get_robot("AMR-01")
+        assert robot is not None
+        if not seen_statuses or seen_statuses[-1] != robot.status:
+            seen_statuses.append(robot.status)
+        if robot.status == RobotStatus.IDLE and len(seen_statuses) > 1:
+            break
+
+    assert seen_statuses == [
+        RobotStatus.MOVING_TO_CHARGER,
+        RobotStatus.CHARGING,
+        RobotStatus.IDLE,
+    ]
+
+    final_robot = factory._state.get_robot("AMR-01")
+    assert final_robot is not None
+    assert final_robot.battery >= CHARGE_TARGET_PERCENT
+    assert final_robot.pose.x == 2.0
+    assert final_robot.pose.y == 12.0
 
 
 @pytest.mark.asyncio

@@ -4,7 +4,7 @@ import logging
 import time
 from datetime import UTC, datetime
 
-from ev_twin_api.core.routes import ROUTES
+from ev_twin_api.core.routes import CHARGER_ROUTE_KEY, ROUTES
 from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.schemas.robot import RobotStatus
 from ev_twin_api.schemas.telemetry import robot_to_telemetry
@@ -14,6 +14,7 @@ from ev_twin_api.schemas.websocket import (
     robot_telemetry_event,
     task_updated_event,
 )
+from ev_twin_api.services.battery_service import BatteryService, apply_battery_tick
 from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.movement import RouteProgress, advance_along_route
 from ev_twin_api.services.task_service import TaskService
@@ -58,6 +59,7 @@ class MockFactory:
         self._consecutive_tick_errors = 0
         self._active_movements: dict[str, RouteProgress] = {}
         self._task_service = TaskService(state)
+        self._battery_service = BatteryService(state)
         self._time_since_last_task = 0.0
         self._time_since_last_metrics_broadcast = 0.0
 
@@ -132,9 +134,15 @@ class MockFactory:
         now = datetime.now(UTC)
         for robot in self._state.list_robots():
             updated = robot.model_copy(update={"last_seen_at": now})
+            new_battery = apply_battery_tick(robot.status, robot.battery, dt)
+            updated = updated.model_copy(update={"battery": new_battery})
             self._state.update_robot(updated)
 
-            if robot.status in (RobotStatus.MOVING_TO_PICKUP, RobotStatus.DELIVERING):
+            if robot.status in (
+                RobotStatus.MOVING_TO_PICKUP,
+                RobotStatus.DELIVERING,
+                RobotStatus.MOVING_TO_CHARGER,
+            ):
                 progress = self._active_movements.get(robot.id)
                 if progress is not None:
                     previous_index = progress.waypoint_index
@@ -153,6 +161,8 @@ class MockFactory:
                     elif robot.status == RobotStatus.DELIVERING and route_finished:
                         task = self._task_service.arrive_at_dropoff(robot.id)
                         await self._websocket_manager.broadcast(task_updated_event(task))
+                    elif robot.status == RobotStatus.MOVING_TO_CHARGER and route_finished:
+                        self._battery_service.arrive_at_charger(robot.id)
             elif robot.status == RobotStatus.PICKING:
                 task = self._task_service.finish_pickup(robot.id)
                 await self._websocket_manager.broadcast(task_updated_event(task))
@@ -160,6 +170,15 @@ class MockFactory:
                 task = self._task_service.finish_dropoff(robot.id)
                 await self._websocket_manager.broadcast(task_updated_event(task))
                 self.clear_route(robot.id)
+            elif robot.status == RobotStatus.CHARGING:
+                if self._battery_service.finish_charging_if_ready(robot.id) is not None:
+                    self.clear_route(robot.id)
+            elif robot.status == RobotStatus.IDLE:
+                charging_robot = self._battery_service.start_charging_if_needed(
+                    updated, self.config.low_battery_threshold
+                )
+                if charging_robot is not None:
+                    self.assign_route(charging_robot.id, CHARGER_ROUTE_KEY)
 
             latest_robot = self._state.get_robot(robot.id)
             if latest_robot is not None:
@@ -189,6 +208,5 @@ class MockFactory:
             )
             self._time_since_last_metrics_broadcast -= self.METRICS_BROADCAST_INTERVAL_SECONDS
 
-        # BE-007: battery drain & charging
         # BE-009: metrics recalculation
         # BE-010: alert generation
