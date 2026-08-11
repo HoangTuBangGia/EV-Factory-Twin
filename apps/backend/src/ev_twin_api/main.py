@@ -1,4 +1,5 @@
 import logging
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -18,6 +19,7 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    app.state.started_at_monotonic = time.monotonic()
     # Mock engine startup/shutdown hooks in vào đây (BE-005).
     logger.info("backend started")
     yield
