@@ -11,8 +11,17 @@ from ev_twin_api.services.mock_factory import MockFactory
 from httpx import ASGITransport, AsyncClient
 
 
-def _make_factory(*, simulation_speed: float = 1.0, enabled: bool = True) -> MockFactory:
-    config = MockFactoryConfig(robot_count=1, simulation_speed=simulation_speed)
+def _make_factory(
+    *,
+    simulation_speed: float = 1.0,
+    enabled: bool = True,
+    task_interval_seconds: float = 8.0,
+) -> MockFactory:
+    config = MockFactoryConfig(
+        robot_count=1,
+        simulation_speed=simulation_speed,
+        task_interval_seconds=task_interval_seconds,
+    )
     state = FactoryState(config=config)
     return MockFactory(state=state, config=config, enabled=enabled)
 
@@ -166,6 +175,25 @@ async def test_assigned_robot_moves_deterministically_through_the_factory() -> N
     assert (moved.pose.x, moved.pose.y) != (initial.pose.x, initial.pose.y)
     assert 0 <= moved.pose.x <= FACTORY_WIDTH_M
     assert 0 <= moved.pose.y <= FACTORY_HEIGHT_M
+
+
+@pytest.mark.asyncio
+async def test_tasks_are_generated_on_the_configured_simulated_interval() -> None:
+    # task_interval_seconds=1.0 (schema minimum) combined with simulation_speed=10.0
+    # (schema maximum) means 1 simulated second elapses per real tick, so a handful
+    # of real ticks is enough to observe several generations without a long sleep.
+    factory = _make_factory(task_interval_seconds=1.0, simulation_speed=10.0)
+
+    await factory.start()
+    try:
+        await asyncio.sleep(0.35)
+    finally:
+        await factory.stop()
+
+    tasks = factory._state.list_tasks()
+    assert len(tasks) >= 2
+    for task in tasks:
+        assert task.status == "QUEUED"
 
 
 @pytest.mark.asyncio

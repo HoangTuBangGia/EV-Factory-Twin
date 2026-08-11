@@ -8,6 +8,7 @@ from ev_twin_api.core.routes import ROUTES
 from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.movement import RouteProgress, advance_along_route
+from ev_twin_api.services.task_service import TaskService
 
 logger = logging.getLogger("ev_twin_api")
 
@@ -40,6 +41,8 @@ class MockFactory:
         self._task: asyncio.Task[None] | None = None
         self._consecutive_tick_errors = 0
         self._active_movements: dict[str, RouteProgress] = {}
+        self._task_service = TaskService(state)
+        self._time_since_last_task = 0.0
 
     def assign_route(self, robot_id: str, route_key: tuple[str, str]) -> None:
         if route_key not in ROUTES:
@@ -76,6 +79,7 @@ class MockFactory:
         self._active_movements.clear()
         self.tick_count = 0
         self.simulated_elapsed_seconds = 0.0
+        self._time_since_last_task = 0.0
         logger.info("mock factory reset")
         if was_running:
             await self.start()
@@ -125,7 +129,12 @@ class MockFactory:
         for robot_id in finished_robot_ids:
             self._active_movements.pop(robot_id, None)
 
-        # BE-006: task generation & assignment
+        self._time_since_last_task += dt
+        while self._time_since_last_task >= self.config.task_interval_seconds:
+            self._task_service.generate_task()
+            self._time_since_last_task -= self.config.task_interval_seconds
+
+        # BE-006b: task assignment
         # BE-007: battery drain & charging
         # BE-009: metrics recalculation
         # BE-010: alert generation
