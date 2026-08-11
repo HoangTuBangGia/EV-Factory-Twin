@@ -72,44 +72,50 @@ class TaskService:
         )
         return selected_robot, queued_tasks[0]
 
-    def assign(self, robot: Robot, task: Task) -> None:
+    def assign(self, robot: Robot, task: Task) -> Task:
         now = datetime.now(UTC)
-        self._state.update_task(
-            task.model_copy(
-                update={
-                    "status": TaskStatus.ASSIGNED,
-                    "assigned_robot_id": robot.id,
-                    "started_at": now,
-                }
-            )
+        updated_task = task.model_copy(
+            update={
+                "status": TaskStatus.ASSIGNED,
+                "assigned_robot_id": robot.id,
+                "started_at": now,
+            }
         )
+        self._state.update_task(updated_task)
         self._state.update_robot(
             robot.model_copy(
                 update={"status": RobotStatus.MOVING_TO_PICKUP, "task_id": task.task_id}
             )
         )
         logger.info("task assigned: %s -> %s", task.task_id, robot.id)
+        return updated_task
 
-    def arrive_at_pickup(self, robot_id: str) -> None:
+    def arrive_at_pickup(self, robot_id: str) -> Task:
         robot, task = self._robot_and_task(robot_id)
         self._state.update_robot(robot.model_copy(update={"status": RobotStatus.PICKING}))
-        self._state.update_task(task.model_copy(update={"status": TaskStatus.PICKUP}))
+        updated_task = task.model_copy(update={"status": TaskStatus.PICKUP})
+        self._state.update_task(updated_task)
+        return updated_task
 
-    def finish_pickup(self, robot_id: str) -> None:
+    def finish_pickup(self, robot_id: str) -> Task:
         robot, task = self._robot_and_task(robot_id)
         self._state.update_robot(
             robot.model_copy(
                 update={"status": RobotStatus.DELIVERING, "payload_id": task.payload_id}
             )
         )
-        self._state.update_task(task.model_copy(update={"status": TaskStatus.IN_PROGRESS}))
+        updated_task = task.model_copy(update={"status": TaskStatus.IN_PROGRESS})
+        self._state.update_task(updated_task)
+        return updated_task
 
-    def arrive_at_dropoff(self, robot_id: str) -> None:
+    def arrive_at_dropoff(self, robot_id: str) -> Task:
         robot, task = self._robot_and_task(robot_id)
         self._state.update_robot(robot.model_copy(update={"status": RobotStatus.DROPPING}))
-        self._state.update_task(task.model_copy(update={"status": TaskStatus.DELIVERED}))
+        updated_task = task.model_copy(update={"status": TaskStatus.DELIVERED})
+        self._state.update_task(updated_task)
+        return updated_task
 
-    def finish_dropoff(self, robot_id: str) -> None:
+    def finish_dropoff(self, robot_id: str) -> Task:
         robot, task = self._robot_and_task(robot_id)
         now = datetime.now(UTC)
         self._state.update_robot(
@@ -117,10 +123,10 @@ class TaskService:
                 update={"status": RobotStatus.IDLE, "task_id": None, "payload_id": None}
             )
         )
-        self._state.update_task(
-            task.model_copy(update={"status": TaskStatus.COMPLETED, "completed_at": now})
-        )
+        updated_task = task.model_copy(update={"status": TaskStatus.COMPLETED, "completed_at": now})
+        self._state.update_task(updated_task)
         logger.info("task completed: %s", task.task_id)
+        return updated_task
 
     def _robot_and_task(self, robot_id: str) -> tuple[Robot, Task]:
         robot = self._state.get_robot(robot_id)

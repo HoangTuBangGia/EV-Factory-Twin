@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 
 from ev_twin_api.schemas.base import UtcDatetime
-from ev_twin_api.schemas.robot import Pose, RobotStatus, Velocity
+from ev_twin_api.schemas.robot import Pose, Robot, RobotStatus, Velocity
 
 
 class RobotTelemetry(BaseModel):
@@ -16,3 +16,16 @@ class RobotTelemetry(BaseModel):
     status: RobotStatus
     task_id: str | None
     payload_id: str | None
+
+
+def robot_to_telemetry(robot: Robot) -> RobotTelemetry:
+    return RobotTelemetry(
+        timestamp=robot.last_seen_at,
+        robot_id=robot.id,
+        pose=robot.pose,
+        velocity=robot.velocity,
+        battery=robot.battery,
+        status=robot.status,
+        task_id=robot.task_id,
+        payload_id=robot.payload_id,
+    )

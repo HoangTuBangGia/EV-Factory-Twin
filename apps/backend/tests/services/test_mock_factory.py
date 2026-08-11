@@ -1,15 +1,32 @@
 import asyncio
 import gc
 import warnings
+from typing import Any
 
 import pytest
 from ev_twin_api.core.layout import FACTORY_HEIGHT_M, FACTORY_WIDTH_M
 from ev_twin_api.main import app
 from ev_twin_api.schemas.factory import MockFactoryConfig
+from ev_twin_api.schemas.metrics import FactoryMetrics
 from ev_twin_api.schemas.robot import RobotStatus
+from ev_twin_api.schemas.task import Task
+from ev_twin_api.schemas.telemetry import RobotTelemetry
 from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.mock_factory import MockFactory
+from ev_twin_api.services.websocket_manager import WebSocketManager
 from httpx import ASGITransport, AsyncClient
+
+
+class FakeWebSocket:
+    def __init__(self) -> None:
+        self.accepted = False
+        self.sent: list[dict[str, Any]] = []
+
+    async def accept(self) -> None:
+        self.accepted = True
+
+    async def send_json(self, data: dict[str, Any]) -> None:
+        self.sent.append(data)
 
 
 def _make_factory(
@@ -18,6 +35,7 @@ def _make_factory(
     enabled: bool = True,
     task_interval_seconds: float = 8.0,
     robot_speed_mps: float = 1.2,
+    websocket_manager: WebSocketManager | None = None,
 ) -> MockFactory:
     config = MockFactoryConfig(
         robot_count=1,
@@ -26,7 +44,12 @@ def _make_factory(
         robot_speed_mps=robot_speed_mps,
     )
     state = FactoryState(config=config)
-    return MockFactory(state=state, config=config, enabled=enabled)
+    return MockFactory(
+        state=state,
+        config=config,
+        websocket_manager=websocket_manager or WebSocketManager(),
+        enabled=enabled,
+    )
 
 
 @pytest.mark.asyncio
@@ -270,6 +293,68 @@ async def test_task_completes_end_to_end_through_the_real_engine_loop() -> None:
     assert task_1.status == "COMPLETED"
     assert task_1.assigned_robot_id == "AMR-01"
     assert task_1.completed_at is not None
+
+
+@pytest.mark.asyncio
+async def test_tick_broadcasts_robot_telemetry_matching_schema() -> None:
+    manager = WebSocketManager()
+    websocket = FakeWebSocket()
+    await manager.connect(websocket)  # type: ignore[arg-type]
+    factory = _make_factory(websocket_manager=manager)
+
+    await factory.tick(0.1)
+
+    telemetry_events = [msg for msg in websocket.sent if msg["type"] == "robot.telemetry"]
+    assert len(telemetry_events) == 1
+    telemetry = RobotTelemetry.model_validate(telemetry_events[0]["data"])
+    assert telemetry.robot_id == "AMR-01"
+
+
+@pytest.mark.asyncio
+async def test_tick_broadcasts_task_updated_on_assignment() -> None:
+    manager = WebSocketManager()
+    websocket = FakeWebSocket()
+    await manager.connect(websocket)  # type: ignore[arg-type]
+    factory = _make_factory(task_interval_seconds=60.0, websocket_manager=manager)
+    factory._task_service.generate_task()  # bypasses tick()'s broadcast, nothing sent yet
+
+    await factory.tick(0.1)
+
+    task_updated_events = [msg for msg in websocket.sent if msg["type"] == "task.updated"]
+    assert len(task_updated_events) == 1
+    task = Task.model_validate(task_updated_events[0]["data"])
+    assert task.status == "ASSIGNED"
+    assert task.assigned_robot_id == "AMR-01"
+
+
+@pytest.mark.asyncio
+async def test_reset_broadcasts_factory_reset() -> None:
+    manager = WebSocketManager()
+    websocket = FakeWebSocket()
+    await manager.connect(websocket)  # type: ignore[arg-type]
+    factory = _make_factory(websocket_manager=manager)
+
+    await factory.reset()
+
+    reset_events = [msg for msg in websocket.sent if msg["type"] == "factory.reset"]
+    assert len(reset_events) == 1
+    assert reset_events[0]["data"] is None
+
+
+@pytest.mark.asyncio
+async def test_metrics_updated_is_broadcast_at_one_hertz_of_simulated_time() -> None:
+    manager = WebSocketManager()
+    websocket = FakeWebSocket()
+    await manager.connect(websocket)  # type: ignore[arg-type]
+    factory = _make_factory(task_interval_seconds=60.0, websocket_manager=manager)
+
+    await factory.tick(0.9)
+    assert not [msg for msg in websocket.sent if msg["type"] == "metrics.updated"]
+
+    await factory.tick(0.2)
+    metrics_events = [msg for msg in websocket.sent if msg["type"] == "metrics.updated"]
+    assert len(metrics_events) == 1
+    FactoryMetrics.model_validate(metrics_events[0]["data"])
 
 
 @pytest.mark.asyncio

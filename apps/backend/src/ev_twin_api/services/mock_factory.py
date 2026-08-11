@@ -7,9 +7,17 @@ from datetime import UTC, datetime
 from ev_twin_api.core.routes import ROUTES
 from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.schemas.robot import RobotStatus
+from ev_twin_api.schemas.telemetry import robot_to_telemetry
+from ev_twin_api.schemas.websocket import (
+    factory_reset_event,
+    metrics_updated_event,
+    robot_telemetry_event,
+    task_updated_event,
+)
 from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.movement import RouteProgress, advance_along_route
 from ev_twin_api.services.task_service import TaskService
+from ev_twin_api.services.websocket_manager import WebSocketManager
 
 logger = logging.getLogger("ev_twin_api")
 
@@ -29,12 +37,19 @@ class MockFactory:
 
     TICK_SECONDS = 0.1
     MAX_CONSECUTIVE_TICK_ERRORS = 10
+    METRICS_BROADCAST_INTERVAL_SECONDS = 1.0
 
     def __init__(
-        self, state: FactoryState, config: MockFactoryConfig, *, enabled: bool = True
+        self,
+        state: FactoryState,
+        config: MockFactoryConfig,
+        websocket_manager: WebSocketManager,
+        *,
+        enabled: bool = True,
     ) -> None:
         self._state = state
         self.config = config
+        self._websocket_manager = websocket_manager
         self._enabled = enabled
         self.running = False
         self.tick_count = 0
@@ -44,6 +59,7 @@ class MockFactory:
         self._active_movements: dict[str, RouteProgress] = {}
         self._task_service = TaskService(state)
         self._time_since_last_task = 0.0
+        self._time_since_last_metrics_broadcast = 0.0
 
     def assign_route(self, robot_id: str, route_key: tuple[str, str]) -> None:
         if route_key not in ROUTES:
@@ -81,7 +97,9 @@ class MockFactory:
         self.tick_count = 0
         self.simulated_elapsed_seconds = 0.0
         self._time_since_last_task = 0.0
+        self._time_since_last_metrics_broadcast = 0.0
         logger.info("mock factory reset")
+        await self._websocket_manager.broadcast(factory_reset_event())
         if was_running:
             await self.start()
 
@@ -118,40 +136,58 @@ class MockFactory:
 
             if robot.status in (RobotStatus.MOVING_TO_PICKUP, RobotStatus.DELIVERING):
                 progress = self._active_movements.get(robot.id)
-                if progress is None:
-                    continue
-                previous_index = progress.waypoint_index
-                new_pose, new_velocity, route_finished = advance_along_route(
-                    updated.pose, progress, self.config.robot_speed_mps, dt
-                )
-                self._state.update_robot(
-                    updated.model_copy(update={"pose": new_pose, "velocity": new_velocity})
-                )
-                if (
-                    robot.status == RobotStatus.MOVING_TO_PICKUP
-                    and progress.waypoint_index > previous_index
-                ):
-                    self._task_service.arrive_at_pickup(robot.id)
-                elif robot.status == RobotStatus.DELIVERING and route_finished:
-                    self._task_service.arrive_at_dropoff(robot.id)
+                if progress is not None:
+                    previous_index = progress.waypoint_index
+                    new_pose, new_velocity, route_finished = advance_along_route(
+                        updated.pose, progress, self.config.robot_speed_mps, dt
+                    )
+                    self._state.update_robot(
+                        updated.model_copy(update={"pose": new_pose, "velocity": new_velocity})
+                    )
+                    if (
+                        robot.status == RobotStatus.MOVING_TO_PICKUP
+                        and progress.waypoint_index > previous_index
+                    ):
+                        task = self._task_service.arrive_at_pickup(robot.id)
+                        await self._websocket_manager.broadcast(task_updated_event(task))
+                    elif robot.status == RobotStatus.DELIVERING and route_finished:
+                        task = self._task_service.arrive_at_dropoff(robot.id)
+                        await self._websocket_manager.broadcast(task_updated_event(task))
             elif robot.status == RobotStatus.PICKING:
-                self._task_service.finish_pickup(robot.id)
+                task = self._task_service.finish_pickup(robot.id)
+                await self._websocket_manager.broadcast(task_updated_event(task))
             elif robot.status == RobotStatus.DROPPING:
-                self._task_service.finish_dropoff(robot.id)
+                task = self._task_service.finish_dropoff(robot.id)
+                await self._websocket_manager.broadcast(task_updated_event(task))
                 self.clear_route(robot.id)
+
+            latest_robot = self._state.get_robot(robot.id)
+            if latest_robot is not None:
+                await self._websocket_manager.broadcast(
+                    robot_telemetry_event(robot_to_telemetry(latest_robot))
+                )
 
         while True:
             assignment = self._task_service.select_assignment(self.config.low_battery_threshold)
             if assignment is None:
                 break
-            robot, task = assignment
-            self._task_service.assign(robot, task)
-            self.assign_route(robot.id, (task.pickup, task.dropoff))
+            selected_robot, selected_task = assignment
+            assigned_task = self._task_service.assign(selected_robot, selected_task)
+            self.assign_route(selected_robot.id, (selected_task.pickup, selected_task.dropoff))
+            await self._websocket_manager.broadcast(task_updated_event(assigned_task))
 
         self._time_since_last_task += dt
         while self._time_since_last_task >= self.config.task_interval_seconds:
-            self._task_service.generate_task()
+            new_task = self._task_service.generate_task()
+            await self._websocket_manager.broadcast(task_updated_event(new_task))
             self._time_since_last_task -= self.config.task_interval_seconds
+
+        self._time_since_last_metrics_broadcast += dt
+        while self._time_since_last_metrics_broadcast >= self.METRICS_BROADCAST_INTERVAL_SECONDS:
+            await self._websocket_manager.broadcast(
+                metrics_updated_event(self._state.get_metrics())
+            )
+            self._time_since_last_metrics_broadcast -= self.METRICS_BROADCAST_INTERVAL_SECONDS
 
         # BE-007: battery drain & charging
         # BE-009: metrics recalculation
