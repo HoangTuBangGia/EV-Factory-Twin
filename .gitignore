@@ -58,3 +58,8 @@ evaluation/reports/*
 # AI logs — tracked structure, ignored content
 .ai-log/*.jsonl
 .ai-log/archive/
+
+# -------------------------
+# Local dev logs (per-app, not shared)
+# -------------------------
+apps/backend/DEV_LOG.md
