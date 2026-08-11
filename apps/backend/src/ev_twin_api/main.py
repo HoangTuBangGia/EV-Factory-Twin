@@ -10,6 +10,9 @@ from ev_twin_api import __version__
 from ev_twin_api.api.health import router as health_router
 from ev_twin_api.core.config import get_settings
 from ev_twin_api.core.logging_config import configure_logging
+from ev_twin_api.schemas.factory import MockFactoryConfig
+from ev_twin_api.services.factory_state import FactoryState
+from ev_twin_api.services.mock_factory import MockFactory
 
 configure_logging()
 logger = logging.getLogger("ev_twin_api")
@@ -20,9 +23,24 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.started_at_monotonic = time.monotonic()
-    # Mock engine startup/shutdown hooks in vào đây (BE-005).
+
+    mock_config = MockFactoryConfig(
+        robot_count=settings.mock_robot_count,
+        task_interval_seconds=settings.mock_task_interval_seconds,
+        robot_speed_mps=settings.mock_robot_speed_mps,
+        simulation_speed=settings.mock_simulation_speed,
+    )
+    factory_state = FactoryState(config=mock_config)
+    mock_factory = MockFactory(
+        state=factory_state, config=mock_config, enabled=settings.mock_factory_enabled
+    )
+    app.state.factory_state = factory_state
+    app.state.mock_factory = mock_factory
+
+    await mock_factory.start()
     logger.info("backend started")
     yield
+    await mock_factory.stop()
     logger.info("backend stopped")
 
 
