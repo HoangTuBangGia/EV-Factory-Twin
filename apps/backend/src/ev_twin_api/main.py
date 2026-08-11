@@ -11,6 +11,7 @@ from ev_twin_api.api.alerts import router as alerts_router
 from ev_twin_api.api.factory import router as factory_router
 from ev_twin_api.api.health import router as health_router
 from ev_twin_api.api.metrics import router as metrics_router
+from ev_twin_api.api.mock import router as mock_router
 from ev_twin_api.api.robots import router as robots_router
 from ev_twin_api.api.tasks import router as tasks_router
 from ev_twin_api.api.websocket import router as websocket_router
@@ -77,4 +78,5 @@ app.include_router(robots_router)
 app.include_router(tasks_router)
 app.include_router(metrics_router)
 app.include_router(alerts_router)
+app.include_router(mock_router)
 app.include_router(websocket_router)

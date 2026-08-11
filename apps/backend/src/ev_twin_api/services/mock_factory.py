@@ -3,6 +3,9 @@ import contextlib
 import logging
 import time
 from datetime import UTC, datetime
+from typing import Annotated, cast
+
+from fastapi import Depends, Request
 
 from ev_twin_api.core.routes import CHARGER_ROUTE_KEY, ROUTES
 from ev_twin_api.schemas.factory import MockFactoryConfig
@@ -75,6 +78,18 @@ class MockFactory:
 
     def clear_route(self, robot_id: str) -> None:
         self._active_movements.pop(robot_id, None)
+
+    def apply_config(self, new_config: MockFactoryConfig) -> None:
+        """Update the shared MockFactoryConfig in place (FactoryState holds the
+        same instance) with already-validated values from `new_config`.
+
+        Fields read live every tick (task_interval_seconds, robot_speed_mps,
+        simulation_speed, low_battery_threshold) take effect on the next tick.
+        robot_count only affects how many robots exist on the next reset() —
+        applying config does not itself reset state.
+        """
+        for field_name in MockFactoryConfig.model_fields:
+            setattr(self.config, field_name, getattr(new_config, field_name))
 
     async def start(self) -> None:
         if self._task is not None and not self._task.done():
@@ -225,3 +240,10 @@ class MockFactory:
         )
         for alert in new_alerts:
             await self._websocket_manager.broadcast(alert_created_event(alert))
+
+
+def get_mock_factory(request: Request) -> MockFactory:
+    return cast(MockFactory, request.app.state.mock_factory)
+
+
+MockFactoryDep = Annotated[MockFactory, Depends(get_mock_factory)]
