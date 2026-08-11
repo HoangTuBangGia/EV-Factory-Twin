@@ -9,11 +9,13 @@ from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.schemas.robot import RobotStatus
 from ev_twin_api.schemas.telemetry import robot_to_telemetry
 from ev_twin_api.schemas.websocket import (
+    alert_created_event,
     factory_reset_event,
     metrics_updated_event,
     robot_telemetry_event,
     task_updated_event,
 )
+from ev_twin_api.services.alert_service import AlertService
 from ev_twin_api.services.battery_service import BatteryService, apply_battery_tick
 from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.metrics_service import MetricsService
@@ -62,6 +64,7 @@ class MockFactory:
         self._task_service = TaskService(state)
         self._battery_service = BatteryService(state)
         self._metrics_service = MetricsService(state)
+        self._alert_service = AlertService(state)
         self._time_since_last_task = 0.0
         self._time_since_last_metrics_broadcast = 0.0
 
@@ -99,6 +102,7 @@ class MockFactory:
         self._state.reset()
         self._active_movements.clear()
         self._metrics_service.reset()
+        self._alert_service.reset()
         self.tick_count = 0
         self.simulated_elapsed_seconds = 0.0
         self._time_since_last_task = 0.0
@@ -215,4 +219,9 @@ class MockFactory:
             )
             self._time_since_last_metrics_broadcast -= self.METRICS_BROADCAST_INTERVAL_SECONDS
 
-        # BE-010: alert generation
+        new_alerts = self._alert_service.check(
+            low_battery_threshold=self.config.low_battery_threshold,
+            task_interval_seconds=self.config.task_interval_seconds,
+        )
+        for alert in new_alerts:
+            await self._websocket_manager.broadcast(alert_created_event(alert))

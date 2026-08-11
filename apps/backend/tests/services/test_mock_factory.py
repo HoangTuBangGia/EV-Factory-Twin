@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 from ev_twin_api.core.layout import FACTORY_HEIGHT_M, FACTORY_WIDTH_M
 from ev_twin_api.main import app
+from ev_twin_api.schemas.alert import FactoryAlert
 from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.schemas.metrics import FactoryMetrics
 from ev_twin_api.schemas.robot import RobotStatus
@@ -409,6 +410,31 @@ async def test_metrics_reflect_a_completed_task_through_the_real_engine() -> Non
     assert metrics.queued_tasks == 0
     assert metrics.average_cycle_time_seconds > 0
     assert metrics.throughput_per_hour > 0
+
+
+@pytest.mark.asyncio
+async def test_low_battery_alert_is_broadcast_and_deduplicated() -> None:
+    manager = WebSocketManager()
+    websocket = FakeWebSocket()
+    await manager.connect(websocket)  # type: ignore[arg-type]
+    factory = _make_factory(task_interval_seconds=60.0, websocket_manager=manager)
+    robot = factory._state.get_robot("AMR-01")
+    assert robot is not None
+    robot.battery = 15.0
+    factory._state.update_robot(robot)
+
+    await factory.tick(0.1)
+    await factory.tick(0.1)
+    await factory.tick(0.1)
+
+    alert_events = [msg for msg in websocket.sent if msg["type"] == "alert.created"]
+    assert len(alert_events) == 1
+    alert = FactoryAlert.model_validate(alert_events[0]["data"])
+    assert alert.code == "LOW_BATTERY"
+    assert alert.robot_id == "AMR-01"
+
+    stored_alerts = factory._state.list_alerts()
+    assert len(stored_alerts) == 1
 
 
 @pytest.mark.asyncio
