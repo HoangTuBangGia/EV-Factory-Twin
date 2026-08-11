@@ -105,6 +105,9 @@ class FactoryState:
     def add_task(self, task: Task) -> None:
         self.tasks[task.task_id] = task.model_copy(deep=True)
 
+    def update_task(self, task: Task) -> None:
+        self.tasks[task.task_id] = task.model_copy(deep=True)
+
     def list_alerts(self) -> list[FactoryAlert]:
         return [alert.model_copy(deep=True) for alert in self.alerts]
 

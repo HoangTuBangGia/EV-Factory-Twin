@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from ev_twin_api.core.routes import ROUTES
 from ev_twin_api.schemas.factory import MockFactoryConfig
+from ev_twin_api.schemas.robot import RobotStatus
 from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.movement import RouteProgress, advance_along_route
 from ev_twin_api.services.task_service import TaskService
@@ -111,30 +112,47 @@ class MockFactory:
         self.simulated_elapsed_seconds += dt
 
         now = datetime.now(UTC)
-        finished_robot_ids: list[str] = []
         for robot in self._state.list_robots():
             updated = robot.model_copy(update={"last_seen_at": now})
+            self._state.update_robot(updated)
 
-            progress = self._active_movements.get(robot.id)
-            if progress is not None:
+            if robot.status in (RobotStatus.MOVING_TO_PICKUP, RobotStatus.DELIVERING):
+                progress = self._active_movements.get(robot.id)
+                if progress is None:
+                    continue
+                previous_index = progress.waypoint_index
                 new_pose, new_velocity, route_finished = advance_along_route(
                     updated.pose, progress, self.config.robot_speed_mps, dt
                 )
-                updated = updated.model_copy(update={"pose": new_pose, "velocity": new_velocity})
-                if route_finished:
-                    finished_robot_ids.append(robot.id)
+                self._state.update_robot(
+                    updated.model_copy(update={"pose": new_pose, "velocity": new_velocity})
+                )
+                if (
+                    robot.status == RobotStatus.MOVING_TO_PICKUP
+                    and progress.waypoint_index > previous_index
+                ):
+                    self._task_service.arrive_at_pickup(robot.id)
+                elif robot.status == RobotStatus.DELIVERING and route_finished:
+                    self._task_service.arrive_at_dropoff(robot.id)
+            elif robot.status == RobotStatus.PICKING:
+                self._task_service.finish_pickup(robot.id)
+            elif robot.status == RobotStatus.DROPPING:
+                self._task_service.finish_dropoff(robot.id)
+                self.clear_route(robot.id)
 
-            self._state.update_robot(updated)
-
-        for robot_id in finished_robot_ids:
-            self._active_movements.pop(robot_id, None)
+        while True:
+            assignment = self._task_service.select_assignment(self.config.low_battery_threshold)
+            if assignment is None:
+                break
+            robot, task = assignment
+            self._task_service.assign(robot, task)
+            self.assign_route(robot.id, (task.pickup, task.dropoff))
 
         self._time_since_last_task += dt
         while self._time_since_last_task >= self.config.task_interval_seconds:
             self._task_service.generate_task()
             self._time_since_last_task -= self.config.task_interval_seconds
 
-        # BE-006b: task assignment
         # BE-007: battery drain & charging
         # BE-009: metrics recalculation
         # BE-010: alert generation

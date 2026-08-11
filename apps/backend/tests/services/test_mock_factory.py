@@ -6,6 +6,7 @@ import pytest
 from ev_twin_api.core.layout import FACTORY_HEIGHT_M, FACTORY_WIDTH_M
 from ev_twin_api.main import app
 from ev_twin_api.schemas.factory import MockFactoryConfig
+from ev_twin_api.schemas.robot import RobotStatus
 from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.mock_factory import MockFactory
 from httpx import ASGITransport, AsyncClient
@@ -16,11 +17,13 @@ def _make_factory(
     simulation_speed: float = 1.0,
     enabled: bool = True,
     task_interval_seconds: float = 8.0,
+    robot_speed_mps: float = 1.2,
 ) -> MockFactory:
     config = MockFactoryConfig(
         robot_count=1,
         simulation_speed=simulation_speed,
         task_interval_seconds=task_interval_seconds,
+        robot_speed_mps=robot_speed_mps,
     )
     state = FactoryState(config=config)
     return MockFactory(state=state, config=config, enabled=enabled)
@@ -160,6 +163,12 @@ async def test_reset_zeroes_counters_and_restores_state() -> None:
 async def test_assigned_robot_moves_deterministically_through_the_factory() -> None:
     factory = _make_factory()
     factory.assign_route("AMR-01", ("BATTERY_BUFFER", "MARRIAGE_STATION"))
+    # tick() only advances movement for robots in a moving status (BE-006b); a raw
+    # assign_route() alone (bypassing the task state machine) needs this too.
+    robot = factory._state.get_robot("AMR-01")
+    assert robot is not None
+    robot.status = RobotStatus.MOVING_TO_PICKUP
+    factory._state.update_robot(robot)
 
     initial = factory._state.get_robot("AMR-01")
     assert initial is not None
@@ -183,6 +192,12 @@ async def test_tasks_are_generated_on_the_configured_simulated_interval() -> Non
     # (schema maximum) means 1 simulated second elapses per real tick, so a handful
     # of real ticks is enough to observe several generations without a long sleep.
     factory = _make_factory(task_interval_seconds=1.0, simulation_speed=10.0)
+    # keep this test isolated to generation cadence: make the only robot ineligible
+    # for assignment (BE-006b) so every generated task stays QUEUED.
+    robot = factory._state.get_robot("AMR-01")
+    assert robot is not None
+    robot.battery = 0.0
+    factory._state.update_robot(robot)
 
     await factory.start()
     try:
@@ -194,6 +209,67 @@ async def test_tasks_are_generated_on_the_configured_simulated_interval() -> Non
     assert len(tasks) >= 2
     for task in tasks:
         assert task.status == "QUEUED"
+
+
+@pytest.mark.asyncio
+async def test_robot_state_machine_progresses_through_full_task_cycle() -> None:
+    # deterministic, no real-time sleep: drive tick() directly with a fixed dt.
+    # task_interval_seconds is schema-maxed (60s) and the loop stays well under
+    # that in simulated time, so auto-generation never produces a second task
+    # to interfere with observing this one robot's full cycle.
+    factory = _make_factory(task_interval_seconds=60.0, robot_speed_mps=3.0)
+    factory._task_service.generate_task()
+
+    seen_statuses: list[str] = []
+    for _ in range(200):
+        await factory.tick(0.1)
+        robot = factory._state.get_robot("AMR-01")
+        assert robot is not None
+        if not seen_statuses or seen_statuses[-1] != robot.status:
+            seen_statuses.append(robot.status)
+        if robot.status == RobotStatus.IDLE and robot.task_id is None and len(seen_statuses) > 1:
+            break
+
+    assert seen_statuses == [
+        RobotStatus.MOVING_TO_PICKUP,
+        RobotStatus.PICKING,
+        RobotStatus.DELIVERING,
+        RobotStatus.DROPPING,
+        RobotStatus.IDLE,
+    ]
+
+    task = factory._state.list_tasks()[0]
+    assert task.status == "COMPLETED"
+    assert task.completed_at is not None
+    assert task.assigned_robot_id == "AMR-01"
+
+    final_robot = factory._state.get_robot("AMR-01")
+    assert final_robot is not None
+    assert final_robot.payload_id is None
+
+
+@pytest.mark.asyncio
+async def test_task_completes_end_to_end_through_the_real_engine_loop() -> None:
+    # acceptance criterion (guide BE-5): "A battery delivery task completes
+    # end-to-end and the AMR returns to IDLE" — exercised through start()/stop(),
+    # not direct tick() calls, so this covers the real asyncio loop too. With a
+    # single robot and ongoing task generation, the robot may already be onto a
+    # new task by the time we check (correct behavior) — the precise "ends at
+    # IDLE" check lives in the deterministic tick()-driven test above, so here
+    # we confirm the first task itself reached COMPLETED with the AMR that ran it.
+    factory = _make_factory(task_interval_seconds=1.0, simulation_speed=10.0, robot_speed_mps=3.0)
+
+    await factory.start()
+    try:
+        await asyncio.sleep(2.0)
+    finally:
+        await factory.stop()
+
+    task_1 = factory._state.get_task("TASK-0001")
+    assert task_1 is not None
+    assert task_1.status == "COMPLETED"
+    assert task_1.assigned_robot_id == "AMR-01"
+    assert task_1.completed_at is not None
 
 
 @pytest.mark.asyncio

@@ -32,7 +32,6 @@ async def test_generated_task_appears_in_tasks_endpoint(client: AsyncClient) -> 
     tasks = [Task.model_validate(item) for item in response.json()]
     assert len(tasks) >= 1
     assert tasks[0].task_id == "TASK-0001"
-    assert tasks[0].status == "QUEUED"
 
 
 @pytest.mark.asyncio
