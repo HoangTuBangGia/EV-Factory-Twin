@@ -1,8 +1,8 @@
 import logging
 from datetime import UTC, datetime
-from typing import cast
+from typing import Annotated, cast
 
-from fastapi import Request
+from fastapi import Depends, Request
 
 from ev_twin_api.core.layout import (
     FACTORY_HEIGHT_M,
@@ -117,3 +117,6 @@ class FactoryState:
 
 def get_factory_state(request: Request) -> FactoryState:
     return cast(FactoryState, request.app.state.factory_state)
+
+
+FactoryStateDep = Annotated[FactoryState, Depends(get_factory_state)]

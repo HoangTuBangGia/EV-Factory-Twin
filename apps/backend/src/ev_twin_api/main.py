@@ -7,7 +7,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from ev_twin_api import __version__
+from ev_twin_api.api.alerts import router as alerts_router
+from ev_twin_api.api.factory import router as factory_router
 from ev_twin_api.api.health import router as health_router
+from ev_twin_api.api.metrics import router as metrics_router
+from ev_twin_api.api.robots import router as robots_router
+from ev_twin_api.api.tasks import router as tasks_router
 from ev_twin_api.core.config import get_settings
 from ev_twin_api.core.logging_config import configure_logging
 from ev_twin_api.schemas.factory import MockFactoryConfig
@@ -60,3 +65,8 @@ app.add_middleware(
 )
 
 app.include_router(health_router)
+app.include_router(factory_router)
+app.include_router(robots_router)
+app.include_router(tasks_router)
+app.include_router(metrics_router)
+app.include_router(alerts_router)
