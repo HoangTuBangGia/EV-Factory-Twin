@@ -6,19 +6,15 @@ dependencies = [
     "fastapi>=0.116",
     "uvicorn[standard]>=0.35",
     "pydantic>=2.11",
+    "sqlalchemy>=2.0",
+    "asyncpg>=0.30",
     "websockets>=15",
-    "pydantic-settings>=2.15.0",
+    "twin-core",
 ]
+
+[tool.uv.sources]
+twin-core = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[dependency-groups]
-dev = [
-    "httpx>=0.28.1",
-    "mypy>=2.3.0",
-    "pytest>=9.1.1",
-    "pytest-asyncio>=1.4.0",
-    "ruff>=0.16.0",
-]
