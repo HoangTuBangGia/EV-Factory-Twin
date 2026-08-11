@@ -104,7 +104,7 @@ curl -X POST localhost:8000/api/v1/mock/config \
 | Xưởng hoạt động theo quy tắc gì (robot, pin, đơn hàng, cảnh báo) | [simulation.md](simulation.md) |
 | Chạy test, kiểm chứng ra sao | [testing.md](testing.md) |
 | **Định dạng dữ liệu chính xác để tích hợp FE** | [`docs/api.md`](../../../docs/api.md) ở gốc repo |
-| Nhật ký từng bước làm, gồm cả các lỗi đã gặp | [DEV_LOG.md](../DEV_LOG.md) |
+| Vì sao một quyết định lại làm như vậy | Lịch sử commit: `git log --oneline` |
 
 > Nếu bạn là **frontend dev**: file bạn cần là [`docs/api.md`](../../../docs/api.md).
 > Nó mô tả từng field, đơn vị, field nào được phép `null`, định dạng thời gian.
