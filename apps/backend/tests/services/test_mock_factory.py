@@ -392,6 +392,26 @@ async def test_low_battery_robot_charges_and_returns_to_idle() -> None:
 
 
 @pytest.mark.asyncio
+async def test_metrics_reflect_a_completed_task_through_the_real_engine() -> None:
+    # deterministic, no real-time sleep: drive tick() directly with a fixed dt.
+    factory = _make_factory(task_interval_seconds=60.0, robot_speed_mps=3.0)
+    factory._task_service.generate_task()
+
+    for _ in range(200):
+        await factory.tick(0.1)
+        task = factory._state.get_task("TASK-0001")
+        assert task is not None
+        if task.status == "COMPLETED":
+            break
+
+    metrics = factory._state.get_metrics()
+    assert metrics.completed_tasks == 1
+    assert metrics.queued_tasks == 0
+    assert metrics.average_cycle_time_seconds > 0
+    assert metrics.throughput_per_hour > 0
+
+
+@pytest.mark.asyncio
 async def test_lifespan_starts_and_stops_engine_without_pending_tasks() -> None:
     transport = ASGITransport(app=app)
     with warnings.catch_warnings(record=True) as caught:

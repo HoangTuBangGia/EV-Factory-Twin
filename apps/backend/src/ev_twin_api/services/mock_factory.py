@@ -16,6 +16,7 @@ from ev_twin_api.schemas.websocket import (
 )
 from ev_twin_api.services.battery_service import BatteryService, apply_battery_tick
 from ev_twin_api.services.factory_state import FactoryState
+from ev_twin_api.services.metrics_service import MetricsService
 from ev_twin_api.services.movement import RouteProgress, advance_along_route
 from ev_twin_api.services.task_service import TaskService
 from ev_twin_api.services.websocket_manager import WebSocketManager
@@ -60,6 +61,7 @@ class MockFactory:
         self._active_movements: dict[str, RouteProgress] = {}
         self._task_service = TaskService(state)
         self._battery_service = BatteryService(state)
+        self._metrics_service = MetricsService(state)
         self._time_since_last_task = 0.0
         self._time_since_last_metrics_broadcast = 0.0
 
@@ -96,6 +98,7 @@ class MockFactory:
         await self.stop()
         self._state.reset()
         self._active_movements.clear()
+        self._metrics_service.reset()
         self.tick_count = 0
         self.simulated_elapsed_seconds = 0.0
         self._time_since_last_task = 0.0
@@ -201,6 +204,10 @@ class MockFactory:
             await self._websocket_manager.broadcast(task_updated_event(new_task))
             self._time_since_last_task -= self.config.task_interval_seconds
 
+        self._state.update_metrics(
+            self._metrics_service.recalculate(self.simulated_elapsed_seconds)
+        )
+
         self._time_since_last_metrics_broadcast += dt
         while self._time_since_last_metrics_broadcast >= self.METRICS_BROADCAST_INTERVAL_SECONDS:
             await self._websocket_manager.broadcast(
@@ -208,5 +215,4 @@ class MockFactory:
             )
             self._time_since_last_metrics_broadcast -= self.METRICS_BROADCAST_INTERVAL_SECONDS
 
-        # BE-009: metrics recalculation
         # BE-010: alert generation

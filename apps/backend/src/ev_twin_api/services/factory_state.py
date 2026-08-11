@@ -117,6 +117,9 @@ class FactoryState:
     def get_metrics(self) -> FactoryMetrics:
         return self.metrics.model_copy(deep=True)
 
+    def update_metrics(self, metrics: FactoryMetrics) -> None:
+        self.metrics = metrics.model_copy(deep=True)
+
 
 def get_factory_state(request: Request) -> FactoryState:
     return cast(FactoryState, request.app.state.factory_state)
