@@ -4,8 +4,10 @@ import logging
 import time
 from datetime import UTC, datetime
 
+from ev_twin_api.core.routes import ROUTES
 from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.services.factory_state import FactoryState
+from ev_twin_api.services.movement import RouteProgress, advance_along_route
 
 logger = logging.getLogger("ev_twin_api")
 
@@ -37,6 +39,15 @@ class MockFactory:
         self.simulated_elapsed_seconds = 0.0
         self._task: asyncio.Task[None] | None = None
         self._consecutive_tick_errors = 0
+        self._active_movements: dict[str, RouteProgress] = {}
+
+    def assign_route(self, robot_id: str, route_key: tuple[str, str]) -> None:
+        if route_key not in ROUTES:
+            raise ValueError(f"Unknown route: {route_key}")
+        self._active_movements[robot_id] = RouteProgress(route_key=route_key)
+
+    def clear_route(self, robot_id: str) -> None:
+        self._active_movements.pop(robot_id, None)
 
     async def start(self) -> None:
         if self._task is not None and not self._task.done():
@@ -62,6 +73,7 @@ class MockFactory:
         was_running = self._task is not None and not self._task.done()
         await self.stop()
         self._state.reset()
+        self._active_movements.clear()
         self.tick_count = 0
         self.simulated_elapsed_seconds = 0.0
         logger.info("mock factory reset")
@@ -95,10 +107,24 @@ class MockFactory:
         self.simulated_elapsed_seconds += dt
 
         now = datetime.now(UTC)
+        finished_robot_ids: list[str] = []
         for robot in self._state.list_robots():
-            self._state.update_robot(robot.model_copy(update={"last_seen_at": now}))
+            updated = robot.model_copy(update={"last_seen_at": now})
 
-        # BE-005b: waypoint movement
+            progress = self._active_movements.get(robot.id)
+            if progress is not None:
+                new_pose, new_velocity, route_finished = advance_along_route(
+                    updated.pose, progress, self.config.robot_speed_mps, dt
+                )
+                updated = updated.model_copy(update={"pose": new_pose, "velocity": new_velocity})
+                if route_finished:
+                    finished_robot_ids.append(robot.id)
+
+            self._state.update_robot(updated)
+
+        for robot_id in finished_robot_ids:
+            self._active_movements.pop(robot_id, None)
+
         # BE-006: task generation & assignment
         # BE-007: battery drain & charging
         # BE-009: metrics recalculation

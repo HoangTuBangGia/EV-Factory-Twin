@@ -3,6 +3,7 @@ import gc
 import warnings
 
 import pytest
+from ev_twin_api.core.layout import FACTORY_HEIGHT_M, FACTORY_WIDTH_M
 from ev_twin_api.main import app
 from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.services.factory_state import FactoryState
@@ -144,6 +145,27 @@ async def test_reset_zeroes_counters_and_restores_state() -> None:
     assert factory.running is True
 
     await factory.stop()
+
+
+@pytest.mark.asyncio
+async def test_assigned_robot_moves_deterministically_through_the_factory() -> None:
+    factory = _make_factory()
+    factory.assign_route("AMR-01", ("BATTERY_BUFFER", "MARRIAGE_STATION"))
+
+    initial = factory._state.get_robot("AMR-01")
+    assert initial is not None
+
+    await factory.start()
+    try:
+        await asyncio.sleep(0.5)
+    finally:
+        await factory.stop()
+
+    moved = factory._state.get_robot("AMR-01")
+    assert moved is not None
+    assert (moved.pose.x, moved.pose.y) != (initial.pose.x, initial.pose.y)
+    assert 0 <= moved.pose.x <= FACTORY_WIDTH_M
+    assert 0 <= moved.pose.y <= FACTORY_HEIGHT_M
 
 
 @pytest.mark.asyncio
