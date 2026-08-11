@@ -20,6 +20,29 @@ frontend không phải sửa code khi backend đổi nguồn dữ liệu.
   giá trị mặc định (ví dụ `task_id`, `payload_id` trong `RobotTelemetry`) là
   **bắt buộc phải có trong payload**, nhưng giá trị của nó được phép là `null`.
 
+## Danh sách endpoint
+
+Mọi endpoint đều nằm dưới `/api/v1`, **trừ `/health`**.
+
+| Method | Path | Response | Mô tả |
+|---|---|---|---|
+| GET | `/health` | [`HealthResponse`](#health) | Liveness, không phụ thuộc engine mock |
+| GET | `/api/v1/factory` | [`FactoryLayout`](#station--factorylayout) | Kích thước nhà máy + 6 station |
+| GET | `/api/v1/robots` | [`Robot[]`](#robot) | Toàn bộ AMR |
+| GET | `/api/v1/robots/{robot_id}` | [`Robot`](#robot) | 1 AMR; id lạ → 404 |
+| GET | `/api/v1/tasks` | [`Task[]`](#task) | Toàn bộ task |
+| GET | `/api/v1/tasks/{task_id}` | [`Task`](#task) | 1 task; id lạ → 404 |
+| GET | `/api/v1/metrics` | [`FactoryMetrics`](#factorymetrics) | Số liệu vận hành |
+| GET | `/api/v1/alerts` | [`FactoryAlert[]`](#alertseverity--alertcode--factoryalert) | Alert đã phát |
+| POST | `/api/v1/mock/start` | [`MockControlResponse`](#mockcontrolresponse) | Chạy engine mock |
+| POST | `/api/v1/mock/stop` | [`MockControlResponse`](#mockcontrolresponse) | Dừng engine mock |
+| POST | `/api/v1/mock/reset` | [`MockControlResponse`](#mockcontrolresponse) | Reset state về ban đầu |
+| POST | `/api/v1/mock/config` | [`MockFactoryConfig`](#mockfactoryconfig) | Đổi tham số mô phỏng |
+| WS | `/ws/factory` | [envelope](#websocket-event-envelope) | Stream realtime |
+
+`/ws/factory` không xuất hiện trong `/docs` (OpenAPI không mô tả WebSocket) —
+hợp đồng của nó nằm ở mục [WebSocket event envelope](#websocket-event-envelope).
+
 ## RobotStatus
 
 Hợp đồng quan trọng nhất cùng với `RobotTelemetry` — dùng nhất quán ở mọi nơi
@@ -148,13 +171,20 @@ này. Payload của WebSocket event `task.updated`.
 
 `GET /api/v1/factory` trả về `FactoryLayout`.
 
+Nhà máy 20 m × 15 m, luôn trả về đúng 6 station với toạ độ cố định (deterministic
+— khởi động lại backend không làm đổi giá trị):
+
 ```json
 {
   "width_m": 20,
   "height_m": 15,
   "stations": [
     { "id": "BATTERY_BUFFER", "name": "Battery Buffer", "type": "BUFFER", "x": 2, "y": 4 },
-    { "id": "MARRIAGE_STATION", "name": "Marriage Station", "type": "MARRIAGE", "x": 16, "y": 8 }
+    { "id": "INTERSECTION_A", "name": "Intersection A", "type": "WAYPOINT", "x": 8, "y": 4 },
+    { "id": "INTERSECTION_B", "name": "Intersection B", "type": "WAYPOINT", "x": 12, "y": 8 },
+    { "id": "MARRIAGE_STATION", "name": "Marriage Station", "type": "MARRIAGE", "x": 16, "y": 8 },
+    { "id": "CHARGING_STATION", "name": "Charging Station", "type": "CHARGER", "x": 2, "y": 12 },
+    { "id": "IDLE_ZONE", "name": "Idle Zone", "type": "IDLE", "x": 5, "y": 12 }
   ]
 }
 ```
@@ -162,15 +192,60 @@ này. Payload của WebSocket event `task.updated`.
 | Field | Type | Nullable | Ghi chú |
 |---|---|---|---|
 | `width_m` / `height_m` | float | không | kích thước nhà máy, mét |
-| `stations` | list of `Station` | không | |
+| `stations` | list of `Station` | không | 6 station như trên |
 | `Station.id` | string | không | định danh ổn định, dùng làm `pickup`/`dropoff` trong `Task` |
 | `Station.name` | string | không | tên hiển thị |
-| `Station.type` | string | không | loại station (giá trị cụ thể chốt ở BE-003 cùng layout) |
+| `Station.type` | string | không | xem bảng giá trị bên dưới |
 | `Station.x` / `Station.y` | float | không | mét |
 
-## MockFactoryConfig
+`Station.type` khai báo là `string` (không phải enum) để backend thêm loại station
+mới mà không phá schema. Các giá trị hiện có, FE có thể dùng để chọn icon:
 
-`POST /api/v1/mock/config`.
+| `type` | Ý nghĩa |
+|---|---|
+| `BUFFER` | Kho pin — điểm lấy hàng |
+| `WAYPOINT` | Điểm trung chuyển trên tuyến, robot đi qua chứ không dừng làm việc |
+| `MARRIAGE` | Trạm lắp pin vào xe — điểm trả hàng |
+| `CHARGER` | Trạm sạc |
+| `IDLE` | Khu vực chờ, nơi AMR khởi tạo |
+
+FE nên xử lý `type` lạ bằng một icon mặc định thay vì giả định chỉ có 5 giá trị này.
+
+## Mock control
+
+Điều khiển engine mô phỏng. Các endpoint này chỉ phục vụ demo/điều khiển mock —
+khi thay mock bằng ROS2 sau này chúng sẽ biến mất, nên **FE không nên xây tính
+năng nghiệp vụ phụ thuộc vào chúng.**
+
+### MockControlResponse
+
+`POST /api/v1/mock/start`, `/stop`, `/reset` đều trả về schema này — trạng thái
+engine **sau khi** hành động đã thực hiện xong:
+
+```json
+{
+  "running": true,
+  "tick_count": 128,
+  "simulated_elapsed_seconds": 12.8
+}
+```
+
+| Field | Type | Nullable | Ghi chú |
+|---|---|---|---|
+| `running` | bool | không | engine có đang chạy vòng lặp 10 Hz hay không |
+| `tick_count` | int | không | số tick đã chạy; `/reset` đưa về 0 |
+| `simulated_elapsed_seconds` | float | không | thời gian **mô phỏng** đã trôi (đã nhân `simulation_speed`), dùng để tính throughput; `/reset` đưa về 0 |
+
+| Endpoint | Tác dụng |
+|---|---|
+| `POST /api/v1/mock/start` | Chạy engine. Idempotent — gọi nhiều lần không tạo thêm vòng lặp |
+| `POST /api/v1/mock/stop` | Dừng engine. Idempotent. REST vẫn phục vụ được state hiện tại |
+| `POST /api/v1/mock/reset` | Đưa toàn bộ state về ban đầu (robot, task, alert, metrics, bộ đếm) và phát event `factory.reset` |
+
+### MockFactoryConfig
+
+`POST /api/v1/mock/config` — body là schema dưới đây, response trả lại chính
+config đã được áp dụng.
 
 ```json
 {
@@ -189,6 +264,42 @@ này. Payload của WebSocket event `task.updated`.
 | `robot_speed_mps` | float | 1.2 | 0.1–3.0 |
 | `simulation_speed` | float | 1.0 | 0.25–10.0 |
 | `low_battery_threshold` | float | 20.0 | 0–100 |
+
+Giá trị ngoài khoảng cho phép → **422**.
+
+**Thời điểm có hiệu lực** — điểm dễ gây hiểu nhầm:
+
+- `task_interval_seconds`, `robot_speed_mps`, `simulation_speed`,
+  `low_battery_threshold` được engine đọc lại mỗi tick → **có hiệu lực ngay ở
+  tick kế tiếp.**
+- `robot_count` chỉ quyết định số AMR **lúc khởi tạo**, nên `/config` không tự
+  sinh thêm/bớt robot. Muốn thấy số robot mới, gọi thêm `POST /api/v1/mock/reset`.
+  `/config` cố ý **không** tự reset, vì reset sẽ xoá sạch task/tiến trình đang chạy.
+
+## Health
+
+`GET /health` — **ngoại lệ duy nhất không nằm dưới `/api/v1`.**
+
+```json
+{
+  "status": "ok",
+  "app_env": "development",
+  "version": "0.1.0",
+  "uptime_seconds": 12.48,
+  "timestamp": "2026-08-11T04:00:00.125Z"
+}
+```
+
+| Field | Type | Nullable | Ghi chú |
+|---|---|---|---|
+| `status` | string | không | luôn là `"ok"` |
+| `app_env` | string | không | `development` / `production` … |
+| `version` | string | không | version của package `ev-twin-api` |
+| `uptime_seconds` | float | không | tính từ lúc app khởi động (monotonic clock) |
+| `timestamp` | datetime | không | ISO 8601 UTC |
+
+Health phản ánh "app còn sống", **không** phụ thuộc engine mock: vẫn trả 200 kể
+cả sau khi `POST /api/v1/mock/stop`.
 
 ## FactoryMetrics
 
