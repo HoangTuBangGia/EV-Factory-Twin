@@ -1,0 +1,8 @@
+import { AlertList } from "@/components/alerts/alert-list";
+import { OperationsChart } from "@/components/charts/operations-chart";
+import { KpiGrid } from "@/components/dashboard/kpi-grid";
+import { FactoryMap } from "@/components/factory/factory-map";
+import { FleetTable } from "@/components/fleet/fleet-table";
+import { RobotDrawer } from "@/components/fleet/robot-drawer";
+
+export default function Overview() { return <><header className="page-head"><div><h2>Operations overview</h2><p>Live state of the battery intralogistics simulation.</p></div><span className="notice">Development fixtures · not production data</span></header><KpiGrid/><div className="grid main-grid"><section className="panel"><div className="panel-head"><h3>Factory twin</h3><span>20 × 15 m · 2D</span></div><FactoryMap/></section><div className="stack"><section className="panel"><div className="panel-head"><h3>Fleet</h3><span>5 AMRs</span></div><FleetTable compact/></section><section className="panel"><div className="panel-head"><h3>Recent alerts</h3><span>Persistent log</span></div><div className="panel-body"><AlertList limit={3}/></div></section></div><section className="panel"><div className="panel-head"><h3>Operations trend</h3><span>Fixture history</span></div><OperationsChart/></section></div><RobotDrawer/></>; }
