@@ -16,6 +16,7 @@ Repository = "https://github.com/AI20K-Build-Phase-Cohort-3/P-078.git"
 dev = [
     "httpx2>=2.9.1",
     "mypy>=1.15",
+    "pandas-stubs>=2.2",
     "pytest>=8.0",
     "pytest-asyncio>=0.25",
     "pytest-cov>=6.0",

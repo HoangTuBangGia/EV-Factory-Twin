@@ -13,7 +13,7 @@ format-check:
 	uv run ruff format --check .
 
 typecheck:
-	uv run mypy packages/twin-core/src apps/backend/src
+	uv run mypy packages/twin-core/src apps/backend/src services/simulation/src evaluation/src
 
 test:
 	uv run pytest
