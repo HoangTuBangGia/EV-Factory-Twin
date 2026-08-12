@@ -1,4 +1,4 @@
-.PHONY: sync lint format test typecheck check backend
+.PHONY: sync lint format format-check test test-cov typecheck check backend
 
 sync:
 	uv sync --all-packages --dev
