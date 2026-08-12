@@ -1,0 +1,9 @@
+{
+  "name": "more_robots",
+  "num_robots": 6,
+  "num_tasks": 500,
+  "task_arrival_interval": 5.0,
+  "travel_time": 30.0,
+  "loading_time": 10.0,
+  "simulation_time": 3600.0
+}
