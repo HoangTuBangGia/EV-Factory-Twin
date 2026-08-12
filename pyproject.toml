@@ -51,14 +51,6 @@ select = [
     "SIM",
 ]
 
-[tool.mypy]
-python_version = "3.12"
-warn_unused_configs = true
-
-[[tool.mypy.overrides]]
-module = "ev_twin_api.*"
-strict = true
-
 [tool.pytest.ini_options]
 testpaths = [
     "apps/backend/tests",
