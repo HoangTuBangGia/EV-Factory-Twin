@@ -1,6 +1,8 @@
 name: CI
 
 on:
+  workflow_dispatch:
+
   push:
     branches:
       - main
@@ -11,13 +13,18 @@ on:
       - main
       - develop
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
-  python-quality:
-    name: Python Quality
+  backend:
+    name: Backend · lint, typecheck, test
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
@@ -34,14 +41,25 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --all-packages --dev
 
-      - name: Run quality checks
-        run: make check
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
+      - name: Typecheck
+        run: uv run mypy packages/twin-core/src apps/backend/src
+
+      - name: Test
+        run: uv run pytest
         env:
           APP_ENV: test
+          MOCK_FACTORY_ENABLED: "true"
 
-  frontend-quality:
-    name: Frontend Quality
+  frontend:
+    name: Frontend · lint, test, build
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
 
     defaults:
       run:
@@ -65,7 +83,11 @@ jobs:
         run: npm run lint
 
       - name: Test
-        run: npm run test -- --run
+        run: npm test -- --run
 
       - name: Build
         run: npm run build
+        env:
+          NEXT_PUBLIC_DATA_SOURCE: api
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+          NEXT_PUBLIC_WS_URL: ws://localhost:8000/ws/factory

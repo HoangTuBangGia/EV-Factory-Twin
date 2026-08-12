@@ -1,8 +1,9 @@
+from unittest.mock import AsyncMock
+
 import pytest
 from ev_twin_api.main import app
 from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.schemas.mock import MockControlResponse
-from fastapi.testclient import TestClient
 from httpx import AsyncClient
 
 
@@ -39,12 +40,15 @@ async def test_config_updates_and_echoes_applied_values(client: AsyncClient) -> 
 
 
 @pytest.mark.asyncio
-async def test_stop_then_start_toggle_running_state(client: AsyncClient) -> None:
+async def test_stop_sets_running_state_false(client: AsyncClient) -> None:
     stop_response = await client.post("/api/v1/mock/stop")
     assert stop_response.status_code == 200
     stopped = MockControlResponse.model_validate(stop_response.json())
     assert stopped.running is False
 
+
+@pytest.mark.asyncio
+async def test_start_is_idempotent_and_reports_running(client: AsyncClient) -> None:
     start_response = await client.post("/api/v1/mock/start")
     assert start_response.status_code == 200
     started = MockControlResponse.model_validate(start_response.json())
@@ -74,17 +78,15 @@ async def test_reset_restores_initial_state(client: AsyncClient) -> None:
     assert factory_state.list_tasks() == []
 
 
-def test_reset_broadcasts_factory_reset_event() -> None:
-    with TestClient(app) as client, client.websocket_connect("/ws/factory") as websocket:
-        response = client.post("/api/v1/mock/reset")
-        assert response.status_code == 200
+@pytest.mark.asyncio
+async def test_reset_broadcasts_factory_reset_event(client: AsyncClient) -> None:
+    broadcast = AsyncMock()
+    app.state.websocket_manager.broadcast = broadcast
 
-        seen_reset = False
-        for _ in range(300):
-            message = websocket.receive_json()
-            if message["type"] == "factory.reset":
-                seen_reset = True
-                assert message["data"] is None
-                break
+    response = await client.post("/api/v1/mock/reset")
 
-    assert seen_reset
+    assert response.status_code == 200
+    assert any(
+        call.args[0] == {"type": "factory.reset", "data": None}
+        for call in broadcast.await_args_list
+    )

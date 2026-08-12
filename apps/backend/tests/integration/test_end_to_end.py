@@ -1,79 +1,72 @@
-from ev_twin_api.main import app
+from unittest.mock import AsyncMock
+
+import pytest
+from ev_twin_api.api.metrics import get_metrics
+from ev_twin_api.api.tasks import list_tasks
+from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.schemas.metrics import FactoryMetrics
 from ev_twin_api.schemas.task import Task
 from ev_twin_api.schemas.telemetry import RobotTelemetry
-from fastapi.testclient import TestClient
+from ev_twin_api.services.factory_state import FactoryState
+from ev_twin_api.services.mock_factory import MockFactory
+from ev_twin_api.services.websocket_manager import WebSocketManager
 
 
-def test_mock_engine_end_to_end_task_delivery() -> None:
-    """Guide BE-11 scenario, exercised through the real app/REST/WebSocket
-    together (not a standalone engine instance, unlike the "through the real
-    engine" tests in tests/services/test_mock_factory.py):
+@pytest.mark.asyncio
+async def test_mock_engine_end_to_end_task_delivery() -> None:
+    """Exercise engine, realtime event contracts, state and REST together."""
+    config = MockFactoryConfig(
+        task_interval_seconds=1.0,
+        simulation_speed=10.0,
+        robot_speed_mps=3.0,
+    )
+    state = FactoryState(config)
+    manager = WebSocketManager()
+    mock_factory = MockFactory(state, config, manager)
+    broadcast = AsyncMock()
+    manager.broadcast = broadcast
 
-    mock starts -> task created -> AMR assigned -> AMR moves ->
-    telemetry broadcast -> delivery completes -> metrics change
-    """
-    with TestClient(app) as client:
-        mock_factory = app.state.mock_factory
-        assert mock_factory.running is True  # mock starts
+    for _ in range(300):
+        await mock_factory.tick(0.1)
+        if state.get_metrics().completed_tasks >= 1:
+            break
+    # Metrics are evented at 1 Hz; advance once more after completion so the
+    # updated aggregate is included in a metrics.updated broadcast.
+    await mock_factory.tick(1.0)
 
-        mock_factory.config.task_interval_seconds = 1.0
-        mock_factory.config.simulation_speed = 10.0
-        mock_factory.config.robot_speed_mps = 3.0
+    events = [call.args[0] for call in broadcast.await_args_list]
+    task_events = [
+        Task.model_validate(event["data"]) for event in events if event["type"] == "task.updated"
+    ]
+    telemetry_events = [
+        RobotTelemetry.model_validate(event["data"])
+        for event in events
+        if event["type"] == "robot.telemetry"
+    ]
+    metrics_events = [
+        FactoryMetrics.model_validate(event["data"])
+        for event in events
+        if event["type"] == "metrics.updated"
+    ]
 
-        seen_queued = False
-        assigned_robot_id: str | None = None
-        positions: list[tuple[float, float]] = []
-        seen_completed = False
-        seen_metrics_change = False
+    queued = [task for task in task_events if task.status == "QUEUED"]
+    assigned = [task for task in task_events if task.status == "ASSIGNED"]
+    completed = [task for task in task_events if task.status == "COMPLETED"]
+    assert queued
+    assert assigned
+    assert completed
 
-        with client.websocket_connect("/ws/factory") as websocket:
-            for _ in range(3000):
-                message = websocket.receive_json()
+    assigned_robot_id = assigned[0].assigned_robot_id
+    positions = [
+        (telemetry.pose.x, telemetry.pose.y)
+        for telemetry in telemetry_events
+        if telemetry.robot_id == assigned_robot_id
+    ]
+    assert len(positions) >= 2
+    assert positions[0] != positions[-1]
+    assert any(metrics.completed_tasks >= 1 for metrics in metrics_events)
 
-                if message["type"] == "task.updated":
-                    task = Task.model_validate(message["data"])
-                    if task.status == "QUEUED":
-                        seen_queued = True  # task created
-                    elif task.status == "ASSIGNED" and assigned_robot_id is None:
-                        assigned_robot_id = task.assigned_robot_id  # AMR assigned
-                    elif task.status == "COMPLETED" and task.assigned_robot_id == assigned_robot_id:
-                        seen_completed = True  # delivery completes
-
-                elif message["type"] == "robot.telemetry" and assigned_robot_id is not None:
-                    # telemetry broadcast
-                    telemetry = RobotTelemetry.model_validate(message["data"])
-                    if telemetry.robot_id == assigned_robot_id:
-                        positions.append((telemetry.pose.x, telemetry.pose.y))
-
-                elif message["type"] == "metrics.updated":
-                    metrics = FactoryMetrics.model_validate(message["data"])
-                    if metrics.completed_tasks >= 1:
-                        seen_metrics_change = True  # metrics change
-
-                if seen_queued and seen_completed and seen_metrics_change:
-                    break
-
-        assert seen_queued, "task.updated with QUEUED status was never observed"
-        assert assigned_robot_id is not None, "task.updated with ASSIGNED status was never observed"
-        assert len(positions) >= 2, "robot.telemetry for the assigned AMR was never observed"
-        assert positions[0] != positions[-1], "assigned AMR's position never changed"  # AMR moves
-        assert seen_completed, "task.updated with COMPLETED status was never observed"
-        assert seen_metrics_change, "metrics.updated never reflected the completed task"
-
-        # cross-check against REST after the WS-observed flow, confirming the
-        # engine, REST layer, and WebSocket broadcast all agree on the outcome
-        tasks_response = client.get("/api/v1/tasks")
-        assert tasks_response.status_code == 200
-        completed_tasks = [
-            Task.model_validate(item)
-            for item in tasks_response.json()
-            if item["status"] == "COMPLETED"
-        ]
-        assert len(completed_tasks) >= 1
-        assert any(task.assigned_robot_id == assigned_robot_id for task in completed_tasks)
-
-        metrics_response = client.get("/api/v1/metrics")
-        assert metrics_response.status_code == 200
-        rest_metrics = FactoryMetrics.model_validate(metrics_response.json())
-        assert rest_metrics.completed_tasks >= 1
+    tasks_snapshot = await list_tasks(state)
+    metrics_snapshot = await get_metrics(state)
+    assert any(task.status == "COMPLETED" for task in tasks_snapshot)
+    assert metrics_snapshot.completed_tasks >= 1

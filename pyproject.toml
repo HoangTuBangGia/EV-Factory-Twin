@@ -34,6 +34,7 @@ members = [
 line-length = 100
 target-version = "py312"
 extend-exclude = [
+    "apps/backend/docs/BACKEND_IMPLEMENTATION_GUIDE(1).md",
     "scripts/log_antigravity.py",
     "scripts/log_hook.py",
     "scripts/log_manual.py",
