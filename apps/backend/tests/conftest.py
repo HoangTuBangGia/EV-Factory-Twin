@@ -2,7 +2,7 @@ from collections.abc import AsyncIterator
 
 import pytest_asyncio
 from ev_twin_api.main import app
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 
 
 @pytest_asyncio.fixture

@@ -16,7 +16,7 @@ from ev_twin_api.services.battery_service import CHARGE_TARGET_PERCENT
 from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.mock_factory import MockFactory
 from ev_twin_api.services.websocket_manager import WebSocketManager
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 
 
 class FakeWebSocket:

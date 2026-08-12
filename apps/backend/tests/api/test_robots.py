@@ -1,6 +1,6 @@
 import pytest
 from ev_twin_api.schemas.robot import Robot
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 
 
 @pytest.mark.asyncio

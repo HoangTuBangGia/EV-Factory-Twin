@@ -1,6 +1,6 @@
 import pytest
 from ev_twin_api.schemas.factory import FactoryLayout
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 
 
 @pytest.mark.asyncio

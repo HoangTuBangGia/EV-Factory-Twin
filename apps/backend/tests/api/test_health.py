@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from ev_twin_api.main import app
 from ev_twin_api.schemas.health import HealthResponse
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 
 PYPROJECT_PATH = Path(__file__).resolve().parents[2] / "pyproject.toml"
 

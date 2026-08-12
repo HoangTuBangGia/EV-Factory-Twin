@@ -3,7 +3,7 @@ import asyncio
 import pytest
 from ev_twin_api.main import app
 from ev_twin_api.schemas.task import Task
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 
 
 @pytest.mark.asyncio
