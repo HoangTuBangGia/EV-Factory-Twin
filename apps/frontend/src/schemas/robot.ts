@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const robotStatusSchema = z.enum([
   "IDLE", "MOVING_TO_PICKUP", "PICKING", "DELIVERING", "DROPPING",
-  "WAITING", "CHARGING", "ERROR", "OFFLINE",
+  "MOVING_TO_CHARGER", "WAITING", "CHARGING", "ERROR", "OFFLINE",
 ]);
 
 export const poseSchema = z.object({ x: z.number(), y: z.number(), yaw: z.number() });

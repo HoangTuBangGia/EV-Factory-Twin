@@ -16,4 +16,18 @@ describe("factory store realtime updates", () => {
     expect(result.success).toBe(false);
     expect(useFactoryStore.getState().robots["AMR-01"]).toEqual(before);
   });
+  it("accepts charging movement telemetry and factory reset events", () => {
+    const telemetry = factoryEventSchema.safeParse({
+      type: "robot.telemetry",
+      data: {
+        timestamp: new Date().toISOString(), robot_id: "AMR-01",
+        pose: { x: 2, y: 12, yaw: 1.57 }, velocity: { linear: 1.2, angular: 0 },
+        battery: 19, status: "MOVING_TO_CHARGER", task_id: null, payload_id: null,
+      },
+    });
+    const reset = factoryEventSchema.safeParse({ type: "factory.reset", data: null });
+
+    expect(telemetry.success).toBe(true);
+    expect(reset.success).toBe(true);
+  });
 });

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { env } from "./env";
 import { factoryAlertSchema } from "@/schemas/alert";
 import { factoryMetricsSchema } from "@/schemas/metric";
+import { mockFactoryConfigSchema, type MockFactoryConfig } from "@/schemas/factory";
 import { robotSchema } from "@/schemas/robot";
 import { taskSchema } from "@/schemas/task";
 
@@ -22,7 +23,10 @@ export const apiClient = {
   getTask: (id: string) => request(`/api/v1/tasks/${encodeURIComponent(id)}`, taskSchema),
   getMetrics: () => request("/api/v1/metrics", factoryMetricsSchema),
   getAlerts: () => request("/api/v1/alerts", z.array(factoryAlertSchema)),
-  updateMockConfig: (config: Record<string, number | string>) =>
-    request("/api/v1/mock/speed", z.unknown(), { method: "POST", body: JSON.stringify(config) }),
+  updateMockConfig: (config: MockFactoryConfig) =>
+    request("/api/v1/mock/config", mockFactoryConfigSchema, {
+      method: "POST",
+      body: JSON.stringify(config),
+    }),
   resetMockFactory: () => request("/api/v1/mock/reset", z.unknown(), { method: "POST" }),
 };

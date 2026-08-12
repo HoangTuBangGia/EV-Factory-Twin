@@ -9,6 +9,7 @@ export const factoryEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("task.updated"), data: taskSchema }),
   z.object({ type: z.literal("metrics.updated"), data: factoryMetricsSchema }),
   z.object({ type: z.literal("alert.created"), data: factoryAlertSchema }),
+  z.object({ type: z.literal("factory.reset"), data: z.null() }),
 ]);
 
 export type FactoryEvent = z.infer<typeof factoryEventSchema>;

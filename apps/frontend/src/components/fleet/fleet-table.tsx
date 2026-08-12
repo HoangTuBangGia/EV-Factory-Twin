@@ -6,7 +6,7 @@ import { Battery } from "./battery";
 import { StatusBadge } from "./status-badge";
 
 type Filter = "ALL" | "ACTIVE" | "IDLE" | "CHARGING" | "WARNING" | "ERROR";
-const active = ["MOVING_TO_PICKUP", "PICKING", "DELIVERING", "DROPPING"];
+const active = ["MOVING_TO_PICKUP", "PICKING", "DELIVERING", "DROPPING", "MOVING_TO_CHARGER"];
 
 export function FleetTable({ compact = false }: { compact?: boolean }) {
   const robotRecord = useFactoryStore((s) => s.robots);
