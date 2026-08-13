@@ -1,1 +1,0 @@
-khong lam gi

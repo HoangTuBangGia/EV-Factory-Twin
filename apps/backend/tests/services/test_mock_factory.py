@@ -114,12 +114,12 @@ async def test_tick_exception_does_not_kill_the_loop() -> None:
     call_count = 0
     original_tick = factory.tick
 
-    async def flaky_tick(dt: float) -> None:
+    async def flaky_tick(dt: float, *, wall_dt: float | None = None) -> None:
         nonlocal call_count
         call_count += 1
         if call_count == 2:
             raise RuntimeError("boom")
-        await original_tick(dt)
+        await original_tick(dt, wall_dt=wall_dt)
 
     factory.tick = flaky_tick  # type: ignore[method-assign]
 
@@ -344,16 +344,23 @@ async def test_reset_broadcasts_factory_reset() -> None:
 
 
 @pytest.mark.asyncio
-async def test_metrics_updated_is_broadcast_at_one_hertz_of_simulated_time() -> None:
+@pytest.mark.parametrize("simulation_speed", [0.25, 1.0, 10.0])
+async def test_metrics_updated_is_broadcast_at_one_hertz_of_wall_time(
+    simulation_speed: float,
+) -> None:
     manager = WebSocketManager()
     websocket = FakeWebSocket()
     await manager.connect(websocket)  # type: ignore[arg-type]
-    factory = _make_factory(task_interval_seconds=60.0, websocket_manager=manager)
+    factory = _make_factory(
+        task_interval_seconds=60.0,
+        simulation_speed=simulation_speed,
+        websocket_manager=manager,
+    )
 
-    await factory.tick(0.9)
+    await factory.tick(0.9 * simulation_speed, wall_dt=0.9)
     assert not [msg for msg in websocket.sent if msg["type"] == "metrics.updated"]
 
-    await factory.tick(0.2)
+    await factory.tick(0.2 * simulation_speed, wall_dt=0.2)
     metrics_events = [msg for msg in websocket.sent if msg["type"] == "metrics.updated"]
     assert len(metrics_events) == 1
     FactoryMetrics.model_validate(metrics_events[0]["data"])

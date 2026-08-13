@@ -38,6 +38,13 @@ Mọi endpoint đều nằm dưới `/api/v1`, **trừ `/health`**.
 | POST | `/api/v1/mock/stop` | [`MockControlResponse`](#mockcontrolresponse) | Dừng engine mock |
 | POST | `/api/v1/mock/reset` | [`MockControlResponse`](#mockcontrolresponse) | Reset state về ban đầu |
 | POST | `/api/v1/mock/config` | [`MockFactoryConfig`](#mockfactoryconfig) | Đổi tham số mô phỏng |
+| GET | `/api/v1/scenarios` | [`Scenario[]`](#scenario-benchmark-và-phê-duyệt) | Danh sách candidate trong bộ nhớ |
+| GET | `/api/v1/scenarios/baseline` | [`Scenario`](#scenario) | Benchmark baseline chuẩn của repository |
+| GET | `/api/v1/scenarios/{scenario_id}` | [`Scenario`](#scenario) | Chi tiết candidate; id lạ → 404 |
+| POST | `/api/v1/scenarios/run` | [`Scenario`](#scenario) | Chạy benchmark SimPy cho candidate |
+| POST | `/api/v1/scenarios/{scenario_id}/approve` | [`Scenario`](#scenario) | Phê duyệt candidate đã mô phỏng |
+| POST | `/api/v1/scenarios/{scenario_id}/reject` | [`Scenario`](#scenario) | Từ chối candidate đã mô phỏng |
+| POST | `/api/v1/scenarios/{scenario_id}/apply` | [`Scenario`](#scenario) | Áp dụng candidate đã duyệt vào mock realtime |
 | WS | `/ws/factory` | [envelope](#websocket-event-envelope) | Stream realtime |
 
 `/ws/factory` không xuất hiện trong `/docs` (OpenAPI không mô tả WebSocket) —
@@ -276,6 +283,144 @@ Giá trị ngoài khoảng cho phép → **422**.
   sinh thêm/bớt robot. Muốn thấy số robot mới, gọi thêm `POST /api/v1/mock/reset`.
   `/config` cố ý **không** tự reset, vì reset sẽ xoá sạch task/tiến trình đang chạy.
 
+## Scenario benchmark và phê duyệt
+
+Nhóm endpoint này tạo vòng MVP human-in-the-loop:
+
+```text
+chạy benchmark → xem KPI → approve/reject → apply nếu đã approve
+```
+
+`POST /api/v1/scenarios/run` chạy benchmark SimPy nhưng **không thay đổi** mock
+factory realtime. Chỉ `POST /api/v1/scenarios/{scenario_id}/apply` mới cập nhật
+mock factory và reset trạng thái vận hành hiện tại.
+
+Scenario candidate được lưu trong bộ nhớ của process backend. Restart backend sẽ
+xoá danh sách candidate và đưa bộ đếm id về đầu; đây chưa phải kho lưu trữ/audit
+log bền vững. Baseline được đọc từ scenario chuẩn trong repository, có id
+`baseline`, không nằm trong `GET /api/v1/scenarios` và chỉ dùng để so sánh.
+
+### ScenarioRunRequest
+
+Body của `POST /api/v1/scenarios/run`; tất cả field đều bắt buộc:
+
+```json
+{
+  "name": "more-robots",
+  "num_robots": 6,
+  "num_tasks": 500,
+  "task_arrival_interval": 5.0,
+  "travel_time": 30.0,
+  "loading_time": 10.0,
+  "simulation_time": 3600.0
+}
+```
+
+| Field | Type | Giới hạn | Ý nghĩa |
+|---|---|---|---|
+| `name` | string | 1–80 ký tự, không được chỉ có khoảng trắng | Tên candidate |
+| `num_robots` | int | 1–10 | Số robot khả dụng |
+| `num_tasks` | int | 1–10.000 | Tổng task cần tạo trong benchmark |
+| `task_arrival_interval` | float | 1,0–60,0 giây | Khoảng cách giữa hai task mới |
+| `travel_time` | float | `> 0` và `<= 86.400` giây | Thời gian di chuyển của một task |
+| `loading_time` | float | `> 0` và `<= 86.400` giây | Thời gian load và unload |
+| `simulation_time` | float | `> 0` và `<= 86.400` giây | Khoảng thời gian ảo được benchmark |
+
+Giá trị ngoài giới hạn hoặc thiếu field → **422**.
+
+### ScenarioStatus
+
+```text
+DRAFT
+SIMULATED
+APPROVED
+REJECTED
+APPLIED
+```
+
+MVP hiện tại tạo candidate trực tiếp ở `SIMULATED`; `DRAFT` được giữ trong
+contract để mở rộng workflow sau này nhưng chưa có endpoint tạo draft.
+
+Các chuyển trạng thái hợp lệ:
+
+```text
+POST /run
+    │
+    ▼
+SIMULATED ── approve ──▶ APPROVED ── apply ──▶ APPLIED
+    │
+    └──────── reject ──▶ REJECTED
+```
+
+- `approve` và `reject` chỉ hợp lệ khi status hiện tại là `SIMULATED`.
+- `apply` chỉ hợp lệ khi status hiện tại là `APPROVED`.
+- `REJECTED` và `APPLIED` là trạng thái kết thúc trong MVP.
+- Chuyển trạng thái không hợp lệ → **409**; id candidate không tồn tại → **404**.
+
+### Scenario
+
+Tất cả endpoint scenario trả về schema này (endpoint list trả về mảng):
+
+```json
+{
+  "id": "SCN-0001",
+  "name": "more-robots",
+  "status": "SIMULATED",
+  "config": {
+    "num_robots": 6,
+    "num_tasks": 500,
+    "task_arrival_interval": 5.0,
+    "travel_time": 30.0,
+    "loading_time": 10.0,
+    "simulation_time": 3600.0
+  },
+  "metrics": {
+    "completed_tasks": 426,
+    "unfinished_tasks": 74,
+    "completion_rate": 0.852,
+    "throughput_per_hour": 426.0,
+    "average_cycle_time": 750.0,
+    "average_waiting_time": 700.0
+  },
+  "duration_ms": 8.4,
+  "reviewed_at": null,
+  "applied_at": null
+}
+```
+
+| Field | Type | Nullable | Ghi chú |
+|---|---|---|---|
+| `id` | string | không | Candidate có dạng `SCN-0001`; baseline có id `baseline` |
+| `name` | string | không | Tên scenario |
+| `status` | `ScenarioStatus` | không | Trạng thái workflow hiện tại |
+| `config` | `ScenarioConfig` | không | Sáu tham số benchmark trong request, không gồm `name` |
+| `metrics.completed_tasks` | int | không | `>= 0` |
+| `metrics.unfinished_tasks` | int | không | `>= 0` |
+| `metrics.completion_rate` | float | không | Từ 0 đến 1 |
+| `metrics.throughput_per_hour` | float | không | Task hoàn thành mỗi giờ mô phỏng |
+| `metrics.average_cycle_time` | float | không | Giây, gồm cả thời gian chờ |
+| `metrics.average_waiting_time` | float | không | Giây chờ robot trung bình |
+| `duration_ms` | float | không | Thời gian thực backend dùng để chạy benchmark, không phải thời gian ảo |
+| `reviewed_at` | datetime | có (mặc định `null`) | Được gán UTC khi approve hoặc reject |
+| `applied_at` | datetime | có (mặc định `null`) | Được gán UTC khi apply thành công |
+
+### Ánh xạ khi apply
+
+Apply giữ nguyên tốc độ robot, tốc độ simulation và ngưỡng pin hiện tại. Chỉ hai
+tham số scenario được ánh xạ sang mock factory realtime:
+
+| Scenario config | MockFactory config | Hiệu lực khi apply |
+|---|---|---|
+| `num_robots` | `robot_count` | Có; reset tạo lại số robot tương ứng |
+| `task_arrival_interval` | `task_interval_seconds` | Có; đổi nhịp sinh task realtime |
+| `num_tasks` | — | Không; chỉ dùng cho benchmark |
+| `travel_time` | — | Không; chỉ dùng cho benchmark |
+| `loading_time` | — | Không; chỉ dùng cho benchmark |
+| `simulation_time` | — | Không; chỉ dùng cho benchmark |
+
+Apply sẽ reset robot, task, alert, metrics và phát WebSocket event
+`factory.reset`; dữ liệu vận hành đang có sẽ bị xoá.
+
 ## Health
 
 `GET /health` — **ngoại lệ duy nhất không nằm dưới `/api/v1`.**
@@ -303,7 +448,8 @@ cả sau khi `POST /api/v1/mock/stop`.
 
 ## FactoryMetrics
 
-`GET /api/v1/metrics`. Payload của WebSocket event `metrics.updated` (~1 Hz).
+`GET /api/v1/metrics`. Payload của WebSocket event `metrics.updated` (~1 Hz theo
+đồng hồ thật, không phụ thuộc `simulation_speed`).
 
 ```json
 {
@@ -368,7 +514,7 @@ Mọi message trên `/ws/factory` bọc trong envelope:
 |---|---|---|
 | `robot.telemetry` | `RobotTelemetry` | ~10 Hz mỗi robot |
 | `task.updated` | `Task` | event-driven |
-| `metrics.updated` | `FactoryMetrics` | ~1 Hz |
+| `metrics.updated` | `FactoryMetrics` | ~1 Hz theo đồng hồ thật |
 | `alert.created` | `FactoryAlert` | event-driven |
 | `factory.reset` | `null` | khi `POST /api/v1/mock/reset` |
 
@@ -376,7 +522,8 @@ Mọi message trên `/ws/factory` bọc trong envelope:
 
 ```text
 200  thành công
-404  robot/task id không tồn tại
+404  robot/task/scenario id không tồn tại
+409  chuyển trạng thái scenario không hợp lệ
 422  request không hợp lệ theo Pydantic
 500  lỗi server không lường trước
 ```

@@ -224,7 +224,7 @@ là biết cách xử lý `data`:
 |---|---|
 | `robot.telemetry` | mỗi tick, mỗi robot một gói (~10 Hz) |
 | `task.updated` | mỗi khi đơn hàng đổi trạng thái |
-| `metrics.updated` | ~1 lần / giây mô phỏng |
+| `metrics.updated` | ~1 lần / giây thật, không phụ thuộc `simulation_speed` |
 | `alert.created` | khi có cảnh báo mới |
 | `factory.reset` | khi ai đó gọi `POST /api/v1/mock/reset` |
 

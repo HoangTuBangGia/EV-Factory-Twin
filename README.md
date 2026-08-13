@@ -29,34 +29,42 @@ cd P-078
 git switch develop
 ```
 
-### 3. Cài đặt dependencies
+### 3. Chạy MVP local
 
 ```bash
-uv sync --extra dev
+# Terminal 1 — từ root repository
+uv sync --all-packages --dev
+make backend
 ```
-
-Lệnh này tạo môi trường ảo `.venv` và cài đặt các dependency của dự án, bao gồm dependency phục vụ phát triển.
-
-### 4. Thiết lập biến môi trường
 
 ```bash
-cp .env.example .env
+# Terminal 2 — frontend
+cd apps/frontend
+npm ci
+cp .env.example .env.local
+npm run dev
 ```
 
-Mở `.env` và điền các API key cần thiết, đặc biệt là `AI_LOG_API_KEY`.
+Sau khi hai server khởi động:
 
-### 5. Chạy ứng dụng
-
-```bash
-uv run uvicorn src.main:app --reload --port 8000
-```
-
-Sau khi server khởi động:
-
-- API: <http://localhost:8000>
+- Frontend: <http://localhost:3000>
 - Swagger UI: <http://localhost:8000/docs>
 
-### 6. Chạy kiểm thử
+Frontend mẫu dùng `NEXT_PUBLIC_DATA_SOURCE=api`, nên robot và scenario lấy dữ liệu
+thật từ backend thay vì fixture.
+
+### 4. Kiểm tra luồng MVP
+
+Khi backend đang chạy, thực hiện:
+
+```bash
+uv run python scripts/demo_mvp.py
+```
+
+Script kiểm tra: health → baseline → run scenario → chặn apply trước approve →
+approve → apply → factory reset đúng số robot.
+
+### 5. Chạy kiểm thử
 
 ```bash
 make test

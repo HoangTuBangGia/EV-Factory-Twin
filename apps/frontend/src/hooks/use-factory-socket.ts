@@ -17,6 +17,7 @@ export function useFactorySocket(enabled: boolean) {
       if (event.type === "metrics.updated") current.setMetrics(event.data);
       if (event.type === "alert.created") current.addAlert(event.data);
       if (event.type === "factory.reset") {
+        current.clearMetricsHistory();
         void Promise.all([
           apiClient.getRobots(), apiClient.getTasks(), apiClient.getMetrics(), apiClient.getAlerts(),
         ]).then(([robots, tasks, metrics, alerts]) => {

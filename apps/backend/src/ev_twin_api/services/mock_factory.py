@@ -35,8 +35,10 @@ class MockFactory:
     The loop runs at a fixed wall-clock 10 Hz (`TICK_SECONDS`).
     `config.simulation_speed` scales the simulated dt passed into `tick()`,
     not the loop frequency, so simulated time can run faster than real time
-    while telemetry stays at a steady 10 Hz. `simulated_elapsed_seconds`
-    accumulates dt for later throughput calculations (BE-009).
+    while telemetry stays at a steady 10 Hz. Metrics publishing also follows
+    wall-clock time, so changing simulation speed cannot flood clients.
+    `simulated_elapsed_seconds` accumulates dt for throughput calculations
+    (BE-009).
 
     Fixed-interval sleep is sufficient for the mock MVP; a production-quality
     loop would measure actual elapsed dt instead.
@@ -69,7 +71,7 @@ class MockFactory:
         self._metrics_service = MetricsService(state)
         self._alert_service = AlertService(state)
         self._time_since_last_task = 0.0
-        self._time_since_last_metrics_broadcast = 0.0
+        self._wall_time_since_last_metrics_broadcast = 0.0
 
     def assign_route(self, robot_id: str, route_key: tuple[str, str]) -> None:
         if route_key not in ROUTES:
@@ -121,7 +123,7 @@ class MockFactory:
         self.tick_count = 0
         self.simulated_elapsed_seconds = 0.0
         self._time_since_last_task = 0.0
-        self._time_since_last_metrics_broadcast = 0.0
+        self._wall_time_since_last_metrics_broadcast = 0.0
         logger.info("mock factory reset")
         await self._websocket_manager.broadcast(factory_reset_event())
         if was_running:
@@ -131,7 +133,10 @@ class MockFactory:
         while self.running:
             started = time.monotonic()
             try:
-                await self.tick(self.TICK_SECONDS * self.config.simulation_speed)
+                await self.tick(
+                    self.TICK_SECONDS * self.config.simulation_speed,
+                    wall_dt=self.TICK_SECONDS,
+                )
             except Exception:
                 # asyncio.CancelledError is a BaseException, not an Exception,
                 # so cancellation from stop() still propagates past this.
@@ -149,7 +154,13 @@ class MockFactory:
             elapsed = time.monotonic() - started
             await asyncio.sleep(max(0.0, self.TICK_SECONDS - elapsed))
 
-    async def tick(self, dt: float) -> None:
+    async def tick(self, dt: float, *, wall_dt: float | None = None) -> None:
+        """Advance simulated state by ``dt`` seconds.
+
+        ``wall_dt`` controls transport publishing cadence independently of
+        simulation speed. Direct deterministic callers default it to ``dt``
+        for backwards compatibility; the live loop always supplies wall time.
+        """
         self.tick_count += 1
         self.simulated_elapsed_seconds += dt
 
@@ -227,12 +238,14 @@ class MockFactory:
             self._metrics_service.recalculate(self.simulated_elapsed_seconds)
         )
 
-        self._time_since_last_metrics_broadcast += dt
-        while self._time_since_last_metrics_broadcast >= self.METRICS_BROADCAST_INTERVAL_SECONDS:
+        self._wall_time_since_last_metrics_broadcast += dt if wall_dt is None else wall_dt
+        while (
+            self._wall_time_since_last_metrics_broadcast >= self.METRICS_BROADCAST_INTERVAL_SECONDS
+        ):
             await self._websocket_manager.broadcast(
                 metrics_updated_event(self._state.get_metrics())
             )
-            self._time_since_last_metrics_broadcast -= self.METRICS_BROADCAST_INTERVAL_SECONDS
+            self._wall_time_since_last_metrics_broadcast -= self.METRICS_BROADCAST_INTERVAL_SECONDS
 
         new_alerts = self._alert_service.check(
             low_battery_threshold=self.config.low_battery_threshold,
