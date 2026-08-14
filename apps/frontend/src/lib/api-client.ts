@@ -1,6 +1,15 @@
 import { z } from "zod";
 import { env } from "./env";
 import { factoryAlertSchema } from "@/schemas/alert";
+import {
+  adminInviteRequestSchema,
+  adminUserSchema,
+  adminUserUpdateSchema,
+  auditEventSchema,
+  type AdminInviteRequest,
+  type AdminUserUpdate,
+} from "@/schemas/admin";
+import { currentUserSchema } from "@/schemas/auth";
 import { factoryMetricsSchema } from "@/schemas/metric";
 import { mockFactoryConfigSchema, type MockFactoryConfig } from "@/schemas/factory";
 import { robotSchema } from "@/schemas/robot";
@@ -11,36 +20,82 @@ import {
 } from "@/schemas/scenario";
 import { taskSchema } from "@/schemas/task";
 
-async function responseError(response: Response, path: string): Promise<Error> {
+let accessToken: string | null = null;
+let unauthorizedHandler: (() => void) | null = null;
+
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly path: string,
+    readonly detail: string,
+  ) {
+    super(detail);
+    this.name = "ApiError";
+  }
+}
+
+export function setApiAccessToken(token: string | null) {
+  accessToken = token;
+}
+
+export function setApiUnauthorizedHandler(handler: (() => void) | null) {
+  unauthorizedHandler = handler;
+}
+
+async function responseError(response: Response, path: string): Promise<ApiError> {
+  let detail = `API ${response.status}: ${path}`;
   try {
     const payload: unknown = await response.json();
     if (payload && typeof payload === "object" && "detail" in payload) {
-      const detail = (payload as { detail: unknown }).detail;
-      if (typeof detail === "string") return new Error(detail);
+      const responseDetail = (payload as { detail: unknown }).detail;
+      if (typeof responseDetail === "string") detail = responseDetail;
     }
   } catch {
     // Fall back to the status-based message when the server did not return JSON.
   }
-  return new Error(`API ${response.status}: ${path}`);
+  return new ApiError(response.status, path, detail);
 }
 
 async function request<T>(path: string, schema: z.ZodType<T>, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  headers.set("Accept", "application/json");
+  if (init?.body) headers.set("Content-Type", "application/json");
+  if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
+
   const response = await fetch(`${env.apiUrl}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    headers,
   });
+  if (response.status === 401) unauthorizedHandler?.();
   if (!response.ok) throw await responseError(response, path);
   return schema.parse(await response.json());
 }
 
 export const apiClient = {
+  getCurrentUser: () => request("/api/v1/auth/me", currentUserSchema),
   getFactory: () => request("/api/v1/factory", z.unknown()),
-  getRobots: () => request("/api/v1/robots", z.array(robotSchema)),
+  getRobots: (signal?: AbortSignal) => request(
+    "/api/v1/robots",
+    z.array(robotSchema),
+    { signal },
+  ),
   getRobot: (id: string) => request(`/api/v1/robots/${encodeURIComponent(id)}`, robotSchema),
-  getTasks: () => request("/api/v1/tasks", z.array(taskSchema)),
+  getTasks: (signal?: AbortSignal) => request(
+    "/api/v1/tasks",
+    z.array(taskSchema),
+    { signal },
+  ),
   getTask: (id: string) => request(`/api/v1/tasks/${encodeURIComponent(id)}`, taskSchema),
-  getMetrics: () => request("/api/v1/metrics", factoryMetricsSchema),
-  getAlerts: () => request("/api/v1/alerts", z.array(factoryAlertSchema)),
+  getMetrics: (signal?: AbortSignal) => request(
+    "/api/v1/metrics",
+    factoryMetricsSchema,
+    { signal },
+  ),
+  getAlerts: (signal?: AbortSignal) => request(
+    "/api/v1/alerts",
+    z.array(factoryAlertSchema),
+    { signal },
+  ),
   updateMockConfig: (config: MockFactoryConfig) =>
     request("/api/v1/mock/config", mockFactoryConfigSchema, {
       method: "POST",
@@ -48,6 +103,9 @@ export const apiClient = {
     }),
   resetMockFactory: () => request("/api/v1/mock/reset", z.unknown(), { method: "POST" }),
   getBaselineScenario: () => request("/api/v1/scenarios/baseline", scenarioSchema),
+  getScenarios: () => request("/api/v1/scenarios", z.array(scenarioSchema)),
+  getScenario: (id: string) =>
+    request(`/api/v1/scenarios/${encodeURIComponent(id)}`, scenarioSchema),
   runScenario: (input: ScenarioRunRequest) =>
     request("/api/v1/scenarios/run", scenarioSchema, {
       method: "POST",
@@ -65,4 +123,19 @@ export const apiClient = {
     request(`/api/v1/scenarios/${encodeURIComponent(id)}/apply`, scenarioSchema, {
       method: "POST",
     }),
+  getAdminUsers: () => request("/api/v1/admin/users", z.array(adminUserSchema)),
+  updateAdminUser: (id: string, update: AdminUserUpdate) =>
+    request(`/api/v1/admin/users/${encodeURIComponent(id)}`, adminUserSchema, {
+      method: "PATCH",
+      body: JSON.stringify(adminUserUpdateSchema.parse(update)),
+    }),
+  inviteAdminUser: (invite: AdminInviteRequest) =>
+    request("/api/v1/admin/users/invite", adminUserSchema, {
+      method: "POST",
+      body: JSON.stringify(adminInviteRequestSchema.parse(invite)),
+    }),
+  getAdminAudit: (limit = 100) => request(
+    `/api/v1/admin/audit?limit=${Math.min(Math.max(Math.trunc(limit), 1), 100)}`,
+    z.array(auditEventSchema),
+  ),
 };

@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import logging
 import time
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Annotated, cast
 
@@ -64,6 +65,7 @@ class MockFactory:
         self.tick_count = 0
         self.simulated_elapsed_seconds = 0.0
         self._task: asyncio.Task[None] | None = None
+        self._control_lock = asyncio.Lock()
         self._consecutive_tick_errors = 0
         self._active_movements: dict[str, RouteProgress] = {}
         self._task_service = TaskService(state)
@@ -72,6 +74,13 @@ class MockFactory:
         self._alert_service = AlertService(state)
         self._time_since_last_task = 0.0
         self._wall_time_since_last_metrics_broadcast = 0.0
+
+    @contextlib.asynccontextmanager
+    async def exclusive_control(self) -> AsyncIterator[None]:
+        """Serialize operator controls and scenario apply in this process."""
+
+        async with self._control_lock:
+            yield
 
     def assign_route(self, robot_id: str, route_key: tuple[str, str]) -> None:
         if route_key not in ROUTES:

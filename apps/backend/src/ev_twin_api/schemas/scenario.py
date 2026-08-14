@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import StrEnum
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -62,19 +63,33 @@ class Scenario(BaseModel):
     config: ScenarioConfig
     metrics: ScenarioMetrics
     duration_ms: float = Field(ge=0.0)
+    created_at: UtcDatetime
+    created_by: UUID | None = None
     reviewed_at: UtcDatetime | None = None
+    reviewed_by: UUID | None = None
     applied_at: UtcDatetime | None = None
+    applied_by: UUID | None = None
+    version: int = Field(default=1, ge=1)
 
     def with_status(
         self,
         status: ScenarioStatus,
         *,
         reviewed_at: datetime | None = None,
+        reviewed_by: UUID | None = None,
         applied_at: datetime | None = None,
+        applied_by: UUID | None = None,
     ) -> "Scenario":
-        updates: dict[str, object] = {"status": status}
+        updates: dict[str, object] = {
+            "status": status,
+            "version": self.version + 1,
+        }
         if reviewed_at is not None:
             updates["reviewed_at"] = reviewed_at
+        if reviewed_by is not None:
+            updates["reviewed_by"] = reviewed_by
         if applied_at is not None:
             updates["applied_at"] = applied_at
+        if applied_by is not None:
+            updates["applied_by"] = applied_by
         return self.model_copy(update=updates, deep=True)

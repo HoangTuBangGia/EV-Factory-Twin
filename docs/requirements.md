@@ -19,16 +19,16 @@ MVP hiện tại **không được mô tả là Digital Twin 3D/ROS2/Gazebo hoà
 | KPI throughput và cycle time | Đạt MVP | Backend realtime và benchmark SimPy đều trả KPI |
 | Cảnh báo bất thường | Đạt MVP | Có alert cho pin thấp, robot chờ/lỗi, backlog và starvation |
 | Chạy và so sánh nhiều scenario | Đạt MVP | Scenario API/UI chạy benchmark SimPy và so sánh candidate với baseline |
-| Human-in-the-loop trước khi apply | Đạt guard MVP | Candidate phải `APPROVED` trước khi `APPLIED`; state chỉ ở RAM, chưa có danh tính người duyệt hoặc audit log |
+| Human-in-the-loop trước khi apply | Đạt ở code | Candidate phải `APPROVED` trước khi `APPLIED`; Designer/Monitor tách quyền; scenario lưu actor/timestamp/version và business audit. Còn cần browser E2E với ba tài khoản hosted |
 | Thử thay đổi cấu hình vận hành | Một phần | Apply được số robot và nhịp sinh task vào mock realtime; chưa sửa hình học layout/route |
 | Cho phép đổi bố trí và chạy lại | Chưa có | Chưa có layout editor, layout version, lưu draft hoặc mô phỏng theo geometry mới |
 | Giao diện 3D | Chưa có | Factory view hiện là SVG 2D; chưa có Three.js/WebGL và model 3D |
-| Ít nhất hai vai trò Designer/Monitor | Chưa có | Chưa có đăng nhập, RBAC hoặc bảo vệ route/API; nhãn giao diện không được xem là phân quyền |
+| Ít nhất hai vai trò Designer/Monitor | Đạt ở code | Supabase Auth, profile role từ PostgreSQL, FastAPI guard và UI theo role đã có; còn cần tạo và chạy thử ba tài khoản demo thật |
 | ROS2/Gazebo và đồng bộ hai chiều | Chưa có | Chưa có ROS2 node/bridge, topic, Gazebo world hoặc luồng command hai chiều |
 | Tắc nghẽn/va chạm mô phỏng thực | Chưa có | SimPy dùng thời gian cố định và hàng chờ tài nguyên; chưa có route occupancy, collision hay no-go validation |
 | Benchmark render và độ trễ realtime | Chưa có | Chưa đo FPS, dropped frames, telemetry latency hoặc giới hạn số robot |
-| Bảo mật telemetry/cấu hình | Chưa có | Chưa có authentication, authorization hoặc quản lý secret/quyền sửa cấu hình |
-| Lưu telemetry, KPI và lịch sử duyệt | Chưa có | State scenario và factory nằm trong RAM; restart backend sẽ mất dữ liệu |
+| Bảo mật telemetry/cấu hình | Đạt ở code | REST dùng Bearer JWT + profile DB; WebSocket xác thực token trước khi đăng ký broadcast; chỉ Monitor được đổi/reset factory |
+| Lưu telemetry, KPI và lịch sử duyệt | Một phần | Scenario/audit lưu PostgreSQL; KPI được snapshot mỗi 10 giây wall-clock khi có DB; raw telemetry 10 Hz chủ động không lưu; factory realtime vẫn ở RAM |
 
 ## Ranh giới MVP hiện tại
 
@@ -55,6 +55,7 @@ MVP được xem là demo được khi người dùng có thể:
 6. Approve rồi apply thành công, sau đó thấy factory reset với cấu hình được hỗ
    trợ.
 
-Các hạng mục 3D, layout editor, ROS2/Gazebo, authentication, database và
-congestion/collision vật lý là công việc sau MVP, không được tuyên bố là đã hoàn
-thành trong bản demo hiện tại.
+Các hạng mục 3D, layout editor, ROS2/Gazebo và congestion/collision vật lý là
+công việc sau MVP, không được tuyên bố là đã hoàn thành trong bản demo hiện tại.
+Authentication/database đã được triển khai nhưng chỉ được xem là demo-ready sau
+khi ba tài khoản hosted, RLS và browser E2E được kiểm chứng.

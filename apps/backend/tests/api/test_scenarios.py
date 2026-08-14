@@ -1,6 +1,7 @@
 from unittest.mock import AsyncMock
 
 import pytest
+from conftest import make_test_user
 from ev_twin_api.api.scenarios import (
     apply_scenario,
     approve_scenario,
@@ -11,11 +12,12 @@ from ev_twin_api.api.scenarios import (
     run_scenario,
 )
 from ev_twin_api.main import app
+from ev_twin_api.schemas.auth import AppRole
 from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.schemas.scenario import ScenarioRunRequest, ScenarioStatus
 from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.mock_factory import MockFactory
-from ev_twin_api.services.scenario_service import ScenarioService
+from ev_twin_api.services.scenario_service import InvalidScenarioTransitionError, ScenarioService
 from ev_twin_api.services.websocket_manager import WebSocketManager
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -29,6 +31,9 @@ SCENARIO_PAYLOAD = {
     "loading_time": 10.0,
     "simulation_time": 3600.0,
 }
+
+DESIGNER = make_test_user(AppRole.DESIGNER)
+MONITOR = make_test_user(AppRole.MONITOR)
 
 
 def build_scenario_service() -> tuple[ScenarioService, MockFactory, FactoryState, WebSocketManager]:
@@ -47,7 +52,7 @@ def scenario_request(**updates: object) -> ScenarioRunRequest:
 async def test_run_scenario_returns_deterministic_metrics() -> None:
     service, _, _, _ = build_scenario_service()
 
-    scenario = await run_scenario(scenario_request(), service)
+    scenario = await run_scenario(scenario_request(), service, DESIGNER)
 
     assert scenario.id == "SCN-0001"
     assert scenario.name == "candidate-01"
@@ -60,6 +65,9 @@ async def test_run_scenario_returns_deterministic_metrics() -> None:
     assert scenario.metrics.average_cycle_time == 74.0
     assert scenario.metrics.average_waiting_time == 24.0
     assert scenario.duration_ms >= 0.0
+    assert scenario.created_by == DESIGNER.id
+    assert scenario.created_at is not None
+    assert scenario.version == 1
 
 
 @pytest.mark.asyncio
@@ -82,7 +90,7 @@ async def test_baseline_uses_repository_scenario() -> None:
 @pytest.mark.asyncio
 async def test_list_and_detail_return_in_memory_scenario() -> None:
     service, _, _, _ = build_scenario_service()
-    created = await run_scenario(scenario_request(), service)
+    created = await run_scenario(scenario_request(), service, DESIGNER)
 
     detail = await get_scenario(created.id, service)
     scenarios = await list_scenarios(service)
@@ -94,10 +102,10 @@ async def test_list_and_detail_return_in_memory_scenario() -> None:
 @pytest.mark.asyncio
 async def test_apply_requires_approved_status() -> None:
     service, _, _, _ = build_scenario_service()
-    scenario = await run_scenario(scenario_request(), service)
+    scenario = await run_scenario(scenario_request(), service, DESIGNER)
 
     with pytest.raises(HTTPException) as error:
-        await apply_scenario(scenario.id, service)
+        await apply_scenario(scenario.id, service, MONITOR)
 
     assert error.value.status_code == 409
     assert "must be APPROVED" in str(error.value.detail)
@@ -106,15 +114,15 @@ async def test_apply_requires_approved_status() -> None:
 @pytest.mark.asyncio
 async def test_rejected_scenario_cannot_be_approved_or_applied() -> None:
     service, _, _, _ = build_scenario_service()
-    scenario = await run_scenario(scenario_request(), service)
+    scenario = await run_scenario(scenario_request(), service, DESIGNER)
 
-    rejected = await reject_scenario(scenario.id, service)
+    rejected = await reject_scenario(scenario.id, service, MONITOR)
 
     assert rejected.status == ScenarioStatus.REJECTED
     assert rejected.reviewed_at is not None
     for action in (approve_scenario, apply_scenario):
         with pytest.raises(HTTPException) as error:
-            await action(scenario.id, service)
+            await action(scenario.id, service, MONITOR)
         assert error.value.status_code == 409
 
 
@@ -126,15 +134,20 @@ async def test_approve_then_apply_resets_realtime_factory() -> None:
     scenario = await run_scenario(
         scenario_request(num_robots=4, task_arrival_interval=6.0, travel_time=45.0),
         service,
+        DESIGNER,
     )
 
-    approved = await approve_scenario(scenario.id, service)
-    applied = await apply_scenario(scenario.id, service)
+    approved = await approve_scenario(scenario.id, service, MONITOR)
+    applied = await apply_scenario(scenario.id, service, MONITOR)
 
     assert approved.status == ScenarioStatus.APPROVED
     assert approved.reviewed_at is not None
+    assert approved.reviewed_by == MONITOR.id
+    assert approved.version == 2
     assert applied.status == ScenarioStatus.APPLIED
     assert applied.applied_at is not None
+    assert applied.applied_by == MONITOR.id
+    assert applied.version == 3
     assert mock_factory.config.robot_count == 4
     assert mock_factory.config.task_interval_seconds == 6.0
     assert len(state.list_robots()) == 4
@@ -145,12 +158,45 @@ async def test_approve_then_apply_resets_realtime_factory() -> None:
 
 
 @pytest.mark.asyncio
+async def test_service_rejects_creator_review_even_if_route_guard_is_bypassed() -> None:
+    service, _, _, _ = build_scenario_service()
+    scenario = await service.run(scenario_request(), DESIGNER)
+
+    with pytest.raises(InvalidScenarioTransitionError, match="creator cannot"):
+        await service.approve(scenario.id, DESIGNER)
+
+
+@pytest.mark.asyncio
+async def test_failed_apply_restores_factory_config_and_keeps_scenario_approved() -> None:
+    service, mock_factory, _, _ = build_scenario_service()
+    original_config = mock_factory.config.model_copy(deep=True)
+    scenario = await service.run(
+        scenario_request(num_robots=4, task_arrival_interval=6.0),
+        DESIGNER,
+    )
+    approved = await service.approve(scenario.id, MONITOR)
+    reset = AsyncMock(side_effect=[RuntimeError("reset failed"), None])
+    mock_factory.reset = reset
+
+    with pytest.raises(RuntimeError, match="reset failed"):
+        await service.apply(approved.id, MONITOR)
+
+    stored = await service.get(approved.id)
+    assert stored.status == ScenarioStatus.APPROVED
+    assert mock_factory.config == original_config
+    assert reset.await_count == 2
+
+
+@pytest.mark.asyncio
 async def test_unknown_scenario_returns_404() -> None:
     service, _, _, _ = build_scenario_service()
 
     for action in (get_scenario, approve_scenario):
         with pytest.raises(HTTPException) as error:
-            await action("SCN-9999", service)
+            if action is approve_scenario:
+                await action("SCN-9999", service, MONITOR)
+            else:
+                await action("SCN-9999", service)
         assert error.value.status_code == 404
 
 

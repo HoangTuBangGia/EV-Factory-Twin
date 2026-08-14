@@ -31,6 +31,18 @@ git switch develop
 
 ### 3. Chạy MVP local
 
+Tạo hai file môi trường (đều đã bị Git ignore) và điền giá trị của Supabase
+development project:
+
+```bash
+cp apps/backend/.env.example apps/backend/.env
+cp apps/frontend/.env.example apps/frontend/.env.local
+```
+
+- Backend cần `DATABASE_URL` và `SUPABASE_URL`; issuer/JWKS được suy ra từ URL.
+- Frontend chỉ nhận `NEXT_PUBLIC_SUPABASE_URL` và publishable/anon key công khai.
+- Không đưa database password hoặc `SUPABASE_SERVICE_ROLE_KEY` vào frontend.
+
 ```bash
 # Terminal 1 — từ root repository
 uv sync --all-packages --dev
@@ -41,7 +53,6 @@ make backend
 # Terminal 2 — frontend
 cd apps/frontend
 npm ci
-cp .env.example .env.local
 npm run dev
 ```
 
@@ -58,11 +69,16 @@ thật từ backend thay vì fixture.
 Khi backend đang chạy, thực hiện:
 
 ```bash
+read -rsp "Designer access token: " DESIGNER_ACCESS_TOKEN && export DESIGNER_ACCESS_TOKEN
+read -rsp "Monitor access token: " MONITOR_ACCESS_TOKEN && export MONITOR_ACCESS_TOKEN
 uv run python scripts/demo_mvp.py
+unset DESIGNER_ACCESS_TOKEN MONITOR_ACCESS_TOKEN
 ```
 
-Script kiểm tra: health → baseline → run scenario → chặn apply trước approve →
-approve → apply → factory reset đúng số robot.
+Hai token ngắn hạn lấy từ hai phiên Supabase demo tương ứng và không được commit
+vào file `.env`. Script kiểm tra: health → baseline → chặn Monitor chạy scenario →
+Designer chạy scenario → chặn Designer apply → chặn apply trước approve → Monitor
+approve/apply → factory reset đúng số robot.
 
 ### 5. Chạy kiểm thử
 

@@ -29,26 +29,29 @@
 
 ```mermaid
 flowchart LR
-    FE[Next.js UI<br/>2D SVG + Scenario Review]
-    API[FastAPI<br/>REST + WebSocket]
+    AUTH[Supabase Auth]
+    FE[Next.js UI<br/>Login + role-aware 2D dashboard]
+    API[FastAPI<br/>JWT/RBAC + REST + authenticated WS]
     MOCK[MockFactory<br/>Realtime telemetry]
     SIM[SimPy<br/>Offline KPI benchmark]
-    MEM[(In-memory state)]
+    DB[(PostgreSQL<br/>profiles + scenarios + audit)]
 
-    FE -->|Run / Approve / Apply| API
+    AUTH -->|Session| FE
+    FE -->|Designer run / Monitor review-apply| API
     API --> SIM
     API --> MOCK
     MOCK -->|Telemetry 10 Hz| API
     API -->|WebSocket| FE
-    API --> MEM
+    API <--> DB
 ```
 
 Thông điệp trình bày:
 
 - MockFactory phục vụ monitoring realtime.
 - SimPy phục vụ so sánh nhanh baseline/candidate.
-- Server chặn Apply nếu scenario chưa được Approve.
-- Factory view hiện là 2D; state và scenario chưa lưu bền vững.
+- Server chặn sai role và chặn Apply nếu scenario chưa được Approve.
+- Scenario/actor/audit lưu PostgreSQL; state robot/task đang chạy vẫn ở RAM.
+- Factory view hiện là 2D; 3D/ROS2/Gazebo chưa hoàn thành.
 
 ## Slide kiến trúc mục tiêu — sau MVP
 
@@ -60,7 +63,7 @@ flowchart LR
     API[FastAPI]
     DB[(Time-series DB + Audit log)]
     WEB[Next.js + Three.js 3D]
-    REVIEW[Designer / Monitor / Approver]
+    REVIEW[Designer / Monitor]
 
     GZ <--> ROS
     ROS <--> BRIDGE
@@ -78,6 +81,7 @@ thay nguồn telemetry MockFactory bằng ROS2 bridge mà không đổi contract
 1. Overview: trạng thái `LIVE`, robot di chuyển và KPI realtime.
 2. Robot detail: pose, pin, task và payload.
 3. Scenario: chạy candidate và so sánh với baseline.
-4. Bấm Apply trước Approve để giải thích server-side guard.
-5. Approve rồi Apply; quay lại Factory và quan sát số robot/config đã reset.
-6. Kết thúc bằng ranh giới MVP và roadmap 3D/ROS2/Gazebo.
+4. Chứng minh Designer không có quyền Approve/Apply và Monitor không có quyền Run.
+5. Monitor bấm Apply trước Approve để giải thích server-side state guard.
+6. Monitor Approve rồi Apply; quay lại Factory và quan sát số robot/config đã reset.
+7. Admin xem actor/action/time trong audit log; kết thúc bằng roadmap 3D/ROS2/Gazebo.

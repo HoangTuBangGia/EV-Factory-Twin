@@ -1,4 +1,4 @@
-.PHONY: sync lint format format-check test test-cov typecheck check backend
+.PHONY: sync lint format format-check migration-check test test-cov typecheck check backend
 
 sync:
 	uv sync --all-packages --dev
@@ -14,6 +14,9 @@ format-check:
 
 typecheck:
 	uv run mypy packages/twin-core/src apps/backend/src services/simulation/src evaluation/src
+
+migration-check:
+	uv run pytest tests/integration/test_supabase_migrations.py
 
 test:
 	uv run pytest

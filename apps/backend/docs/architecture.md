@@ -5,15 +5,15 @@ mỗi 1/10 giây.
 
 ## Quy tắc phân tầng
 
-Code chia 3 tầng. **Quy tắc quan trọng nhất: tầng trên gọi tầng dưới, không bao
-giờ ngược lại.**
+Code chia các tầng rõ ràng. **Quy tắc quan trọng nhất: tầng trên gọi tầng dưới,
+không bao giờ ngược lại.**
 
 ```
 API Layer      (api/)       nhận HTTP request, trả HTTP response
     ↓
 Service Layer  (services/)  toàn bộ logic nghiệp vụ nằm ở đây
-    ↓
-State Layer    (services/factory_state.py)   dữ liệu đang sống trong RAM
+    ├── Realtime State      FactoryState sống trong RAM
+    └── Repository Layer    scenario/profile/audit trong PostgreSQL
 ```
 
 **Vì sao phải tách?** Nếu nhét logic vào route handler, thì logic đó chỉ chạy
@@ -46,8 +46,11 @@ apps/backend/src/ev_twin_api/
 │   ├── tasks.py         GET /api/v1/tasks, /tasks/{id}
 │   ├── metrics.py       GET /api/v1/metrics
 │   ├── alerts.py        GET /api/v1/alerts
+│   ├── auth.py          GET /api/v1/auth/me
+│   ├── scenarios.py     benchmark + workflow review/apply
+│   ├── admin_audit.py   Admin đọc business audit
 │   ├── mock.py          POST /api/v1/mock/start|stop|reset|config
-│   └── websocket.py     WS  /ws/factory
+│   └── websocket.py     WS /ws/factory + first-message auth
 │
 ├── schemas/             ← ĐỊNH NGHĨA DỮ LIỆU (Pydantic) — hợp đồng với FE
 │   ├── base.py          kiểu datetime dùng chung (ISO 8601, UTC, hậu tố Z)
@@ -58,6 +61,9 @@ apps/backend/src/ev_twin_api/
 │   ├── metrics.py       FactoryMetrics
 │   ├── alert.py         AlertSeverity, AlertCode, FactoryAlert
 │   ├── websocket.py     envelope {type, data} + hàm dựng từng loại event
+│   ├── auth.py          CurrentUser và AppRole
+│   ├── scenario.py      config/metrics/status/actor/version
+│   ├── audit.py         business audit event
 │   ├── health.py        HealthResponse
 │   └── mock.py          MockControlResponse
 │
@@ -69,10 +75,16 @@ apps/backend/src/ev_twin_api/
 │   ├── battery_service.py  hao pin / sạc pin
 │   ├── metrics_service.py  tính năng suất, thời gian chu kỳ...
 │   ├── alert_service.py    sinh cảnh báo + chống spam trùng lặp
-│   └── websocket_manager.py  giữ danh sách client, phát tin cho tất cả
+│   ├── auth_service.py     xác minh token rồi lấy profile tin cậy
+│   ├── scenario_service.py workflow độc lập với persistence
+│   ├── scenario_repository.py  in-memory hoặc PostgreSQL
+│   ├── audit_service.py    business audit append-only
+│   └── websocket_manager.py  chỉ giữ client đã xác thực, broadcast có timeout
 │
-└── core/                ← HẰNG SỐ & CẤU HÌNH (không có logic)
+└── core/                ← HẠ TẦNG & CẤU HÌNH
     ├── config.py        đọc biến môi trường (.env)
+    ├── database.py      SQLAlchemy async engine/session
+    ├── security.py      xác minh JWT signature/issuer/audience/expiry
     ├── layout.py        20×15 m, 6 trạm, vị trí robot lúc khởi tạo
     ├── routes.py        các tuyến đường waypoint
     └── logging_config.py
@@ -199,19 +211,21 @@ bắt `None` này và đổi thành lỗi HTTP 404.
 
 ## Realtime hoạt động thế nào
 
-`WebSocketManager` giữ một `set` các client đang kết nối. Mỗi lần có gì đáng
-báo, engine gọi `broadcast(...)` và tin được gửi tới **tất cả** client.
+`WebSocketManager` chỉ giữ các client đã gửi token hợp lệ và có profile active.
+Mỗi lần có gì đáng báo, engine gọi `broadcast(...)` và tin được gửi tới **tất
+cả client đã xác thực**.
 
 Điểm cần biết: **một client chết không làm hỏng cả buổi phát.**
 
 ```python
-for connection in list(self._connections):
-    try:
-        await connection.send_json(payload)
-    except Exception:
-        dead.append(connection)  # bỏ riêng client này ra, những client
-        # còn lại vẫn nhận tin bình thường
+results = await asyncio.gather(
+    *(send_with_timeout(connection, payload) for connection in connections)
+)
 ```
+
+Các lần gửi chạy đồng thời và có timeout, nên một browser chậm không chặn những
+browser khác. Connection chưa qua `auth.ok` không được thêm vào pool; khi Admin
+khóa user, manager đóng toàn bộ socket của user đó.
 
 Mọi tin nhắn đều bọc trong một "phong bì" giống nhau, để FE chỉ cần đọc `type`
 là biết cách xử lý `data`:

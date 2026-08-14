@@ -105,4 +105,19 @@ describe("factory store realtime updates", () => {
 
     expect(useFactoryStore.getState().metricsHistory).toEqual([]);
   });
+
+  it("clears user-scoped factory data on logout", () => {
+    useFactoryStore.getState().setMetrics(fixtureMetrics);
+    useFactoryStore.getState().selectRobot(fixtureRobots[0].id);
+    useFactoryStore.getState().reset();
+
+    const state = useFactoryStore.getState();
+    expect(state.robots).toEqual({});
+    expect(state.tasks).toEqual({});
+    expect(state.metrics).toBeNull();
+    expect(state.metricsHistory).toEqual([]);
+    expect(state.alerts).toEqual([]);
+    expect(state.selectedRobotId).toBeNull();
+    expect(state.connectionStatus).toBe("OFFLINE");
+  });
 });

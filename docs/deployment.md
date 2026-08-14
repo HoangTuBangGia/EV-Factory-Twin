@@ -23,13 +23,21 @@ Không commit `.env`, `.env.local` hoặc secret. Các file này đã được `
 
 1. Mở Render Dashboard, chọn **New > Blueprint**.
 2. Chọn repository này. Render tự đọc `render.yaml` ở root.
-3. Khi Render hỏi `CORS_ORIGINS`, lần đầu có thể nhập:
+3. Cấu hình các biến môi trường backend trên Render:
 
-   ```text
-   http://localhost:3000
+   ```env
+   APP_ENV=production
+   CORS_ORIGINS=http://localhost:3000
+   DATABASE_URL=postgresql://...
+   DATABASE_SSL_MODE=require
+   SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVER_ONLY_KEY
    ```
 
-   Sau khi có URL Vercel production, phải thay giá trị này bằng URL Vercel thật.
+   `SUPABASE_JWT_ISSUER` và `SUPABASE_JWKS_URL` được suy ra từ `SUPABASE_URL`.
+   Backend không cần service-role key cho login/RBAC; chỉ endpoint Admin mời user
+   cần key này. Nếu team tạo account trong Dashboard, có thể bỏ trống nó. Sau khi
+   có URL Vercel production, phải thay `CORS_ORIGINS` bằng URL Vercel thật.
 4. Chọn **Apply** và chờ image được build.
 5. Ghi lại URL backend, ví dụ:
 
@@ -41,7 +49,8 @@ Không commit `.env`, `.env.local` hoặc secret. Các file này đã được `
 
    ```bash
    curl https://ev-factory-twin-api.onrender.com/health
-   curl https://ev-factory-twin-api.onrender.com/api/v1/robots
+   curl -H "Authorization: Bearer <ACCESS_TOKEN>" \
+     https://ev-factory-twin-api.onrender.com/api/v1/auth/me
    ```
 
 Render dùng `/health` làm health check. Container lắng nghe biến `PORT` mà Render
@@ -61,12 +70,14 @@ cấp và hỗ trợ REST lẫn WebSocket trên cùng service.
    | Build Command | `npm run build` |
    | Output Directory | để mặc định |
 
-4. Thêm ba biến môi trường cho **Production** và **Preview**:
+4. Thêm năm biến môi trường cho **Production** và **Preview**:
 
    ```env
    NEXT_PUBLIC_DATA_SOURCE=api
    NEXT_PUBLIC_API_URL=https://ev-factory-twin-api.onrender.com
    NEXT_PUBLIC_WS_URL=wss://ev-factory-twin-api.onrender.com/ws/factory
+   NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLIC_KEY
    ```
 
    Thay hostname ví dụ bằng hostname Render thực tế. Production bắt buộc dùng
@@ -107,6 +118,8 @@ Vercel sẽ không được CORS cho phép trừ khi thêm origin tương ứng 
 
 Mở frontend Vercel và kiểm tra:
 
+- Mở URL khi chưa login sẽ được chuyển về `/login`.
+- Designer, Monitor và Admin login vào đúng landing page/quyền tương ứng.
 - Topbar chuyển từ `CONNECTING` sang `LIVE`.
 - Overview hiển thị 5 AMR từ `/api/v1/robots`.
 - Vị trí, pin và trạng thái robot thay đổi theo WebSocket.
@@ -116,7 +129,8 @@ Có thể kiểm tra trực tiếp:
 
 ```bash
 curl https://YOUR_RENDER_HOST/health
-curl https://YOUR_RENDER_HOST/api/v1/robots
+curl -H "Authorization: Bearer <ACCESS_TOKEN>" \
+  https://YOUR_RENDER_HOST/api/v1/robots
 ```
 
 ## 6. Tự động deploy
@@ -128,9 +142,9 @@ curl https://YOUR_RENDER_HOST/api/v1/robots
 
 ## 7. Lưu ý vận hành
 
-- Các endpoint `/api/v1/mock/*` hiện chưa có authentication. Bất kỳ ai biết URL
-  backend đều có thể start, stop, reset hoặc đổi cấu hình mô phỏng. Chỉ dùng cấu
-  hình này cho demo; phải thêm authentication trước khi dùng cho môi trường thật.
+- Các endpoint `/api/v1/mock/*` yêu cầu Supabase Bearer token và role `MONITOR`.
+  Backend không có chế độ bỏ qua authentication; local test dùng dependency
+  override nội bộ thay vì một biến môi trường có thể vô tình lọt lên production.
 - Trạng thái factory đang lưu trong RAM. Render restart hoặc redeploy sẽ reset
   robot, task, metrics và alert.
 - Free instance của Render có thể ngủ khi không có traffic. Lần truy cập đầu có

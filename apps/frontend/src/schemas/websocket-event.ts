@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { factoryAlertSchema } from "./alert";
+import { appRoleSchema } from "./auth";
 import { factoryMetricsSchema } from "./metric";
 import { robotTelemetrySchema } from "./robot";
 import { taskSchema } from "./task";
@@ -12,4 +13,20 @@ export const factoryEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("factory.reset"), data: z.null() }),
 ]);
 
+export const factorySocketAuthRequestSchema = z.object({
+  type: z.literal("auth"),
+  access_token: z.string().min(1),
+});
+
+export const factorySocketAuthOkSchema = z.object({
+  type: z.literal("auth.ok"),
+  data: z.object({
+    user_id: z.string().uuid(),
+    display_name: z.string().min(1),
+    role: appRoleSchema,
+    expires_at: z.number().int().positive(),
+  }),
+});
+
 export type FactoryEvent = z.infer<typeof factoryEventSchema>;
+export type FactorySocketAuthOk = z.infer<typeof factorySocketAuthOkSchema>;

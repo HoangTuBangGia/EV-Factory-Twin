@@ -30,6 +30,11 @@ export const scenarioMetricsSchema = z.object({
   average_waiting_time: z.number().nonnegative(),
 });
 
+const utcDateTimeSchema = z.string().datetime({ offset: true }).refine(
+  (value) => value.endsWith("Z"),
+  "Expected a UTC timestamp ending in Z",
+);
+
 export const scenarioSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -37,8 +42,13 @@ export const scenarioSchema = z.object({
   config: scenarioConfigSchema,
   metrics: scenarioMetricsSchema,
   duration_ms: z.number().nonnegative(),
-  reviewed_at: z.string().datetime().nullable().optional(),
-  applied_at: z.string().datetime().nullable().optional(),
+  created_at: utcDateTimeSchema,
+  created_by: z.string().uuid().nullable(),
+  reviewed_at: utcDateTimeSchema.nullable(),
+  reviewed_by: z.string().uuid().nullable(),
+  applied_at: utcDateTimeSchema.nullable(),
+  applied_by: z.string().uuid().nullable(),
+  version: z.number().int().min(1),
 });
 
 export type ScenarioStatus = z.infer<typeof scenarioStatusSchema>;

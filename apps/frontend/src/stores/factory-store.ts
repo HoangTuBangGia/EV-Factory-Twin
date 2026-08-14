@@ -34,6 +34,7 @@ interface FactoryStore {
   addAlert: (alert: FactoryAlert) => void;
   selectRobot: (id: string | null) => void;
   setConnectionStatus: (status: ConnectionStatus) => void;
+  reset: () => void;
 }
 
 export const useFactoryStore = create<FactoryStore>((set) => ({
@@ -78,4 +79,13 @@ export const useFactoryStore = create<FactoryStore>((set) => ({
   addAlert: (alert) => set((state) => ({ alerts: [alert, ...state.alerts].slice(0, 50) })),
   selectRobot: (selectedRobotId) => set({ selectedRobotId }),
   setConnectionStatus: (connectionStatus) => set({ connectionStatus }),
+  reset: () => set({
+    robots: {},
+    tasks: {},
+    metrics: null,
+    metricsHistory: [],
+    alerts: [],
+    selectedRobotId: null,
+    connectionStatus: "OFFLINE",
+  }),
 }));

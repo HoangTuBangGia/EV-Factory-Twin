@@ -2,6 +2,7 @@ import asyncio
 import gc
 import warnings
 from typing import Any
+from uuid import UUID
 
 import pytest
 from ev_twin_api.core.layout import FACTORY_HEIGHT_M, FACTORY_WIDTH_M
@@ -17,6 +18,8 @@ from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.mock_factory import MockFactory
 from ev_twin_api.services.websocket_manager import WebSocketManager
 from httpx2 import ASGITransport, AsyncClient
+
+TEST_USER_ID = UUID("00000000-0000-0000-0000-000000000001")
 
 
 class FakeWebSocket:
@@ -301,7 +304,7 @@ async def test_task_completes_end_to_end_through_the_real_engine_loop() -> None:
 async def test_tick_broadcasts_robot_telemetry_matching_schema() -> None:
     manager = WebSocketManager()
     websocket = FakeWebSocket()
-    await manager.connect(websocket)  # type: ignore[arg-type]
+    manager.register_authenticated(websocket, TEST_USER_ID)  # type: ignore[arg-type]
     factory = _make_factory(websocket_manager=manager)
 
     await factory.tick(0.1)
@@ -316,7 +319,7 @@ async def test_tick_broadcasts_robot_telemetry_matching_schema() -> None:
 async def test_tick_broadcasts_task_updated_on_assignment() -> None:
     manager = WebSocketManager()
     websocket = FakeWebSocket()
-    await manager.connect(websocket)  # type: ignore[arg-type]
+    manager.register_authenticated(websocket, TEST_USER_ID)  # type: ignore[arg-type]
     factory = _make_factory(task_interval_seconds=60.0, websocket_manager=manager)
     factory._task_service.generate_task()  # bypasses tick()'s broadcast, nothing sent yet
 
@@ -333,7 +336,7 @@ async def test_tick_broadcasts_task_updated_on_assignment() -> None:
 async def test_reset_broadcasts_factory_reset() -> None:
     manager = WebSocketManager()
     websocket = FakeWebSocket()
-    await manager.connect(websocket)  # type: ignore[arg-type]
+    manager.register_authenticated(websocket, TEST_USER_ID)  # type: ignore[arg-type]
     factory = _make_factory(websocket_manager=manager)
 
     await factory.reset()
@@ -350,7 +353,7 @@ async def test_metrics_updated_is_broadcast_at_one_hertz_of_wall_time(
 ) -> None:
     manager = WebSocketManager()
     websocket = FakeWebSocket()
-    await manager.connect(websocket)  # type: ignore[arg-type]
+    manager.register_authenticated(websocket, TEST_USER_ID)  # type: ignore[arg-type]
     factory = _make_factory(
         task_interval_seconds=60.0,
         simulation_speed=simulation_speed,
@@ -423,7 +426,7 @@ async def test_metrics_reflect_a_completed_task_through_the_real_engine() -> Non
 async def test_low_battery_alert_is_broadcast_and_deduplicated() -> None:
     manager = WebSocketManager()
     websocket = FakeWebSocket()
-    await manager.connect(websocket)  # type: ignore[arg-type]
+    manager.register_authenticated(websocket, TEST_USER_ID)  # type: ignore[arg-type]
     factory = _make_factory(task_interval_seconds=60.0, websocket_manager=manager)
     robot = factory._state.get_robot("AMR-01")
     assert robot is not None
@@ -452,6 +455,7 @@ async def test_lifespan_starts_and_stops_engine_without_pending_tasks() -> None:
         async with app.router.lifespan_context(app):
             mock_factory = app.state.mock_factory
             assert mock_factory.running is True
+            assert app.state.kpi_snapshot_writer is None
 
             async with AsyncClient(transport=transport, base_url="http://test") as client:
                 response = await client.get("/health")
