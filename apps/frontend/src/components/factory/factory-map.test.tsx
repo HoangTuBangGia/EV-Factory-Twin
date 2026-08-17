@@ -24,6 +24,13 @@ beforeAll(() => {
 });
 
 describe("FactoryMap without WebGL", () => {
+  it("supports forcing the realtime 2D renderer", () => {
+    const { container } = render(<FactoryMap view="2d"/>);
+
+    expect(container.querySelector(".factory-map")).toHaveAttribute("data-view", "2d");
+    expect(screen.getByRole("img", { name: "2D factory map" })).toBeInTheDocument();
+  });
+
   it("renders one marker per robot and marks the selection", () => {
     const { container } = render(<FactoryMap/>);
 

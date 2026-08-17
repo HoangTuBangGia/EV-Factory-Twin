@@ -21,6 +21,10 @@ const LEGEND = [
 
 type Support = "probing" | "webgl" | "fallback";
 
+export interface FactoryMapProps {
+  view?: "auto" | "2d";
+}
+
 function detectWebGL(): boolean {
   try {
     const canvas = document.createElement("canvas");
@@ -30,17 +34,19 @@ function detectWebGL(): boolean {
   }
 }
 
-export function FactoryMap() {
+export function FactoryMap({ view = "auto" }: FactoryMapProps) {
   const robotRecord = useFactoryStore((state) => state.robots);
   const robots = useMemo(() => Object.values(robotRecord), [robotRecord]);
   const selectedRobotId = useFactoryStore((state) => state.selectedRobotId);
   const selectRobot = useFactoryStore((state) => state.selectRobot);
   const queuedTasks = useFactoryStore((state) => state.metrics?.queued_tasks);
 
-  const [support, setSupport] = useState<Support>("probing");
+  const [support, setSupport] = useState<Support>(view === "2d" ? "fallback" : "probing");
   const [resetSignal, setResetSignal] = useState(0);
 
-  useEffect(() => { setSupport(detectWebGL() ? "webgl" : "fallback"); }, []);
+  useEffect(() => {
+    setSupport(view === "2d" ? "fallback" : detectWebGL() ? "webgl" : "fallback");
+  }, [view]);
 
   const resetView = useCallback(() => setResetSignal((value) => value + 1), []);
 

@@ -365,3 +365,60 @@ Permission matrix mục tiêu:
 - [ ] RLS bật trên mọi bảng được expose.
 - [ ] Không lưu raw telemetry 10 Hz trong MVP.
 - [ ] Test, CI và browser E2E đều xanh.
+
+
+# tutorial quay demo
+
+Với phiên bản hiện tại, video 3 phút nên kể một câu chuyện rất rõ:
+
+> Theo dõi nhà máy realtime → thử cấu hình tối ưu → người có thẩm quyền phê duyệt → áp dụng và thấy nhà máy thay đổi.
+
+## Kịch bản quay đề xuất
+
+| Thời gian | Hình ảnh/thao tác | Lời thoại gợi ý |
+|---|---|---|
+| 0:00–0:15 | Title ngắn: “EV Factory Digital Twin” rồi chuyển ngay vào dashboard | “Trong nhà máy pin EV, việc thay đổi số lượng robot có thể ảnh hưởng trực tiếp đến throughput, thời gian chờ và backlog. Giải pháp của chúng tôi cho phép theo dõi và thử nghiệm cấu hình trước khi áp dụng.” |
+| 0:15–0:45 | Mở **Factory view**. Cho thấy trạng thái `LIVE`, robot đang di chuyển và KPI cập nhật | “Đây là Digital Twin của hệ thống vận chuyển nội bộ. Dữ liệu telemetry được cập nhật realtime, giúp theo dõi vị trí, trạng thái và hiệu suất của toàn bộ đội robot.” |
+| 0:45–1:00 | Click một robot để mở detail drawer | “Người vận hành có thể xem pin, tốc độ, tọa độ, nhiệm vụ và payload của từng robot.” |
+| 1:00–1:35 | Sang **Scenarios**, đăng nhập/quay dưới role **Designer**. Nhập scenario với số robot khác baseline và bấm Run | “Trước khi thay đổi nhà máy, Designer tạo một candidate scenario. Hệ thống sử dụng mô phỏng SimPy để benchmark cấu hình mới với baseline.” |
+| 1:35–1:55 | Zoom vào bảng so sánh KPI: throughput, cycle time, waiting time, backlog/completion rate | “Kết quả cho biết cấu hình mới cải thiện throughput và thời gian chờ như thế nào, giúp quyết định dựa trên số liệu thay vì thử trực tiếp trên hệ thống thật.” |
+| 1:55–2:15 | Cho thấy Designer không có nút Approve/Apply hoặc thông báo bị chặn | “Designer chỉ được phép chạy thử nghiệm. Việc phê duyệt và áp dụng được tách riêng để tránh một cá nhân tự thay đổi cấu hình vận hành.” |
+| 2:15–2:40 | Chuyển sang phiên **Monitor** đã đăng nhập sẵn. Mở đúng scenario → Approve → Apply to factory | “Monitor kiểm tra kết quả, phê duyệt, sau đó áp dụng cấu hình. Backend đồng thời kiểm tra role và trạng thái scenario, nên một cấu hình chưa được approve không thể được áp dụng.” |
+| 2:40–2:52 | Quay lại Factory view, cho thấy số robot/config đã thay đổi | “Sau khi áp dụng, factory được reset theo cấu hình mới và dashboard tiếp tục nhận telemetry realtime.” |
+| 2:52–3:00 | Mở nhanh audit log hoặc kết bằng màn hình Factory | “Mọi hành động đều lưu actor, thời gian và nội dung thay đổi để có thể truy vết. Đây là nền tảng cho việc kết nối ROS2 và mô phỏng vật lý trong giai đoạn tiếp theo.” |
+
+## Cách quay để video trông chuyên nghiệp
+
+Chuẩn bị hai cửa sổ hoặc hai browser profile trước khi quay:
+
+- Cửa sổ 1: đăng nhập sẵn bằng **Designer**.
+- Cửa sổ 2: đăng nhập sẵn bằng **Monitor**.
+- Mỗi cửa sổ mở đúng trang cần dùng.
+- Tạo trước một scenario “Baseline”; khi quay chỉ tạo candidate.
+- Nếu kết quả mô phỏng có độ trễ, có thể cắt khoảng chờ thay vì để người xem nhìn loading.
+- Dùng scenario có thay đổi dễ thấy, chẳng hạn từ 3 lên 5 hoặc 6 robot.
+
+Thiết lập quay:
+
+- Độ phân giải 1920×1080, 30 fps.
+- Browser zoom khoảng 90–100%; đóng bookmark bar và notification.
+- Chỉ quay vùng trình duyệt, không quay desktop lộn xộn.
+- Di chuột chậm, dừng khoảng 1 giây trước khi click.
+- Zoom hậu kỳ nhẹ vào KPI, role và nút Approve/Apply.
+- Thu voice-over sau khi quay màn hình sẽ ít lỗi và dễ căn đúng 3 phút hơn.
+- Nhạc nền rất nhỏ; giọng nói phải rõ hơn nhạc nhiều lần.
+- Che email, access token, URL nội bộ và thông tin Supabase nếu xuất hiện.
+
+## Điểm cần nhấn mạnh
+
+| Thời gian | Hình ảnh/thao tác | Lời thoại gợi ý |
+|---|---|---|
+| 0:00–0:15 | Title ngắn: “EV Factory Digital Twin” rồi chuyển ngay vào dashboard | “Trong nhà máy pin EV, việc thay đổi số lượng robot có thể ảnh hưởng trực tiếp đến throughput, thời gian chờ và backlog. Giải pháp của chúng tôi cho phép theo dõi và thử nghiệm cấu hình trước khi áp dụng.” |
+| 0:15–0:45 | Mở **Factory view**. Cho thấy trạng thái `LIVE`, robot đang di chuyển và KPI cập nhật | “Đây là Digital Twin của hệ thống vận chuyển nội bộ. Dữ liệu telemetry được cập nhật realtime, giúp theo dõi vị trí, trạng thái và hiệu suất của toàn bộ đội robot.” |
+| 0:45–1:00 | Click một robot để mở detail drawer | “Người vận hành có thể xem pin, tốc độ, tọa độ, nhiệm vụ và payload của từng robot.” |
+| 1:00–1:35 | Sang **Scenarios**, đăng nhập/quay dưới role **Designer**. Nhập scenario với số robot khác baseline và bấm Run | “Trước khi thay đổi nhà máy, Designer tạo một candidate scenario. Hệ thống sử dụng mô phỏng SimPy để benchmark cấu hình mới với baseline.” |
+| 1:35–1:55 | Zoom vào bảng so sánh KPI: throughput, cycle time, waiting time, backlog/completion rate | “Kết quả cho biết cấu hình mới cải thiện throughput và thời gian chờ như thế nào, giúp quyết định dựa trên số liệu thay vì thử trực tiếp trên hệ thống thật.” |
+| 1:55–2:15 | Cho thấy Designer không có nút Approve/Apply hoặc thông báo bị chặn | “Designer chỉ được phép chạy thử nghiệm. Việc phê duyệt và áp dụng được tách riêng để tránh một cá nhân tự thay đổi cấu hình vận hành.” |
+| 2:15–2:40 | Chuyển sang phiên **Monitor** đã đăng nhập sẵn. Mở đúng scenario → Approve → Apply to factory | “Monitor kiểm tra kết quả, phê duyệt, sau đó áp dụng cấu hình. Backend đồng thời kiểm tra role và trạng thái scenario, nên một cấu hình chưa được approve không thể được áp dụng.” |
+| 2:40–2:52 | Quay lại Factory view, cho thấy số robot/config đã thay đổi | “Sau khi áp dụng, factory được reset theo cấu hình mới và dashboard tiếp tục nhận telemetry realtime.” |
+| 2:52–3:00 | Mở nhanh audit log hoặc kết bằng màn hình Factory | “Mọi hành động đều lưu actor, thời gian và nội dung thay đổi để có thể truy vết. Đây là nền tảng cho việc kết nối ROS2 và mô phỏng vật lý trong giai đoạn tiếp theo.” |
