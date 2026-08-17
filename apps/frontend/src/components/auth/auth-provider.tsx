@@ -90,6 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const redirectToLogin = useCallback((reason: "session_expired" | "access_revoked") => {
+    if (pathnameRef.current === "/scene-probe") return;
     const params = new URLSearchParams({ reason });
     if (pathnameRef.current !== "/login") params.set("returnTo", pathnameRef.current);
     replace(`/login?${params.toString()}`);

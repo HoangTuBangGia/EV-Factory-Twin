@@ -9,7 +9,12 @@ from uuid import UUID
 
 import jwt
 from jwt import PyJWKClient
-from jwt.exceptions import InvalidTokenError, PyJWKClientConnectionError, PyJWKClientError, PyJWKSetError
+from jwt.exceptions import (
+    InvalidTokenError,
+    PyJWKClientConnectionError,
+    PyJWKClientError,
+    PyJWKSetError,
+)
 
 
 class InvalidAccessTokenError(ValueError):

@@ -13,6 +13,8 @@
     "test:e2e:list": "playwright test --list"
   },
   "dependencies": {
+    "@react-three/drei": "^10.7.8",
+    "@react-three/fiber": "^9.7.0",
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.112.3",
     "@tailwindcss/postcss": "^4.1.0",
@@ -22,6 +24,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "tailwindcss": "^4.1.0",
+    "three": "^0.185.1",
     "zod": "^4.0.0",
     "zustand": "^5.0.0"
   },
@@ -33,6 +36,7 @@
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.185.4",
     "eslint": "^9.0.0",
     "eslint-config-next": "^15.5.0",
     "jsdom": "^26.0.0",
