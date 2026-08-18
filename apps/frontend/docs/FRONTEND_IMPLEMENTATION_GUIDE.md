@@ -1,25 +1,23 @@
 # EV Factory Digital Twin — Frontend Implementation Guide
 
-> **Project:** EV Factory Digital Twin — AMR-based Battery Intralogistics  
-> **Scope:** Frontend only  
-> **Current phase:** Mock-data / Web MVP, **no ROS2, no Gazebo yet**  
-> **Frontend stack:** Next.js + TypeScript + Tailwind CSS + Zustand + Zod + ECharts + Vitest  
-> **Optional later:** Three.js / React Three Fiber
+> **Project:** EV Factory Digital Twin — AMR-based Battery Intralogistics
+> **App:** RAV-11 Factory Twin
+> **Scope:** Frontend only
+> **Current phase:** Web MVP — Supabase Auth + RBAC, REST snapshot, WebSocket realtime, 2D/3D factory twin, scenario sandbox, admin console. **No ROS2, no Gazebo telemetry yet** (simulator is the backend MockFactory).
+> **Frontend stack:** Next.js 15 (App Router) + React 19 + TypeScript + Tailwind CSS v4 + Zustand 5 + Zod 4 + ECharts 6 + Three.js (React Three Fiber / drei) + Supabase SSR + Vitest + Playwright
 
 ---
 
 ## 1. Frontend objective
 
-Frontend is responsible for turning factory state and telemetry received from the backend into a clear, real-time Digital Twin interface.
+The frontend turns factory state and telemetry received from the backend into a clear, real-time Digital Twin interface.
 
-For the current phase, the frontend does **not** need to know whether telemetry comes from mock data, Gazebo, ROS2, or a real robot.
-
-The frontend depends only on a stable backend contract:
+The frontend does **not** need to know whether telemetry comes from the mock engine, Gazebo, ROS2, or a real robot. It depends only on a stable backend contract:
 
 ```text
 Telemetry Source
     │
-    ├── Mock now
+    ├── Mock now (backend MockFactory)
     ├── ROS2 later
     └── Replay later
         │
@@ -37,13 +35,15 @@ The most important frontend requirement is:
 
 > The UI must work unchanged when the backend telemetry source changes from MOCK to ROS in the future.
 
+The source is selected at build/runtime through `NEXT_PUBLIC_DATA_SOURCE`:
+- `api` → REST snapshot + WebSocket realtime.
+- anything else (or unset) → bundled development fixtures (`src/lib/fixtures.ts`) plus a local simulated telemetry ticker (`useMockTelemetry`), with connection status `MOCK`.
+
 ---
 
 ## 2. Product context
 
-The system represents the battery intralogistics area of an electric vehicle final-assembly factory.
-
-AMRs transport battery packs from the Battery Buffer to the Battery Marriage Station.
+The system represents the battery intralogistics area of an electric vehicle final-assembly factory. AMRs transport battery packs from the Battery Buffer to the Battery Marriage Station.
 
 ```text
 Battery Buffer
@@ -59,7 +59,7 @@ Battery Marriage Station
 Battery delivered to vehicle assembly
 ```
 
-The frontend should help users answer:
+The frontend helps users answer:
 
 - Where are all AMRs right now?
 - Which AMR is carrying which battery pack?
@@ -70,28 +70,30 @@ The frontend should help users answer:
 - Are there active alerts?
 - Can the user inspect a specific AMR or task?
 
+Factory layout (20 m × 15 m) is mirrored in `src/lib/factory-layout.ts` and must stay in sync with `apps/backend/src/ev_twin_api/core/layout.py`. Station anchors, zones, and the main route are defined there.
+
 ---
 
 ## 3. Frontend responsibilities
 
 Frontend owns:
 
-1. Application shell and navigation.
-2. Dashboard presentation.
-3. Factory map / Digital Twin visualization.
-4. Real-time WebSocket connection.
-5. Initial data loading through REST.
-6. Client-side state management.
-7. Robot fleet visualization.
-8. Robot details.
-9. Task list and task details.
-10. KPI cards and charts.
-11. Alerts panel.
-12. Loading, empty, offline, and error states.
-13. WebSocket reconnect behavior.
-14. Basic scenario controls later in the MVP.
-15. Frontend tests.
-16. Frontend CI checks.
+1. Application shell and navigation (sidebar is permission-filtered).
+2. Authentication with Supabase (login/logout, session restore, token refresh, expiry/revocation handling).
+3. RBAC — role → permission mapping drives nav and action gating.
+4. Dashboard presentation.
+5. Factory map / Digital Twin visualization (WebGL 3D with SVG 2D fallback).
+6. Real-time WebSocket connection (auth handshake, backoff reconnect, snapshot resync).
+7. Initial data loading through REST (`fetchFactorySnapshot`).
+8. Client-side state management (Zustand).
+9. Robot fleet visualization and robot detail drawer.
+10. Task list.
+11. KPI cards and ECharts trends.
+12. Alerts panel.
+13. Loading, empty, offline, and error states.
+14. Scenario sandbox: run SimPy benchmark, review (approve/reject), apply approved scenario.
+15. Admin console: user role/status management, Supabase invites, business audit table.
+16. Frontend unit tests (Vitest) and browser E2E (Playwright).
 
 Frontend does **not** own:
 
@@ -102,420 +104,118 @@ Frontend does **not** own:
 - collision detection;
 - factory simulation logic;
 - robot path planning;
-- KPI formulas.
+- KPI formulas;
+- scenario approval policy.
 
-These values come from the backend.
-
----
-
-## 4. Recommended frontend stack
-
-```text
-Next.js
-TypeScript
-Tailwind CSS
-Zustand
-Zod
-ECharts
-Vitest
-Testing Library
-```
-
-Optional once 2D realtime is stable:
-
-```text
-Three.js
-@react-three/fiber
-@react-three/drei
-```
-
-Install:
-
-```bash
-cd apps/frontend
-
-npm install \
-  zustand \
-  zod \
-  echarts \
-  echarts-for-react
-
-npm install -D \
-  vitest \
-  @testing-library/react \
-  @testing-library/jest-dom \
-  jsdom
-```
-
-For later 3D:
-
-```bash
-npm install \
-  three \
-  @react-three/fiber \
-  @react-three/drei
-```
+These values and decisions come from the backend.
 
 ---
 
-## 5. Suggested directory structure
+## 4. Directory structure (current)
 
 ```text
 apps/frontend/
-├── public/
-│   ├── icons/
-│   └── models/
-│
-├── src/
-│   ├── app/
-│   │   ├── layout.tsx
-│   │   ├── page.tsx
-│   │   ├── factory/page.tsx
-│   │   ├── fleet/page.tsx
-│   │   ├── tasks/page.tsx
-│   │   ├── analytics/page.tsx
-│   │   └── scenarios/page.tsx
-│   │
-│   ├── components/
-│   │   ├── layout/
-│   │   ├── dashboard/
-│   │   ├── factory/
-│   │   ├── fleet/
-│   │   ├── tasks/
-│   │   ├── alerts/
-│   │   └── charts/
-│   │
-│   ├── features/
-│   │   ├── factory/
-│   │   ├── fleet/
-│   │   ├── tasks/
-│   │   ├── telemetry/
-│   │   ├── alerts/
-│   │   └── scenarios/
-│   │
-│   ├── hooks/
-│   │   ├── use-factory-socket.ts
-│   │   └── use-initial-factory-data.ts
-│   │
-│   ├── lib/
-│   │   ├── api-client.ts
-│   │   ├── websocket-client.ts
-│   │   ├── env.ts
-│   │   └── coordinate.ts
-│   │
-│   ├── stores/
-│   │   └── factory-store.ts
-│   │
-│   ├── schemas/
-│   │   ├── robot.ts
-│   │   ├── task.ts
-│   │   ├── telemetry.ts
-│   │   ├── metric.ts
-│   │   ├── alert.ts
-│   │   └── websocket-event.ts
-│   │
-│   └── test/
-│       └── setup.ts
-│
-├── .env.example
+├── .env.example                     # NEXT_PUBLIC_* variables (see §8)
+├── Dockerfile                       # empty — no container image yet
+├── e2e/
+│   └── hosted-rbac.spec.ts          # Playwright hosted-Supabase RBAC suite
+├── playwright.config.ts             # boots FastAPI + Next.js; chromium only
+├── next.config.ts
 ├── package.json
-├── package-lock.json
-├── tsconfig.json
-└── vitest.config.ts
+├── tsconfig.json                    # strict, path alias @/* -> ./src/*
+├── vitest.config.ts
+├── src/
+│   ├── middleware.ts                # edge auth guard (redirects, admin check)
+│   ├── app/
+│   │   ├── layout.tsx               # root layout: AuthProvider + ApplicationFrame
+│   │   ├── page.tsx                 # "/" Overview dashboard
+│   │   ├── login/page.tsx           # /login (public)
+│   │   ├── factory/page.tsx         # /factory — full 2D twin + alerts
+│   │   ├── fleet/page.tsx           # /fleet — fleet table + drawer
+│   │   ├── tasks/page.tsx           # /tasks — task lifecycle table
+│   │   ├── analytics/page.tsx       # /analytics — KPI + ECharts trends
+│   │   ├── scenarios/page.tsx       # /scenarios — benchmark + review + apply
+│   │   ├── admin/page.tsx           # /admin — users, invite, audit (ADMIN)
+│   │   ├── forbidden/page.tsx       # /forbidden — 403
+│   │   ├── scene-probe/page.tsx     # /scene-probe — dev-only 3D, no auth
+│   │   └── globals.css              # Tailwind + bespoke component CSS
+│   ├── components/
+│   │   ├── admin/                   # admin-user-table, audit-table, invite-user-form
+│   │   ├── alerts/                  # alert-list (severity-coded feed)
+│   │   ├── auth/                    # auth-provider, login-form, access-denied
+│   │   ├── charts/                  # operations-chart (ECharts)
+│   │   ├── dashboard/               # kpi-grid
+│   │   ├── factory/                 # factory-map, factory-map-2d, scene/* (3D)
+│   │   ├── fleet/                   # fleet-table, robot-drawer, battery, status-badge
+│   │   ├── layout/                  # application-frame, data-provider, sidebar, topbar
+│   │   ├── scenarios/               # scenario-actions, scenario-comparison
+│   │   └── tasks/                   # task-table
+│   ├── hooks/
+│   │   ├── use-factory-socket.ts    # WebSocket lifecycle + snapshot sync
+│   │   ├── use-initial-factory-data.ts
+│   │   └── use-mock-telemetry.ts    # mock-mode simulated ticker
+│   ├── lib/
+│   │   ├── api-client.ts            # typed REST client (zod-validated)
+│   │   ├── websocket-client.ts      # FactorySocket (auth handshake, backoff)
+│   │   ├── env.ts                   # SINGLE source of all env access
+│   │   ├── coordinate.ts            # FACTORY_SIZE, worldToScreen
+│   │   ├── factory-layout.ts        # station anchors, zones, routes
+│   │   ├── factory-snapshot.ts      # 4 parallel REST calls + timeout + commit
+│   │   ├── fixtures.ts              # mock robots/tasks/metrics/alerts/history
+│   │   ├── auth/                    # permissions.ts, return-to.ts
+│   │   └── supabase/                # client.ts, middleware.ts, server.ts
+│   ├── schemas/                     # zod schemas (see §5)
+│   │   ├── robot.ts  task.ts  metric.ts  alert.ts  scenario.ts
+│   │   ├── auth.ts  admin.ts  factory.ts  websocket-event.ts
+│   ├── stores/
+│   │   └── factory-store.ts         # Zustand store
+│   └── test/
+│       └── setup.ts                 # jest-dom matchers + cleanup
 ```
-
-Do not create every file immediately. Add files as features are implemented.
 
 ---
 
-## 6. Core data contracts
+## 5. Core data contracts (zod schemas)
 
-### 6.1 Robot status
+All contracts live in `src/schemas/` and are validated with **Zod**. Types are derived with `z.infer`. The backend contract is documented in `docs/api.md` — keep both in sync.
+
+### 5.1 Robot status (`schemas/robot.ts`)
 
 ```ts
-export type RobotStatus =
-  | "IDLE"
-  | "MOVING_TO_PICKUP"
-  | "PICKING"
-  | "DELIVERING"
-  | "DROPPING"
-  | "WAITING"
-  | "CHARGING"
-  | "ERROR"
-  | "OFFLINE";
+export const robotStatusSchema = z.enum([
+  "IDLE", "MOVING_TO_PICKUP", "PICKING", "DELIVERING", "DROPPING",
+  "MOVING_TO_CHARGER", "WAITING", "CHARGING", "ERROR", "OFFLINE",
+]);
 ```
 
 Do not invent frontend-only status names.
 
-### 6.2 Robot telemetry
-
-Expected payload:
-
-```json
-{
-  "timestamp": "2026-08-11T04:00:00.125Z",
-  "robot_id": "AMR-01",
-  "pose": {
-    "x": 12.4,
-    "y": 7.8,
-    "yaw": 1.57
-  },
-  "velocity": {
-    "linear": 1.1,
-    "angular": 0.0
-  },
-  "battery": 82.4,
-  "status": "DELIVERING",
-  "task_id": "TASK-102",
-  "payload_id": "BP-102"
-}
-```
-
-TypeScript:
+### 5.2 Robot (`schemas/robot.ts`)
 
 ```ts
-export interface RobotTelemetry {
-  timestamp: string;
-  robot_id: string;
-
-  pose: {
-    x: number;
-    y: number;
-    yaw: number;
-  };
-
-  velocity: {
-    linear: number;
-    angular: number;
-  };
-
-  battery: number;
-  status: RobotStatus;
-  task_id: string | null;
-  payload_id: string | null;
-}
+export const robotSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  status: robotStatusSchema,
+  battery: z.number().min(0).max(100),
+  pose: z.object({ x: z.number(), y: z.number(), yaw: z.number() }),
+  velocity: z.object({ linear: z.number(), angular: z.number() }),
+  task_id: z.string().nullable(),
+  payload_id: z.string().nullable(),
+  last_seen_at: z.string(),
+});
 ```
 
-### 6.3 Robot model
+### 5.3 RobotTelemetry (`schemas/robot.ts`)
+
+WebSocket `robot.telemetry` payload; ~10 Hz per active robot.
 
 ```ts
-export interface Robot {
-  id: string;
-  name: string;
-  status: RobotStatus;
-  battery: number;
-
-  pose: {
-    x: number;
-    y: number;
-    yaw: number;
-  };
-
-  velocity: {
-    linear: number;
-    angular: number;
-  };
-
-  task_id: string | null;
-  payload_id: string | null;
-  last_seen_at: string;
-}
-```
-
----
-
-## 7. Task contract
-
-```ts
-export type TaskStatus =
-  | "QUEUED"
-  | "ASSIGNED"
-  | "PICKUP"
-  | "IN_PROGRESS"
-  | "DELIVERED"
-  | "COMPLETED"
-  | "FAILED";
-```
-
-```ts
-export interface Task {
-  task_id: string;
-  type: "DELIVER_BATTERY";
-
-  payload_id: string;
-  pickup: string;
-  dropoff: string;
-
-  assigned_robot_id: string | null;
-  status: TaskStatus;
-
-  created_at: string;
-  started_at: string | null;
-  completed_at: string | null;
-}
-```
-
----
-
-## 8. Metric contract
-
-```ts
-export interface FactoryMetrics {
-  completed_tasks: number;
-  throughput_per_hour: number;
-  average_cycle_time_seconds: number;
-  active_tasks: number;
-  queued_tasks: number;
-  starvation_events: number;
-  fleet_utilization_percent: number;
-}
-```
-
-Frontend should **not calculate these business metrics from telemetry**. Backend owns the formulas.
-
----
-
-## 9. Alert contract
-
-```ts
-export type AlertSeverity = "INFO" | "WARNING" | "CRITICAL";
-
-export interface FactoryAlert {
-  id: string;
-  severity: AlertSeverity;
-  code: string;
-  message: string;
-  robot_id: string | null;
-  task_id: string | null;
-  timestamp: string;
-}
-```
-
----
-
-## 10. REST API expected by frontend
-
-Base URL in development:
-
-```text
-http://localhost:8000
-```
-
-Expected endpoints:
-
-```text
-GET /health
-
-GET /api/v1/factory
-GET /api/v1/robots
-GET /api/v1/robots/{robot_id}
-GET /api/v1/tasks
-GET /api/v1/tasks/{task_id}
-GET /api/v1/metrics
-GET /api/v1/alerts
-```
-
-Optional mock control endpoints:
-
-```text
-POST /api/v1/mock/start
-POST /api/v1/mock/stop
-POST /api/v1/mock/reset
-POST /api/v1/mock/speed
-```
-
-Centralize HTTP calls in:
-
-```text
-src/lib/api-client.ts
-```
-
-Do not scatter raw `fetch()` calls throughout components.
-
----
-
-## 11. WebSocket contract
-
-Development endpoint:
-
-```text
-ws://localhost:8000/ws/factory
-```
-
-Use one WebSocket for realtime factory events initially.
-
-Robot event:
-
-```json
-{
-  "type": "robot.telemetry",
-  "data": {}
-}
-```
-
-Task event:
-
-```json
-{
-  "type": "task.updated",
-  "data": {}
-}
-```
-
-Metrics event:
-
-```json
-{
-  "type": "metrics.updated",
-  "data": {}
-}
-```
-
-Alert event:
-
-```json
-{
-  "type": "alert.created",
-  "data": {}
-}
-```
-
----
-
-## 12. Validate external data with Zod
-
-Do not trust WebSocket JSON blindly.
-
-```ts
-import { z } from "zod";
-
-export const robotStatusSchema = z.enum([
-  "IDLE",
-  "MOVING_TO_PICKUP",
-  "PICKING",
-  "DELIVERING",
-  "DROPPING",
-  "WAITING",
-  "CHARGING",
-  "ERROR",
-  "OFFLINE",
-]);
-
 export const robotTelemetrySchema = z.object({
   timestamp: z.string(),
   robot_id: z.string(),
-
-  pose: z.object({
-    x: z.number(),
-    y: z.number(),
-    yaw: z.number(),
-  }),
-
-  velocity: z.object({
-    linear: z.number(),
-    angular: z.number(),
-  }),
-
+  pose: poseSchema,
+  velocity: velocitySchema,
   battery: z.number().min(0).max(100),
   status: robotStatusSchema,
   task_id: z.string().nullable(),
@@ -523,444 +223,349 @@ export const robotTelemetrySchema = z.object({
 });
 ```
 
-If invalid data arrives:
-
-- log during development;
-- ignore the event;
-- never crash the dashboard.
-
----
-
-## 13. Initial-load + realtime architecture
-
-On page load:
-
-```text
-GET /robots
-GET /tasks
-GET /metrics
-GET /alerts
-```
-
-This creates the initial snapshot.
-
-Then connect:
-
-```text
-WS /ws/factory
-```
-
-WebSocket provides incremental updates.
-
-```text
-REST
- │
- ▼
-Initial state
- │
- ▼
-Zustand Store
- ▲
- │
-WebSocket updates
-```
-
----
-
-## 14. Zustand store design
+### 5.4 Task (`schemas/task.ts`)
 
 ```ts
-interface FactoryStore {
-  robots: Record<string, Robot>;
-  tasks: Record<string, Task>;
-  metrics: FactoryMetrics | null;
-  alerts: FactoryAlert[];
+export const taskStatusSchema = z.enum([
+  "QUEUED", "ASSIGNED", "PICKUP", "IN_PROGRESS", "DELIVERED", "COMPLETED", "FAILED",
+]);
 
-  connectionStatus: "CONNECTING" | "LIVE" | "OFFLINE";
+export const taskSchema = z.object({
+  task_id: z.string(),
+  type: z.literal("DELIVER_BATTERY"),
+  payload_id: z.string(),
+  pickup: z.string(),
+  dropoff: z.string(),
+  assigned_robot_id: z.string().nullable(),
+  status: taskStatusSchema,
+  created_at: z.string(),
+  started_at: z.string().nullable(),
+  completed_at: z.string().nullable(),
+});
+```
 
-  setRobots: (robots: Robot[]) => void;
-  updateRobotTelemetry: (telemetry: RobotTelemetry) => void;
+### 5.5 FactoryMetrics (`schemas/metric.ts`)
 
-  setTasks: (tasks: Task[]) => void;
-  updateTask: (task: Task) => void;
+```ts
+export const factoryMetricsSchema = z.object({
+  completed_tasks: z.number(),
+  throughput_per_hour: z.number(),
+  average_cycle_time_seconds: z.number(),
+  active_tasks: z.number(),
+  queued_tasks: z.number(),
+  starvation_events: z.number(),
+  fleet_utilization_percent: z.number(),
+});
+```
 
-  setMetrics: (metrics: FactoryMetrics) => void;
-  addAlert: (alert: FactoryAlert) => void;
+Frontend does **not** calculate these business metrics from telemetry — backend owns the formulas.
 
-  setConnectionStatus: (
-    status: "CONNECTING" | "LIVE" | "OFFLINE"
-  ) => void;
+### 5.6 Alert (`schemas/alert.ts`)
+
+```ts
+export const alertSeveritySchema = z.enum(["INFO", "WARNING", "CRITICAL"]);
+export const factoryAlertSchema = z.object({
+  id: z.string(), severity: alertSeveritySchema, code: z.string(), message: z.string(),
+  robot_id: z.string().nullable(), task_id: z.string().nullable(), timestamp: z.string(),
+});
+```
+
+### 5.7 Scenario (`schemas/scenario.ts`)
+
+```ts
+export const scenarioStatusSchema = z.enum(["DRAFT", "SIMULATED", "APPROVED", "REJECTED", "APPLIED"]);
+
+export const scenarioConfigSchema = z.object({
+  num_robots: z.number().int().min(1).max(10),
+  num_tasks: z.number().int().min(1).max(10_000),
+  task_arrival_interval: z.number().min(1).max(60),
+  travel_time: z.number().positive().max(86_400),
+  loading_time: z.number().positive().max(86_400),
+  simulation_time: z.number().positive().max(86_400),
+});
+
+export const scenarioRunRequestSchema = scenarioConfigSchema.extend({
+  name: z.string().trim().min(1, "Name is required").max(80),
+});
+
+export const scenarioSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  status: scenarioStatusSchema,
+  config: scenarioConfigSchema,
+  metrics: scenarioMetricsSchema,
+  duration_ms: z.number().nonnegative(),
+  created_at: utcDateTimeSchema,            // ends with "Z"
+  created_by: z.string().uuid().nullable(),
+  reviewed_at: utcDateTimeSchema.nullable(),
+  reviewed_by: z.string().uuid().nullable(),
+  applied_at: utcDateTimeSchema.nullable(),
+  applied_by: z.string().uuid().nullable(),
+  version: z.number().int().min(1),
+});
+```
+
+### 5.8 Auth & RBAC (`schemas/auth.ts`)
+
+```ts
+export const appRoleSchema = z.enum(["DESIGNER", "MONITOR", "ADMIN"]);
+
+export const currentUserSchema = z.object({
+  id: z.string().uuid(),
+  email: z.string().email(),
+  display_name: z.string().min(1),
+  role: appRoleSchema,
+  is_active: z.boolean(),
+});
+```
+
+### 5.9 Admin (`schemas/admin.ts`)
+
+`AdminUser`, `AdminUserUpdate`, `AdminInviteRequest`, `AuditAction` enum, and `AuditEvent`. Audit actions: `SCENARIO_RUN`, `SCENARIO_APPROVED`, `SCENARIO_REJECTED`, `SCENARIO_APPLIED`, `FACTORY_RESET`, `ROLE_CHANGED`, `USER_DISABLED`, `USER_ENABLED`, `USER_INVITED`.
+
+### 5.10 WebSocket events (`schemas/websocket-event.ts`)
+
+```ts
+export const factoryEventSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("robot.telemetry"), data: robotTelemetrySchema }),
+  z.object({ type: z.literal("task.updated"), data: taskSchema }),
+  z.object({ type: z.literal("metrics.updated"), data: factoryMetricsSchema }),
+  z.object({ type: z.literal("alert.created"), data: factoryAlertSchema }),
+  z.object({ type: z.literal("factory.reset"), data: z.null() }),
+]);
+```
+
+---
+
+## 6. REST API used by the frontend
+
+Base URL comes from `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`). All HTTP is centralized in `src/lib/api-client.ts` — components never call raw `fetch` directly.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/auth/me` | Current user/profile/role |
+| GET | `/api/v1/factory` | Factory layout |
+| GET | `/api/v1/robots` | All AMRs |
+| GET | `/api/v1/robots/{id}` | One AMR |
+| GET | `/api/v1/tasks` | All tasks |
+| GET | `/api/v1/tasks/{id}` | One task |
+| GET | `/api/v1/metrics` | Factory metrics |
+| GET | `/api/v1/alerts` | Alerts |
+| POST | `/api/v1/mock/config` | Update mock simulation parameters |
+| POST | `/api/v1/mock/reset` | Reset mock factory state |
+| GET | `/api/v1/scenarios/baseline` | Repository baseline scenario |
+| GET | `/api/v1/scenarios` | Candidate list |
+| GET | `/api/v1/scenarios/{id}` | One scenario |
+| POST | `/api/v1/scenarios/run` | Run SimPy benchmark |
+| POST | `/api/v1/scenarios/{id}/approve` | Approve (Monitor) |
+| POST | `/api/v1/scenarios/{id}/reject` | Reject (Monitor) |
+| POST | `/api/v1/scenarios/{id}/apply` | Apply to mock factory (Monitor) |
+| GET | `/api/v1/admin/users` | Users (ADMIN) |
+| PATCH | `/api/v1/admin/users/{id}` | Change role/status (ADMIN) |
+| POST | `/api/v1/admin/users/invite` | Supabase invite (ADMIN) |
+| GET | `/api/v1/admin/audit?limit=N` | Business audit (ADMIN) |
+
+`apiClient` injects `Authorization: Bearer <access-token>` when available. A `401` invokes the global unauthorized handler (session expiry). Responses are validated with the corresponding zod schema.
+
+`fetchFactorySnapshot` (`src/lib/factory-snapshot.ts`) issues the four initial reads (`robots`, `tasks`, `metrics`, `alerts`) in parallel with a 10 s timeout and forwards abort signals; `commitFactorySnapshot` writes the result into the store.
+
+---
+
+## 7. WebSocket contract
+
+Endpoint from `NEXT_PUBLIC_WS_URL` (default `ws://localhost:8000/ws/factory`).
+
+### 7.1 Auth handshake
+
+After `open`, the client sends the first message — the Supabase access token. The socket is **not** added to the broadcast pool until authenticated:
+
+```json
+{ "type": "auth", "access_token": "<supabase-access-token>" }
+```
+
+The server replies within 5 s:
+
+```json
+{
+  "type": "auth.ok",
+  "data": {
+    "user_id": "…", "display_name": "…", "role": "MONITOR", "expires_at": 1786676400
+  }
 }
 ```
 
-Prefer `Record<string, Robot>` over arrays for realtime robot updates.
+`expires_at` is a Unix epoch (seconds). The client only enters `LIVE` after `auth.ok`.
+
+### 7.2 Events
+
+After `auth.ok`, every message is wrapped in the envelope `{ "type", "data" }` (see §5.10):
+
+| `type` | `data` schema | Frequency |
+|---|---|---|
+| `robot.telemetry` | `RobotTelemetry` | ~10 Hz per robot |
+| `task.updated` | `Task` | event-driven |
+| `metrics.updated` | `FactoryMetrics` | ~1 Hz wall clock |
+| `alert.created` | `FactoryAlert` | event-driven |
+| `factory.reset` | `null` | on `POST /api/v1/mock/reset` or scenario apply |
+
+### 7.3 Close codes handled by the client
+
+| Code | Meaning | Client behavior |
+|---:|---|---|
+| `4401` | Unauthorized / bad token | `refreshSession()` once per token; else invalidate |
+| `4403` | Forbidden / inactive profile | `invalidateSession()` → login with `reason=access_revoked` |
+| `4409` | Profile changed | `refreshUser()` then reconnect |
+| `1008` | Origin policy violation | stop (no reconnect) |
+| `4001`–`4004` | Client-side private codes | backoff reconnect / protocol stop |
+
+### 7.4 Reconnect and resync (`FactorySocket` in `src/lib/websocket-client.ts`)
+
+- Exponential backoff: 1 s → 10 s cap.
+- Events received while a snapshot is synchronizing are buffered (limit 1000) and replayed after sync.
+- A `factory.reset` invalidates an in-flight REST snapshot and triggers re-sync.
+- After every `auth.ok` the store re-fetches the REST snapshot (deterministic, cheap) to close missed-event gaps.
+- Status transitions: `CONNECTING` → `LIVE` → `OFFLINE` (retry) → `LIVE`. Never require a browser refresh after backend restart. Status is always shown as text (plus dot) in the topbar, never color alone.
 
 ---
 
-## 15. WebSocket behavior
+## 8. Environment variables
 
-Required flow:
+All `process.env.NEXT_PUBLIC_*` reads are centralized in `src/lib/env.ts` — it is the only file that touches them. `apps/frontend/.env.example`:
 
-```text
-CONNECTING
-    │
-    ▼
-  LIVE
-    │
-connection lost
-    ▼
- OFFLINE
-    │
- retry
-    ▼
-  LIVE
+```env
+NEXT_PUBLIC_DATA_SOURCE=api
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws/factory
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 ```
 
-Suggested reconnect delays:
+Defaults if unset: `dataSource` → `"mock"`, API → `http://localhost:8000`, WS → `ws://localhost:8000/ws/factory`. Supabase vars have no default; when missing, `getSupabaseConfig()` returns `null` and the app shows an "authentication not configured" error state.
 
-```text
-1 sec
-2 sec
-4 sec
-8 sec
-max 10 sec
-```
-
-Do not require browser refresh after backend restart.
-
-Always show textual status such as `LIVE`, `CONNECTING`, or `OFFLINE`; do not rely on color alone.
+Playwright E2E additionally reads `DESIGNER_EMAIL/PASSWORD`, `MONITOR_EMAIL/PASSWORD`, `ADMIN_EMAIL/PASSWORD`, `E2E_EXTERNAL_SERVERS`, `E2E_BASE_URL`, `E2E_API_URL` (see `playwright.config.ts`).
 
 ---
 
-## 16. Required pages
+## 9. Authentication & RBAC
 
-### `/` — Overview Dashboard
+Supabase Auth via `@supabase/ssr`; roles live server-side in the `profiles` table (`role`, `is_active`) and are read by the backend (`/api/v1/auth/me`).
 
-Recommended layout:
+### 9.1 Files
 
-```text
-┌─────────────────────────────────────────────────────────┐
-│ EV FACTORY DIGITAL TWIN                     LIVE ●      │
-├─────────────────────────────────────────────────────────┤
-│ Throughput │ Fleet │ Avg Cycle │ Starvation │ Tasks    │
-├───────────────────────────────────┬─────────────────────┤
-│                                   │ Fleet               │
-│         FACTORY MAP               │ R01 DELIVERING      │
-│                                   │ R02 IDLE            │
-│                                   │ R03 CHARGING        │
-│                                   │ R04 PICKING         │
-│                                   │ R05 MOVING          │
-├───────────────────────────────────┼─────────────────────┤
-│ Throughput / Cycle chart          │ Alerts              │
-└───────────────────────────────────┴─────────────────────┘
-```
+- `src/lib/supabase/client.ts` — browser client singleton (`createBrowserClient`).
+- `src/lib/supabase/middleware.ts` — `createServerClient` session refresh + optional role lookup.
+- `src/lib/supabase/server.ts` — server client for RSC.
+- `src/middleware.ts` — edge middleware: refreshes session on every request; redirects unauthenticated users to `/login?returnTo=…`; `/admin*` additionally checks role and redirects non-ADMIN to `/forbidden`; sets `Cache-Control: private, no-store`. Matcher excludes `scene-probe`, `_next/static`, `_next/image`, `favicon.ico`, and image assets.
+- `src/components/auth/auth-provider.tsx` — client context: login/logout, session hydration, `onAuthStateChange`, token refresh, expiry/revocation handling, API token injection (`setApiAccessToken`), factory-store reset on logout.
 
-Required:
-
-- KPI cards;
-- factory map;
-- fleet summary;
-- recent alerts;
-- connection status.
-
----
-
-## 17. KPI cards
-
-At minimum:
-
-```text
-Throughput
-Fleet Online
-Average Cycle Time
-Starvation Events
-Active Tasks
-```
-
-Display values cleanly:
-
-```text
-61.4 tasks/h
-52.8 s
-72.1%
-```
-
----
-
-## 18. `/factory` — Factory Digital Twin
-
-Build **2D first, not 3D**.
-
-Recommended implementation: SVG.
-
-```text
-┌─────────────────────────────────────────────────────┐
-│  BATTERY BUFFER                                     │
-│  ┌───────────┐                                      │
-│  │ BP racks  │   ● AMR-01 ───────────┐             │
-│  └───────────┘                       │             │
-│                                      ▼             │
-│                            ● AMR-03                 │
-│                                      │             │
-│                                      ▼             │
-│                           MARRIAGE STATION          │
-│                                                     │
-│ CHARGING                                            │
-│ ┌───────────┐                                       │
-│ │ ● AMR-05  │                                       │
-│ └───────────┘                                       │
-└─────────────────────────────────────────────────────┘
-```
-
-SVG is preferable for MVP because markers are easy to click, label, inspect, and test.
-
----
-
-## 19. Coordinate system
-
-Backend coordinates are factory meters, not pixels.
-
-Example:
-
-```text
-Factory:
-x = 0 → 20 m
-y = 0 → 15 m
-
-Screen:
-1000 × 750 px
-```
-
-Create:
-
-```text
-src/lib/coordinate.ts
-```
-
-Example:
+### 9.2 Permission matrix (`src/lib/auth/permissions.ts`)
 
 ```ts
-export function worldToScreen(
-  x: number,
-  y: number,
-  factoryWidth: number,
-  factoryHeight: number,
-  screenWidth: number,
-  screenHeight: number,
-) {
-  return {
-    x: (x / factoryWidth) * screenWidth,
-    y: screenHeight - (y / factoryHeight) * screenHeight,
-  };
-}
+DESIGNER: operations:view, scenarios:view, scenarios:run, layout:edit
+MONITOR:  operations:view, scenarios:view, scenarios:review, scenarios:apply, factory:control
+ADMIN:    operations:view, scenarios:view, users:manage, audit:view
 ```
 
-Document this convention because ROS integration later must use the same coordinate model.
+`can(role, permission)` gates sidebar links and in-page actions. Note `ADMIN` is administrative and is **not** allowed to run/review/apply scenarios.
+
+### 9.3 Login flow
+
+- `/login` accepts `returnTo` (open-redirect protected by `safeReturnTo`) and `reason` (`session_expired` / `access_revoked`).
+- Role-based default redirect: DESIGNER → `/scenarios`, ADMIN → `/admin`, MONITOR → `/`.
+- 401/403 from the API surface as clear errors; expired sessions redirect to login with the correct reason.
+- `ApplicationFrame` bypasses the protected shell only for `/login` and `/scene-probe`.
 
 ---
 
-## 20. Robot marker
+## 10. Zustand store (`src/stores/factory-store.ts`)
 
-Each robot marker should show:
-
-```text
-AMR-01
-82%
-●
+```ts
+robots: Record<string, Robot>;          // keyed by robot id
+tasks: Record<string, Task>;            // keyed by task_id
+metrics: FactoryMetrics | null;
+metricsHistory: MetricsSample[];        // sampled every 5s, window 5 min
+alerts: FactoryAlert[];                 // capped at 50
+selectedRobotId: string | null;
+connectionStatus: "CONNECTING" | "LIVE" | "OFFLINE" | "MOCK";
 ```
 
-Click robot → select robot → open detail drawer.
+Actions: `setRobots`, `updateRobotTelemetry`, `setTasks`, `updateTask`, `setMetrics` (+ history sampling), `clearMetricsHistory`, `setAlerts`, `addAlert`, `selectRobot`, `setConnectionStatus`, `reset`.
 
-Orientation should use `yaw`.
+Notes:
 
-Make motion visually smooth. Do not implement complicated physics interpolation during MVP.
+- Prefer `Record<string, Robot>` over arrays for realtime updates.
+- `setMetrics` appends to `metricsHistory` only when the 5 s wall-clock sampling interval has elapsed, so telemetry bursts (e.g. high simulation speed) never re-render ECharts per event.
+- Metrics history window is 5 minutes, so the ECharts trend is bounded.
+
+### 10.1 Data flow
+
+```text
+REST snapshot (robots/tasks/metrics/alerts)
+        │
+        ▼
+  Zustand Store  ◀── WebSocket events (incremental)
+        ▲
+        │
+   React components (selective subscriptions)
+```
+
+Mock mode uses `src/lib/fixtures.ts` for the initial snapshot and `useMockTelemetry` (200 ms interval) to animate moving robots.
 
 ---
 
-## 21. `/fleet` — Fleet page
+## 11. Pages
 
-Columns:
+| Route | Access | Contents |
+|---|---|---|
+| `/` | auth | KPI grid, `FactoryMap`, compact fleet table, recent alerts (3), operations trend chart, robot drawer |
+| `/factory` | auth | Full-size `FactoryMap view="2d"`, live alerts feed, layer filter buttons, robot drawer |
+| `/fleet` | auth | Full fleet table with filters (ALL/ACTIVE/IDLE/CHARGING/WARNING/ERROR), robot drawer (battery/speed/pose/task/payload) |
+| `/tasks` | auth | Task table with status badges, pickup/dropoff, duration |
+| `/analytics` | auth | KPI grid + throughput and cycle-time ECharts trends |
+| `/scenarios` | auth + RBAC | Designer run form, scenario history tabs, baseline vs candidate comparison, provenance, approve/reject/apply |
+| `/admin` | ADMIN only | User table (role change, enable/disable), Supabase invite form, audit table |
+| `/forbidden` | auth | 403 access-denied panel |
+| `/scene-probe` | dev only | Fixed 1440×900 3D scene with canned robot poses (no auth) |
+| `/login` | public | Email/password form |
 
-```text
-Robot
-Status
-Battery
-Speed
-Current Task
-Payload
-Last Seen
-```
+### 11.1 Factory map (`FactoryMap`)
 
-Filters:
+- WebGL detection at runtime; renders the React Three Fiber `FactoryScene` when available, otherwise falls back to the SVG `FactoryMap2D`.
+- `/` defaults to auto (3D when WebGL exists), `/factory` forces `2d`.
+- 3D scene: sealed-concrete floor with metre grid, building shell, route lanes, battery buffer rack, marriage station, charging station, no-go zone, AMR meshes, contact shadows, orbit camera with reset. All textures are procedural (canvas) — no image assets in `public/`.
+- Robots read exclusively from the central store; no per-mesh network calls.
 
-```text
-All
-Active
-Idle
-Charging
-Warning
-Error
-```
+### 11.2 Scenario sandbox (`/scenarios`)
 
----
+Full Designer → Monitor → Admin loop:
 
-## 22. Robot detail drawer
+1. **Designer** fills the run form (`scenarioRunRequestSchema`), calls `POST /scenarios/run`.
+2. Candidate appears as `SIMULATED` with baseline-vs-candidate comparison table.
+3. **Monitor** approves or rejects a `SIMULATED` candidate.
+4. **Monitor** applies an `APPROVED` candidate → mock factory resets (confirm dialog), redirects to `/factory`.
 
-Display:
+Role-gated: designers cannot review/apply their own scenario; ADMIN is read-only. Workflow provenance (created/reviewed/applied by whom, version) is displayed.
 
-```text
-AMR-01
+### 11.3 Admin console (`/admin`)
 
-Status
-DELIVERING
-
-Battery
-82%
-
-Speed
-1.1 m/s
-
-Position
-X 12.42 m
-Y 7.81 m
-Yaw 1.57 rad
-
-Current Task
-TASK-101
-
-Payload
-BP-101
-```
-
-Optional later:
-
-- history;
-- traveled path;
-- ETA;
-- battery history.
+- `AdminUserTable` with role select + enable/disable, guarded against disabling the last active admin (409 surfaced).
+- `InviteUserForm` → `POST /admin/users/invite` (501/503 when the Supabase Admin integration is unavailable).
+- `AuditTable` — latest 100 business audit events.
 
 ---
 
-## 23. `/tasks` — Task page
+## 12. Coordinate system
 
-Columns:
-
-```text
-Task
-Payload
-Pickup
-Dropoff
-Robot
-Status
-Created
-Duration
-```
-
-Example:
-
-```text
-TASK-101  BP-101  Buffer  Marriage  AMR-01  IN_PROGRESS
-TASK-102  BP-102  Buffer  Marriage  AMR-04  PICKUP
-TASK-103  BP-103  Buffer  Marriage  —       QUEUED
-```
+- Backend coordinates are factory meters, not pixels. Factory is 20 m × 15 m (`FACTORY_SIZE` in `src/lib/coordinate.ts`).
+- `worldToScreen(x, y, …)` converts meters → pixels for the SVG map (y flipped).
+- `toScene(point, height)` in `src/lib/factory-layout.ts` converts factory meters (y = north) → scene units (y = up, floor centred on origin) for the 3D map.
+- Keep this single convention; components never convert themselves.
 
 ---
 
-## 24. Alerts UI
+## 13. Status conventions & UI states
 
-Use a persistent panel rather than temporary toast only.
-
-Example:
-
-```text
-WARNING
-AMR-05 battery below 20%
-10 seconds ago
-
-WARNING
-Task backlog above threshold
-38 seconds ago
-```
-
-Alert should expose:
-
-- severity;
-- message;
-- timestamp;
-- linked robot/task where possible.
-
----
-
-## 25. Analytics
-
-Start with:
-
-- throughput trend;
-- cycle-time trend;
-- fleet utilization;
-- completed tasks;
-- starvation events.
-
-Use ECharts.
-
-Do not invent historical factory data and present it as real. If backend history does not exist yet, use explicit development fixtures.
-
----
-
-## 26. Scenario controls — later in MVP
-
-After realtime monitoring works, add:
-
-```text
-Robot Count
-Task Interval
-Robot Speed
-Simulation Speed
-Battery Drain Mode
-```
-
-Example:
-
-```text
-Robot count
-[-] 5 [+]
-
-Task interval
-8 seconds
-
-Robot speed
-1.2 m/s
-
-Simulation speed
-1x  2x  4x
-
-[Reset]               [Apply]
-```
-
-Do not implement a CAD layout editor in the first frontend sprint.
-
----
-
-## 27. App shell
-
-Recommended navigation:
-
-```text
-Overview
-Factory
-Fleet
-Tasks
-Analytics
-Scenarios
-```
-
-Desktop-first layout is appropriate.
-
----
-
-## 28. Status conventions
-
-Use a consistent semantic representation:
+Semantic status pairing (color + text always together):
 
 ```text
 IDLE               neutral
@@ -968,638 +573,55 @@ MOVING_TO_PICKUP   active
 PICKING            active
 DELIVERING         active
 DROPPING           active
+MOVING_TO_CHARGER  active
 WAITING            warning
 CHARGING           info
 ERROR              critical
 OFFLINE            muted
 ```
 
-Always pair color with text/icon.
+Every REST-powered section provides loading / success / empty / error states. When the WebSocket drops but snapshot data exists, the UI stays populated with `OFFLINE` status — it never blanks out. Invalid WebSocket payloads are logged in development and ignored; they never crash the dashboard.
 
 ---
 
-## 29. Loading, empty, and error states
+## 14. Testing
 
-Every REST-powered section needs:
+### 14.1 Unit / component tests (Vitest)
 
-```text
-loading
-success
-empty
-error
-```
+- Config `vitest.config.ts`; setup `src/test/setup.ts` (jest-dom + cleanup).
+- Tests live next to source (`*.test.ts(x)`): api-client, websocket-client, factory-snapshot, factory-layout, permissions, return-to, store, kpi-grid, fleet-table, battery, operations-chart, scenario-actions, scenario-comparison, login-form, auth-provider, factory-map, middleware, and page tests.
 
-Examples:
-
-```text
-No active tasks.
-New battery delivery tasks will appear here.
-```
-
-```text
-Unable to load factory data.
-
-[Retry]
-```
-
-If WebSocket is lost but snapshot data exists:
-
-```text
-OFFLINE
-Showing last known factory state.
-```
-
-Do not blank the UI.
-
----
-
-## 30. Environment variables
-
-Create:
-
-```text
-apps/frontend/.env.example
-```
-
-```env
-NEXT_PUBLIC_API_URL=http://localhost:8000
-NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws/factory
-```
-
-Never hardcode backend URLs in components.
-
----
-
-## 31. API client
-
-Centralize API access.
-
-Expected functions:
-
-```text
-getFactory()
-getRobots()
-getRobot(id)
-getTasks()
-getMetrics()
-getAlerts()
-updateMockConfig()
-resetMockFactory()
-```
-
-Do not put repeated fetch logic in page components.
-
----
-
-## 32. Realtime rendering performance
-
-Telemetry may arrive at 10 Hz for five robots.
-
-Guidelines:
-
-- store robots by ID;
-- subscribe components only to required state;
-- do not store unlimited telemetry history in Zustand;
-- avoid app-wide context updates per telemetry event;
-- current state and historical state should be separate concerns.
-
----
-
-## 33. Testing requirements
-
-Use:
-
-```text
-Vitest
-Testing Library
-```
-
-Minimum tests:
-
-### Robot card
-
-Given AMR-01, battery 82, status DELIVERING:
-
-```text
-AMR-01 visible
-82% visible
-DELIVERING visible
-```
-
-### Low battery
-
-Battery = 15 → warning indicator visible.
-
-### Metrics
-
-Throughput = 61.4 → correctly formatted.
-
-### Realtime store update
-
-Initial:
-
-```text
-AMR-01 x = 1
-```
-
-Event:
-
-```text
-AMR-01 x = 5
-```
-
-Expected:
-
-```text
-store AMR-01 x = 5
-```
-
-### Invalid WebSocket message
-
-Expected:
-
-```text
-app does not crash
-store is not corrupted
-```
-
----
-
-## 34. Frontend CI
-
-Add a frontend job to `.github/workflows/ci.yml` once the app exists.
-
-Expected commands:
-
-```text
-npm ci
+```bash
+cd apps/frontend
 npm run lint
-npm run test
+npm run typecheck
+npm test -- --run
 npm run build
 ```
 
-Example:
+### 14.2 Browser E2E (Playwright)
 
-```yaml
-frontend-quality:
-  name: Frontend Quality
-  runs-on: ubuntu-24.04
-
-  defaults:
-    run:
-      working-directory: apps/frontend
-
-  steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-
-    - name: Setup Node
-      uses: actions/setup-node@v4
-      with:
-        node-version: 22
-        cache: npm
-        cache-dependency-path: apps/frontend/package-lock.json
-
-    - name: Install dependencies
-      run: npm ci
-
-    - name: Lint
-      run: npm run lint
-
-    - name: Test
-      run: npm run test -- --run
-
-    - name: Build
-      run: npm run build
-```
-
----
-
-## 35. Git workflow
-
-Start from current `develop`:
+- `playwright.config.ts` boots FastAPI + Next.js servers locally (or uses `E2E_EXTERNAL_SERVERS=true`).
+- `e2e/hosted-rbac.spec.ts` authenticates against a dedicated hosted Supabase project with real `DESIGNER`/`MONITOR`/`ADMIN` accounts. Skips (with the missing variable names) when credentials are absent.
+- Trace, screenshot, and video are deliberately disabled — login requests contain passwords and responses contain tokens.
+- Runs against the dedicated development Supabase project only, never production.
 
 ```bash
-git switch develop
-git pull --ff-only origin develop
-
-git switch -c feat/frontend-foundation
-```
-
-Suggested follow-up branches:
-
-```text
-feat/frontend-foundation
-feat/factory-map
-feat/realtime-telemetry
-feat/fleet-dashboard
-feat/task-dashboard
-feat/alerts-ui
-feat/analytics-dashboard
-feat/scenario-controls
-```
-
-Avoid one giant frontend PR.
-
----
-
-# 36. Frontend implementation roadmap
-
-## FE-0 — Foundation
-
-Goal: Next.js builds locally and in CI.
-
-```text
-[ ] Create Next.js app
-[ ] TypeScript
-[ ] Tailwind
-[ ] Setup Vitest
-[ ] Setup Testing Library
-[ ] Add frontend CI
-[ ] Add .env.example
-[ ] Create basic app shell
-```
-
-Definition of done:
-
-```text
-npm run lint   passes
-npm run test   passes
-npm run build  passes
-CI             green
+cd apps/frontend
+npx playwright install chromium
+npm run test:e2e:list
+npm run test:e2e
 ```
 
 ---
 
-## FE-1 — Static dashboard
+## 15. CI
 
-Do not connect backend yet.
-
-Use fixture data for:
-
-```text
-5 AMRs
-3 tasks
-3 alerts
-factory metrics
-```
-
-Build:
-
-```text
-[ ] Sidebar
-[ ] Topbar
-[ ] Connection badge placeholder
-[ ] KPI cards
-[ ] Fleet table
-[ ] Task table
-[ ] Alert list
-```
+`.github/workflows/ci.yml` runs a `frontend` job: `npm ci` → `lint` → `typecheck` → `test --run` → `build` (build sets `NEXT_PUBLIC_DATA_SOURCE=api`). A separate `hosted-e2e` job runs Playwright only when the required repository secrets are present.
 
 ---
 
-## FE-2 — REST integration
-
-Replace initial fixture state with:
-
-```text
-[ ] GET robots
-[ ] GET tasks
-[ ] GET metrics
-[ ] GET alerts
-[ ] Loading states
-[ ] Error states
-[ ] Retry behavior
-```
-
-Acceptance:
-
-> Refreshing the page shows the current backend factory snapshot.
-
----
-
-## FE-3 — WebSocket integration
-
-```text
-[ ] WebSocket client
-[ ] Zod event validation
-[ ] robot.telemetry handler
-[ ] task.updated handler
-[ ] metrics.updated handler
-[ ] alert.created handler
-[ ] reconnect logic
-[ ] LIVE/OFFLINE indicator
-```
-
-Acceptance:
-
-> When the mock backend moves AMR-01, AMR-01 updates on the browser without refresh.
-
----
-
-## FE-4 — 2D factory map
-
-```text
-[ ] Factory boundary
-[ ] Battery Buffer
-[ ] Marriage Station
-[ ] Charging Station
-[ ] Robot markers
-[ ] Coordinate conversion
-[ ] Robot orientation
-[ ] Robot selection
-[ ] Robot detail drawer
-```
-
-Acceptance:
-
-> Five AMRs move according to backend `(x, y, yaw)` telemetry.
-
----
-
-## FE-5 — Operations polish
-
-```text
-[ ] Better status badges
-[ ] Battery warning
-[ ] Alert interactions
-[ ] Task filters
-[ ] Fleet filters
-[ ] Metric formatting
-[ ] Empty states
-[ ] Error states
-[ ] Last-known-state behavior
-```
-
----
-
-## FE-6 — Analytics
-
-```text
-[ ] Throughput chart
-[ ] Cycle-time chart
-[ ] Fleet utilization
-[ ] Starvation display
-```
-
----
-
-## FE-7 — Scenario controls
-
-```text
-[ ] Robot count
-[ ] Task interval
-[ ] AMR speed
-[ ] Simulation speed
-[ ] Reset
-[ ] Apply
-```
-
----
-
-# 37. Frontend MVP acceptance criteria
-
-```text
-[ ] Next.js builds in CI
-[ ] TypeScript build succeeds
-[ ] Lint passes
-[ ] Tests pass
-
-[ ] Overview page exists
-[ ] Factory page exists
-[ ] Fleet page exists
-[ ] Tasks page exists
-
-[ ] Initial state comes from REST
-[ ] WebSocket connects automatically
-[ ] WebSocket reconnects after backend restart
-[ ] Connection status is visible
-
-[ ] Five AMRs appear on factory map
-[ ] AMR positions update realtime
-[ ] AMR orientation updates
-[ ] Robot state updates
-[ ] Battery updates
-
-[ ] Robot detail opens
-[ ] Task is visible
-[ ] Payload is visible
-
-[ ] KPI cards update
-[ ] Alerts appear
-[ ] Low-battery state is visible
-
-[ ] Loading state exists
-[ ] Empty state exists
-[ ] API error state exists
-[ ] Offline realtime state exists
-
-[ ] Invalid WebSocket payload does not crash UI
-[ ] Frontend does not depend on MOCK/ROS source details
-```
-
----
-
-# 38. Suggested GitHub issues
-
-## FE-001 — Bootstrap frontend
-
-Acceptance:
-
-```text
-[ ] apps/frontend exists
-[ ] Next.js + TypeScript works
-[ ] Tailwind works
-[ ] package-lock committed
-[ ] npm run lint passes
-[ ] npm run build passes
-[ ] frontend CI green
-```
-
-## FE-002 — Application shell
-
-Implement:
-
-```text
-Sidebar
-Topbar
-Page container
-Connection indicator placeholder
-```
-
-Routes:
-
-```text
-/
-/factory
-/fleet
-/tasks
-/analytics
-/scenarios
-```
-
-## FE-003 — Define frontend contracts
-
-Create Zod/types for:
-
-```text
-Robot
-RobotTelemetry
-Task
-Metrics
-Alert
-WebSocketEvent
-```
-
-## FE-004 — Static operations dashboard
-
-Fixture-driven:
-
-```text
-KPI cards
-Fleet summary
-Recent alerts
-Task summary
-```
-
-## FE-005 — REST client
-
-Implement:
-
-```text
-getRobots
-getTasks
-getMetrics
-getAlerts
-```
-
-## FE-006 — Zustand store
-
-State:
-
-```text
-robots
-tasks
-metrics
-alerts
-connection status
-```
-
-## FE-007 — WebSocket client
-
-Requirements:
-
-```text
-connect
-validate
-route events
-reconnect
-cleanup
-connection state
-```
-
-## FE-008 — 2D factory map
-
-Render:
-
-```text
-Battery Buffer
-Marriage Station
-Charging Station
-5 AMRs
-```
-
-## FE-009 — Realtime map integration
-
-Acceptance:
-
-> Mock backend movement is visible in the factory map.
-
-## FE-010 — Fleet page
-
-Implement table, filters, status and detail drawer.
-
-## FE-011 — Task page
-
-Implement task table and detail view.
-
-## FE-012 — Alerts
-
-Implement persistent alert list and severity UI.
-
----
-
-# 39. Do not work on yet
-
-Avoid spending the first sprint on:
-
-```text
-Photorealistic 3D
-Advanced animations
-ROS
-Gazebo
-Authentication
-Complex role permissions
-CAD layout editor
-AI chatbot
-Predictive maintenance
-Mobile optimization
-Fancy marketing landing page
-```
-
-Priority is realtime operations state.
-
----
-
-# 40. End-to-end success scenario
-
-The first important frontend demo should work like this:
-
-```text
-User opens dashboard
-        │
-        ▼
-Frontend GETs factory snapshot
-        │
-        ▼
-5 AMRs appear
-        │
-        ▼
-WebSocket connects
-        │
-        ▼
-LIVE indicator appears
-        │
-        ▼
-Mock backend changes AMR-01 coordinates
-        │
-        ▼
-AMR-01 moves on factory map
-        │
-        ▼
-AMR-01 changes PICKING → DELIVERING
-        │
-        ▼
-Fleet list updates
-        │
-        ▼
-Battery drops below threshold
-        │
-        ▼
-Warning appears
-        │
-        ▼
-Task completes
-        │
-        ▼
-Metrics update
-```
-
-If this works, the frontend is architecturally ready for later ROS2/Gazebo integration.
-
----
-
-# 41. Definition of Done for frontend PRs
+## 16. Definition of Done for frontend PRs
 
 ```text
 [ ] Requirement implemented
@@ -1609,39 +631,27 @@ If this works, the frontend is architecturally ready for later ROS2/Gazebo integ
 [ ] Tests pass
 [ ] npm run build passes
 [ ] CI green
-[ ] No hardcoded backend URL outside env/config
+[ ] No hardcoded backend URL outside env/config (src/lib/env.ts)
 [ ] No backend business logic duplicated in FE
-[ ] Loading/error states considered where relevant
-[ ] Contract changes documented
+[ ] Loading/error/offline states considered where relevant
+[ ] Contract changes documented (this guide + docs/api.md)
 [ ] PR reviewed by another team member
 ```
 
 ---
 
-# 42. Immediate implementation order
-
-Work in exactly this order:
+## 17. Not in scope of the current MVP
 
 ```text
-1. feat/frontend-foundation
-       ↓
-2. Static UI with fixtures
-       ↓
-3. REST initial-state integration
-       ↓
-4. WebSocket realtime integration
-       ↓
-5. 2D moving AMRs
-       ↓
-6. Fleet/tasks/alerts polish
-       ↓
-7. Analytics
-       ↓
-8. Scenario controls
+ROS / Gazebo telemetry ingestion
+Photorealistic 3D
+Advanced animations
+CAD layout editor
+AI chatbot
+Predictive maintenance
+Mobile optimization
 ```
 
-The first technical checkpoint is:
+The current milestone is:
 
-> **Five mock AMRs move in realtime on the browser, users can inspect their current state, and the UI remains usable if the WebSocket disconnects temporarily.**
-
-Do not block this milestone on 3D, ROS2, Gazebo, authentication, or database work.
+> **Authenticated users watch five mock AMRs move in realtime on a 2D/3D factory twin, inspect fleet/tasks/analytics, run and review SimPy scenarios, and administrators manage roles and audit — all with a UI that remains usable if the WebSocket disconnects temporarily.**
