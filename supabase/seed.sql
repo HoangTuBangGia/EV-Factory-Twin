@@ -1,0 +1,171 @@
+-- Factory Twin Seed Data
+-- Safely inserts or updates demo accounts (Designer, Monitor, Admin) in auth.users, auth.identities, and public.profiles.
+
+create extension if not exists pgcrypto;
+
+do $$
+declare
+  designer_id uuid;
+  monitor_id uuid;
+  admin_id uuid;
+begin
+  -----------------------------------------------------------------------------
+  -- 1. Demo Designer (designer@example.com / Designer123!)
+  -----------------------------------------------------------------------------
+  select id into designer_id from auth.users where lower(email) = 'designer@example.com';
+  if designer_id is null then
+    designer_id := gen_random_uuid();
+    insert into auth.users (
+      instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+      raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+      confirmation_token, recovery_token, email_change_token_new, email_change,
+      email_change_token_current, reauthentication_token, phone_change_token, phone_change
+    ) values (
+      '00000000-0000-0000-0000-000000000000', designer_id, 'authenticated', 'authenticated',
+      'designer@example.com', crypt('Designer123!', gen_salt('bf')), now(),
+      '{"provider":"email","providers":["email"],"app_role":"DESIGNER"}'::jsonb,
+      '{"display_name":"Demo Designer"}'::jsonb, now(), now(),
+      '', '', '', '',
+      '', '', '', ''
+    );
+  else
+    update auth.users
+    set encrypted_password = crypt('Designer123!', gen_salt('bf')),
+        raw_app_meta_data = '{"provider":"email","providers":["email"],"app_role":"DESIGNER"}'::jsonb,
+        confirmation_token = '',
+        recovery_token = '',
+        email_change_token_new = '',
+        email_change = '',
+        email_change_token_current = '',
+        reauthentication_token = '',
+        phone_change_token = '',
+        phone_change = '',
+        updated_at = now()
+    where id = designer_id;
+  end if;
+
+  insert into auth.identities (
+    id, provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at
+  ) values (
+    designer_id,
+    'designer@example.com',
+    designer_id,
+    format('{"sub":"%s","email":"%s"}', designer_id, 'designer@example.com')::jsonb,
+    'email',
+    now(), now(), now()
+  )
+  on conflict (provider_id, provider) do update
+  set identity_data = format('{"sub":"%s","email":"%s"}', designer_id, 'designer@example.com')::jsonb,
+      updated_at = now();
+
+  update public.profiles
+  set display_name = 'Demo Designer', role = 'DESIGNER', is_active = true
+  where id = designer_id;
+
+  -----------------------------------------------------------------------------
+  -- 2. Demo Monitor (monitor@example.com / Monitor123!)
+  -----------------------------------------------------------------------------
+  select id into monitor_id from auth.users where lower(email) = 'monitor@example.com';
+  if monitor_id is null then
+    monitor_id := gen_random_uuid();
+    insert into auth.users (
+      instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+      raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+      confirmation_token, recovery_token, email_change_token_new, email_change,
+      email_change_token_current, reauthentication_token, phone_change_token, phone_change
+    ) values (
+      '00000000-0000-0000-0000-000000000000', monitor_id, 'authenticated', 'authenticated',
+      'monitor@example.com', crypt('Monitor123!', gen_salt('bf')), now(),
+      '{"provider":"email","providers":["email"],"app_role":"MONITOR"}'::jsonb,
+      '{"display_name":"Demo Monitor"}'::jsonb, now(), now(),
+      '', '', '', '',
+      '', '', '', ''
+    );
+  else
+    update auth.users
+    set encrypted_password = crypt('Monitor123!', gen_salt('bf')),
+        raw_app_meta_data = '{"provider":"email","providers":["email"],"app_role":"MONITOR"}'::jsonb,
+        confirmation_token = '',
+        recovery_token = '',
+        email_change_token_new = '',
+        email_change = '',
+        email_change_token_current = '',
+        reauthentication_token = '',
+        phone_change_token = '',
+        phone_change = '',
+        updated_at = now()
+    where id = monitor_id;
+  end if;
+
+  insert into auth.identities (
+    id, provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at
+  ) values (
+    monitor_id,
+    'monitor@example.com',
+    monitor_id,
+    format('{"sub":"%s","email":"%s"}', monitor_id, 'monitor@example.com')::jsonb,
+    'email',
+    now(), now(), now()
+  )
+  on conflict (provider_id, provider) do update
+  set identity_data = format('{"sub":"%s","email":"%s"}', monitor_id, 'monitor@example.com')::jsonb,
+      updated_at = now();
+
+  update public.profiles
+  set display_name = 'Demo Monitor', role = 'MONITOR', is_active = true
+  where id = monitor_id;
+
+  -----------------------------------------------------------------------------
+  -- 3. Demo Admin (admin@example.com / Admin123!)
+  -----------------------------------------------------------------------------
+  select id into admin_id from auth.users where lower(email) = 'admin@example.com';
+  if admin_id is null then
+    admin_id := gen_random_uuid();
+    insert into auth.users (
+      instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+      raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+      confirmation_token, recovery_token, email_change_token_new, email_change,
+      email_change_token_current, reauthentication_token, phone_change_token, phone_change
+    ) values (
+      '00000000-0000-0000-0000-000000000000', admin_id, 'authenticated', 'authenticated',
+      'admin@example.com', crypt('Admin123!', gen_salt('bf')), now(),
+      '{"provider":"email","providers":["email"],"app_role":"ADMIN"}'::jsonb,
+      '{"display_name":"Demo Admin"}'::jsonb, now(), now(),
+      '', '', '', '',
+      '', '', '', ''
+    );
+  else
+    update auth.users
+    set encrypted_password = crypt('Admin123!', gen_salt('bf')),
+        raw_app_meta_data = '{"provider":"email","providers":["email"],"app_role":"ADMIN"}'::jsonb,
+        confirmation_token = '',
+        recovery_token = '',
+        email_change_token_new = '',
+        email_change = '',
+        email_change_token_current = '',
+        reauthentication_token = '',
+        phone_change_token = '',
+        phone_change = '',
+        updated_at = now()
+    where id = admin_id;
+  end if;
+
+  insert into auth.identities (
+    id, provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at
+  ) values (
+    admin_id,
+    'admin@example.com',
+    admin_id,
+    format('{"sub":"%s","email":"%s"}', admin_id, 'admin@example.com')::jsonb,
+    'email',
+    now(), now(), now()
+  )
+  on conflict (provider_id, provider) do update
+  set identity_data = format('{"sub":"%s","email":"%s"}', admin_id, 'admin@example.com')::jsonb,
+      updated_at = now();
+
+  update public.profiles
+  set display_name = 'Demo Admin', role = 'ADMIN', is_active = true
+  where id = admin_id;
+
+end $$;

@@ -1,0 +1,17 @@
+# Local Supabase CLI configuration. `project_id` identifies the local stack;
+# linking to a hosted project is stored by the CLI and does not belong here.
+project_id = "ev-factory-twin"
+
+[db]
+major_version = 17
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://127.0.0.1:3000"]
+enable_signup = false
+enable_anonymous_sign_ins = false
+
+[auth.email]
+enable_signup = false
+enable_confirmations = false
