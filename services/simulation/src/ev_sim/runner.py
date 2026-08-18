@@ -4,7 +4,7 @@ import simpy
 
 from ev_sim.config import SimulationConfig
 from ev_sim.metrics import calculate_metrics
-from ev_sim.model import FactorySimulation
+from ev_sim.model import FactorySimulation, TaskRecord
 from ev_sim.scenario import load_scenario
 
 
@@ -18,7 +18,7 @@ def task_generator(
         yield env.timeout(config.task_arrival_interval)
 
 
-def run_simulation(config: SimulationConfig):
+def run_simulation(config: SimulationConfig) -> list[TaskRecord]:
     env = simpy.Environment()
 
     simulation = FactorySimulation(

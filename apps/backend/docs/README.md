@@ -57,25 +57,32 @@ uv run --package ev-twin-api \
   uvicorn ev_twin_api.main:app --app-dir apps/backend/src --reload
 ```
 
-Mở http://localhost:8000/docs — đây là trang tài liệu API tự sinh, bấm được
-"Try it out" để gọi thử từng endpoint ngay trên trình duyệt.
+Mở http://localhost:8000/docs — đây là trang tài liệu API tự sinh. `/health` là
+public; mọi endpoint nghiệp vụ cần Supabase access token. Bấm **Authorize** và
+nhập token của tài khoản demo để gọi thử.
 
 Thử vài lệnh:
 
 ```bash
 curl localhost:8000/health                  # app còn sống không
-curl localhost:8000/api/v1/robots           # 5 con robot đang ở đâu
-curl localhost:8000/api/v1/tasks            # các đơn chở pin
-curl localhost:8000/api/v1/metrics          # năng suất, tỉ lệ robot bận...
+read -rsp "Access token: " ACCESS_TOKEN && export ACCESS_TOKEN
+curl -H "Authorization: Bearer $ACCESS_TOKEN" localhost:8000/api/v1/robots
+curl -H "Authorization: Bearer $ACCESS_TOKEN" localhost:8000/api/v1/tasks
+curl -H "Authorization: Bearer $ACCESS_TOKEN" localhost:8000/api/v1/metrics
 ```
 
 Xem dòng dữ liệu realtime (cần `websockets`, đã có sẵn trong môi trường):
 
 ```bash
 uv run --package ev-twin-api python3 -c "
-import asyncio, json, websockets
+import asyncio, json, os, websockets
 async def main():
-    async with websockets.connect('ws://127.0.0.1:8000/ws/factory') as ws:
+    async with websockets.connect(
+        'ws://127.0.0.1:8000/ws/factory',
+        origin='http://localhost:3000',
+    ) as ws:
+        await ws.send(json.dumps({'type': 'auth', 'access_token': os.environ['ACCESS_TOKEN']}))
+        print(json.loads(await ws.recv()))  # auth.ok
         for _ in range(10):
             print(json.loads(await ws.recv()))
 asyncio.run(main())
@@ -92,9 +99,13 @@ Nếu muốn xem robot chạy nhanh hơn cho dễ quan sát, tăng tốc mô ph�
 
 ```bash
 curl -X POST localhost:8000/api/v1/mock/config \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"simulation_speed": 8, "task_interval_seconds": 2, "robot_speed_mps": 3}'
+  -d '{"robot_count":5,"simulation_speed":8,"task_interval_seconds":2,"robot_speed_mps":3,"low_battery_threshold":20}'
 ```
+
+Lệnh đổi config chỉ thành công với token role `MONITOR`. Chạy
+`unset ACCESS_TOKEN` khi kiểm tra xong.
 
 ## Đọc tiếp gì?
 
@@ -113,8 +124,9 @@ curl -X POST localhost:8000/api/v1/mock/config \
 
 - **Toạ độ luôn là mét, không bao giờ là pixel.** Xưởng rộng 20 m × 15 m.
   Frontend tự quy đổi mét sang pixel để vẽ. Backend không biết gì về màn hình.
-- **Dữ liệu chỉ nằm trong RAM.** Tắt backend là mất sạch, khởi động lại thì
-  xưởng về trạng thái ban đầu. Đây là lựa chọn có chủ ý cho giai đoạn này;
-  database sẽ thêm sau.
+- **State realtime của xưởng vẫn nằm trong RAM.** Tắt backend thì robot/task/KPI
+  đang chạy trở về trạng thái ban đầu. Khi có `DATABASE_URL`, profile, scenario,
+  actor review/apply và audit log được lưu bền vững trong PostgreSQL; nếu thiếu
+  biến này backend chỉ dùng repository in-memory cho local/test và ghi cảnh báo.
 - **Các con số về pin là số minh hoạ cho demo**, không phải mô hình pin thật.
   Chúng được cố ý làm nhanh lên để xem được kết quả trong vài chục giây.

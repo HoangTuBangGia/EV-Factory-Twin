@@ -17,6 +17,9 @@ htmlcov/
 node_modules/
 .next/
 out/
+*.tsbuildinfo
+playwright-report/
+test-results/
 
 # -------------------------
 # ROS 2
@@ -54,6 +57,7 @@ Thumbs.db
 # -------------------------
 evaluation/reports/*
 !evaluation/reports/.gitkeep
+!evaluation/reports/*.md
 
 # AI logs — tracked structure, ignored content
 .ai-log/*.jsonl

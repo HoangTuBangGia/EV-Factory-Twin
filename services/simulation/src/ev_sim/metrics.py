@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from math import isfinite
 
 from ev_sim.model import TaskRecord
 
@@ -19,10 +20,23 @@ def calculate_metrics(
     simulation_time: float,
     total_tasks: int | None = None,
 ) -> SimulationMetrics:
+    if (
+        isinstance(simulation_time, bool)
+        or not isinstance(simulation_time, (int, float))
+        or not isfinite(simulation_time)
+        or simulation_time <= 0
+    ):
+        raise ValueError("simulation_time must be a positive finite number")
+
     completed_tasks = len(records)
 
     if total_tasks is None:
         total_tasks = completed_tasks
+    elif isinstance(total_tasks, bool) or not isinstance(total_tasks, int) or total_tasks < 0:
+        raise ValueError("total_tasks must be a non-negative integer")
+
+    if total_tasks < completed_tasks:
+        raise ValueError("total_tasks cannot be less than completed tasks")
 
     unfinished_tasks = total_tasks - completed_tasks
 
