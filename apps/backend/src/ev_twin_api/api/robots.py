@@ -1,9 +1,14 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from ev_twin_api.api.dependencies import READ_ROLES, require_roles
 from ev_twin_api.schemas.robot import Robot
 from ev_twin_api.services.factory_state import FactoryStateDep
 
-router = APIRouter(prefix="/api/v1/robots", tags=["robots"])
+router = APIRouter(
+    prefix="/api/v1/robots",
+    tags=["robots"],
+    dependencies=[Depends(require_roles(*READ_ROLES))],
+)
 
 
 @router.get("", response_model=list[Robot])

@@ -24,9 +24,21 @@ frontend không phải sửa code khi backend đổi nguồn dữ liệu.
 
 Mọi endpoint đều nằm dưới `/api/v1`, **trừ `/health`**.
 
+Mọi REST endpoint ngoài `/health` yêu cầu Supabase access token trong header:
+
+```http
+Authorization: Bearer <access-token>
+```
+
+Token thiếu/sai/hết hạn trả `401`; tài khoản bị khóa hoặc sai quyền trả `403`;
+dịch vụ xác thực/JWKS/profile database chưa sẵn sàng trả `503`. Role được đọc từ
+`public.profiles`, không lấy từ request frontend hay generic claim
+`role=authenticated` của Supabase.
+
 | Method | Path | Response | Mô tả |
 |---|---|---|---|
 | GET | `/health` | [`HealthResponse`](#health) | Liveness, không phụ thuộc engine mock |
+| GET | `/api/v1/auth/me` | `CurrentUser` | User/profile/role đang đăng nhập |
 | GET | `/api/v1/factory` | [`FactoryLayout`](#station--factorylayout) | Kích thước nhà máy + 6 station |
 | GET | `/api/v1/robots` | [`Robot[]`](#robot) | Toàn bộ AMR |
 | GET | `/api/v1/robots/{robot_id}` | [`Robot`](#robot) | 1 AMR; id lạ → 404 |
@@ -38,7 +50,32 @@ Mọi endpoint đều nằm dưới `/api/v1`, **trừ `/health`**.
 | POST | `/api/v1/mock/stop` | [`MockControlResponse`](#mockcontrolresponse) | Dừng engine mock |
 | POST | `/api/v1/mock/reset` | [`MockControlResponse`](#mockcontrolresponse) | Reset state về ban đầu |
 | POST | `/api/v1/mock/config` | [`MockFactoryConfig`](#mockfactoryconfig) | Đổi tham số mô phỏng |
+| GET | `/api/v1/scenarios` | [`Scenario[]`](#scenario-benchmark-và-phê-duyệt) | Danh sách candidate theo thứ tự tạo |
+| GET | `/api/v1/scenarios/baseline` | [`Scenario`](#scenario) | Benchmark baseline chuẩn của repository |
+| GET | `/api/v1/scenarios/{scenario_id}` | [`Scenario`](#scenario) | Chi tiết candidate; id lạ → 404 |
+| POST | `/api/v1/scenarios/run` | [`Scenario`](#scenario) | Chạy benchmark SimPy cho candidate |
+| POST | `/api/v1/scenarios/{scenario_id}/approve` | [`Scenario`](#scenario) | Phê duyệt candidate đã mô phỏng |
+| POST | `/api/v1/scenarios/{scenario_id}/reject` | [`Scenario`](#scenario) | Từ chối candidate đã mô phỏng |
+| POST | `/api/v1/scenarios/{scenario_id}/apply` | [`Scenario`](#scenario) | Áp dụng candidate đã duyệt vào mock realtime |
+| GET | `/api/v1/admin/users` | `AdminUser[]` | Danh sách account/profile; chỉ `ADMIN` |
+| PATCH | `/api/v1/admin/users/{user_id}` | `AdminUser` | Đổi role hoặc trạng thái; chỉ `ADMIN` |
+| POST | `/api/v1/admin/users/invite` | `AdminUser` | Mời user qua Supabase Auth; chỉ `ADMIN` |
+| GET | `/api/v1/admin/audit` | `AuditEvent[]` | Audit nghiệp vụ; chỉ `ADMIN` |
 | WS | `/ws/factory` | [envelope](#websocket-event-envelope) | Stream realtime |
+
+Ma trận quyền REST hiện tại:
+
+| Nhóm endpoint | DESIGNER | MONITOR | ADMIN |
+|---|---:|---:|---:|
+| GET auth/factory/robot/task/KPI/alert/scenario | Có | Có | Có |
+| `POST /scenarios/run` | Có | Không | Không |
+| Approve/Reject/Apply scenario | Không | Có | Không |
+| Start/Stop/Reset/Config MockFactory | Không | Có | Không |
+| Quản lý user/role và đọc business audit | Không | Không | Có |
+
+`ADMIN` là role quản trị kỹ thuật, không tự động kế thừa quyền vận hành.
+WebSocket dùng cùng Supabase access token nhưng gửi token trong message đầu tiên,
+không đặt token trên query string.
 
 `/ws/factory` không xuất hiện trong `/docs` (OpenAPI không mô tả WebSocket) —
 hợp đồng của nó nằm ở mục [WebSocket event envelope](#websocket-event-envelope).
@@ -276,6 +313,216 @@ Giá trị ngoài khoảng cho phép → **422**.
   sinh thêm/bớt robot. Muốn thấy số robot mới, gọi thêm `POST /api/v1/mock/reset`.
   `/config` cố ý **không** tự reset, vì reset sẽ xoá sạch task/tiến trình đang chạy.
 
+## Scenario benchmark và phê duyệt
+
+Nhóm endpoint này tạo vòng MVP human-in-the-loop:
+
+```text
+chạy benchmark → xem KPI → approve/reject → apply nếu đã approve
+```
+
+`POST /api/v1/scenarios/run` chạy benchmark SimPy nhưng **không thay đổi** mock
+factory realtime. Chỉ `POST /api/v1/scenarios/{scenario_id}/apply` mới cập nhật
+mock factory và reset trạng thái vận hành hiện tại.
+
+Khi có `DATABASE_URL`, candidate và business audit được lưu trong PostgreSQL nên
+vẫn còn sau khi backend restart. Chế độ local/test không cấu hình database mới
+dùng repository in-memory và sẽ mất dữ liệu khi process dừng. Baseline được đọc
+từ scenario chuẩn trong repository mã nguồn, có id `baseline`, không nằm trong
+`GET /api/v1/scenarios` và chỉ dùng để so sánh.
+
+### ScenarioRunRequest
+
+Body của `POST /api/v1/scenarios/run`; tất cả field đều bắt buộc:
+
+```json
+{
+  "name": "more-robots",
+  "num_robots": 6,
+  "num_tasks": 500,
+  "task_arrival_interval": 5.0,
+  "travel_time": 30.0,
+  "loading_time": 10.0,
+  "simulation_time": 3600.0
+}
+```
+
+| Field | Type | Giới hạn | Ý nghĩa |
+|---|---|---|---|
+| `name` | string | 1–80 ký tự, không được chỉ có khoảng trắng | Tên candidate |
+| `num_robots` | int | 1–10 | Số robot khả dụng |
+| `num_tasks` | int | 1–10.000 | Tổng task cần tạo trong benchmark |
+| `task_arrival_interval` | float | 1,0–60,0 giây | Khoảng cách giữa hai task mới |
+| `travel_time` | float | `> 0` và `<= 86.400` giây | Thời gian di chuyển của một task |
+| `loading_time` | float | `> 0` và `<= 86.400` giây | Thời gian load và unload |
+| `simulation_time` | float | `> 0` và `<= 86.400` giây | Khoảng thời gian ảo được benchmark |
+
+Giá trị ngoài giới hạn hoặc thiếu field → **422**.
+
+### ScenarioStatus
+
+```text
+DRAFT
+SIMULATED
+APPROVED
+REJECTED
+APPLIED
+```
+
+MVP hiện tại tạo candidate trực tiếp ở `SIMULATED`; `DRAFT` được giữ trong
+contract để mở rộng workflow sau này nhưng chưa có endpoint tạo draft.
+
+Các chuyển trạng thái hợp lệ:
+
+```text
+POST /run
+    │
+    ▼
+SIMULATED ── approve ──▶ APPROVED ── apply ──▶ APPLIED
+    │
+    └──────── reject ──▶ REJECTED
+```
+
+- `approve` và `reject` chỉ hợp lệ khi status hiện tại là `SIMULATED`.
+- `apply` chỉ hợp lệ khi status hiện tại là `APPROVED`.
+- `REJECTED` và `APPLIED` là trạng thái kết thúc trong MVP.
+- Chuyển trạng thái không hợp lệ → **409**; id candidate không tồn tại → **404**.
+
+### Scenario
+
+Tất cả endpoint scenario trả về schema này (endpoint list trả về mảng):
+
+```json
+{
+  "id": "SCN-0001",
+  "name": "more-robots",
+  "status": "SIMULATED",
+  "config": {
+    "num_robots": 6,
+    "num_tasks": 500,
+    "task_arrival_interval": 5.0,
+    "travel_time": 30.0,
+    "loading_time": 10.0,
+    "simulation_time": 3600.0
+  },
+  "metrics": {
+    "completed_tasks": 426,
+    "unfinished_tasks": 74,
+    "completion_rate": 0.852,
+    "throughput_per_hour": 426.0,
+    "average_cycle_time": 750.0,
+    "average_waiting_time": 700.0
+  },
+  "duration_ms": 8.4,
+  "created_at": "2026-08-14T03:00:00.000Z",
+  "created_by": "00000000-0000-0000-0000-000000000001",
+  "reviewed_at": null,
+  "reviewed_by": null,
+  "applied_at": null,
+  "applied_by": null,
+  "version": 1
+}
+```
+
+| Field | Type | Nullable | Ghi chú |
+|---|---|---|---|
+| `id` | string | không | Candidate có dạng `SCN-0001`; baseline có id `baseline` |
+| `name` | string | không | Tên scenario |
+| `status` | `ScenarioStatus` | không | Trạng thái workflow hiện tại |
+| `config` | `ScenarioConfig` | không | Sáu tham số benchmark trong request, không gồm `name` |
+| `metrics.completed_tasks` | int | không | `>= 0` |
+| `metrics.unfinished_tasks` | int | không | `>= 0` |
+| `metrics.completion_rate` | float | không | Từ 0 đến 1 |
+| `metrics.throughput_per_hour` | float | không | Task hoàn thành mỗi giờ mô phỏng |
+| `metrics.average_cycle_time` | float | không | Giây, gồm cả thời gian chờ |
+| `metrics.average_waiting_time` | float | không | Giây chờ robot trung bình |
+| `duration_ms` | float | không | Thời gian thực backend dùng để chạy benchmark, không phải thời gian ảo |
+| `created_at` | datetime | không | Thời điểm chạy/lưu candidate |
+| `created_by` | UUID | có với baseline | Người chạy candidate; baseline không có actor |
+| `reviewed_at` | datetime | có (mặc định `null`) | Được gán UTC khi approve hoặc reject |
+| `reviewed_by` | UUID | có (mặc định `null`) | Monitor approve hoặc reject |
+| `applied_at` | datetime | có (mặc định `null`) | Được gán UTC khi apply thành công |
+| `applied_by` | UUID | có (mặc định `null`) | Monitor apply |
+| `version` | int | không | Optimistic-concurrency token, tăng sau mỗi transition |
+
+### Ánh xạ khi apply
+
+Apply giữ nguyên tốc độ robot, tốc độ simulation và ngưỡng pin hiện tại. Chỉ hai
+tham số scenario được ánh xạ sang mock factory realtime:
+
+| Scenario config | MockFactory config | Hiệu lực khi apply |
+|---|---|---|
+| `num_robots` | `robot_count` | Có; reset tạo lại số robot tương ứng |
+| `task_arrival_interval` | `task_interval_seconds` | Có; đổi nhịp sinh task realtime |
+| `num_tasks` | — | Không; chỉ dùng cho benchmark |
+| `travel_time` | — | Không; chỉ dùng cho benchmark |
+| `loading_time` | — | Không; chỉ dùng cho benchmark |
+| `simulation_time` | — | Không; chỉ dùng cho benchmark |
+
+Apply sẽ reset robot, task, alert, metrics và phát WebSocket event
+`factory.reset`; dữ liệu vận hành đang có sẽ bị xoá.
+
+Backend update scenario bằng điều kiện đồng thời trên `status` và `version`, nên
+nếu hai Monitor gửi transition cùng lúc chỉ một request thành công; request còn
+lại nhận **409**. Người tạo scenario không được review hoặc apply chính scenario
+đó. Scenario transition và audit liên quan dùng chung một SQL transaction.
+
+Trong một backend process, apply và các lệnh mock `start/stop/reset/config` dùng
+chung một control lock. Vì vậy reset/config thủ công không thể chen giữa lúc một
+scenario đang thay đổi và reset factory. Deploy MVP chỉ chạy **một worker/process**;
+multi-instance cần một command worker hoặc distributed lock/outbox ở phase sau.
+
+Apply còn thay đổi state mock factory trong RAM nên không thể atomic tuyệt đối
+với PostgreSQL. Backend giữ row lock trong lúc reset và khôi phục cấu hình/reset
+lại factory nếu reset, audit hoặc commit lỗi. Nếu chính bước khôi phục cũng lỗi,
+backend ghi log kỹ thuật mức error để operator can thiệp.
+
+## Admin user management
+
+Ba endpoint `/api/v1/admin/users*` chỉ dành cho `ADMIN`. Response không chứa
+password, hash, access token hoặc service-role key:
+
+```json
+{
+  "id": "00000000-0000-0000-0000-000000000003",
+  "email": "monitor@example.com",
+  "display_name": "Factory Monitor",
+  "role": "MONITOR",
+  "is_active": true,
+  "created_at": "2026-08-14T03:00:00.000Z"
+}
+```
+
+`PATCH /api/v1/admin/users/{user_id}` nhận ít nhất một trong hai field:
+
+```json
+{"role":"DESIGNER","is_active":false}
+```
+
+Backend khóa các row Admin active khi kiểm tra, nên hai request đồng thời không
+thể cùng loại bỏ Admin cuối cùng; thao tác đó trả `409`. Disable user đóng toàn
+bộ WebSocket hiện tại của user với code `4403`. Request REST tiếp theo cũng bị
+profile guard từ chối `403`.
+
+`POST /api/v1/admin/users/invite` nhận `email`, `display_name`, `role`, trả `201`
+và không nhận password. Supabase gửi luồng thiết lập account. Endpoint này cần
+`SUPABASE_SERVICE_ROLE_KEY` ở backend; thiếu integration trả `503` mà không ảnh
+hưởng login/RBAC hoặc hai endpoint quản trị bằng PostgreSQL.
+
+## Business audit
+
+`GET /api/v1/admin/audit?limit=100` chỉ dành cho `ADMIN`. Có thể lọc bằng
+`resource_type`, `resource_id`, `created_after` và `created_before`. Mỗi event có
+`actor_id`, snapshot `actor_role`, `action`, `before_data`, `after_data`,
+`request_id` và `created_at`. Bảng này append-only; Designer/Monitor không có
+quyền đọc, sửa hoặc xoá qua API. Các action scenario hiện có là `SCENARIO_RUN`,
+`SCENARIO_APPROVED`, `SCENARIO_REJECTED`, `SCENARIO_APPLIED`; reset thủ công và
+reset do apply đều tạo `FACTORY_RESET`. Reset/config thủ công ghi event
+`*_REQUESTED` trước side effect và event hoàn tất dùng cùng `request_id`; nhờ đó
+nếu side effect hoặc audit hoàn tất lỗi vẫn còn durable intent để điều tra. Các
+thay đổi Admin tạo `USER_INVITED`, `ROLE_CHANGED`, `USER_DISABLED` hoặc
+`USER_ENABLED` trong cùng transaction với thay đổi profile.
+
 ## Health
 
 `GET /health` — **ngoại lệ duy nhất không nằm dưới `/api/v1`.**
@@ -303,7 +550,8 @@ cả sau khi `POST /api/v1/mock/stop`.
 
 ## FactoryMetrics
 
-`GET /api/v1/metrics`. Payload của WebSocket event `metrics.updated` (~1 Hz).
+`GET /api/v1/metrics`. Payload của WebSocket event `metrics.updated` (~1 Hz theo
+đồng hồ thật, không phụ thuộc `simulation_speed`).
 
 ```json
 {
@@ -355,7 +603,43 @@ robot **vào** điều kiện, không lặp mỗi tick trong khi vẫn ở đi�
 
 ## WebSocket event envelope
 
-Mọi message trên `/ws/factory` bọc trong envelope:
+Browser chỉ được kết nối từ một `Origin` có trong `CORS_ORIGINS`. Sau khi server
+accept WebSocket, client phải gửi JSON dưới đây trong thời gian cấu hình (mặc
+định 5 giây):
+
+```json
+{
+  "type": "auth",
+  "access_token": "<supabase-access-token>"
+}
+```
+
+Socket chưa được thêm vào broadcast pool ở bước này, nên không thể nhận
+telemetry trước khi xác thực. Khi token và profile active hợp lệ, server trả:
+
+```json
+{
+  "type": "auth.ok",
+  "data": {
+    "user_id": "00000000-0000-0000-0000-000000000001",
+    "display_name": "Factory Monitor",
+    "role": "MONITOR",
+    "expires_at": 1786676400
+  }
+}
+```
+
+`expires_at` là Unix epoch seconds. Client chỉ chuyển sang `LIVE` sau
+`auth.ok`; backend tự đóng và loại socket khỏi pool khi JWT hết hạn. Close code:
+
+| Code | Ý nghĩa |
+|---:|---|
+| `1008` | Origin không được phép |
+| `1013` | JWKS/profile database tạm thời không khả dụng |
+| `4401` | Auth message/token thiếu, sai, hết hạn hoặc gửi quá thời gian |
+| `4403` | Profile không tồn tại hoặc user bị khóa |
+
+Sau `auth.ok`, mọi message server trên `/ws/factory` bọc trong envelope:
 
 ```json
 {
@@ -366,9 +650,10 @@ Mọi message trên `/ws/factory` bọc trong envelope:
 
 | `type` | `data` schema | Tần suất |
 |---|---|---|
+| `auth.ok` | user id, display name, role, expiry | một lần sau auth |
 | `robot.telemetry` | `RobotTelemetry` | ~10 Hz mỗi robot |
 | `task.updated` | `Task` | event-driven |
-| `metrics.updated` | `FactoryMetrics` | ~1 Hz |
+| `metrics.updated` | `FactoryMetrics` | ~1 Hz theo đồng hồ thật |
 | `alert.created` | `FactoryAlert` | event-driven |
 | `factory.reset` | `null` | khi `POST /api/v1/mock/reset` |
 
@@ -376,8 +661,13 @@ Mọi message trên `/ws/factory` bọc trong envelope:
 
 ```text
 200  thành công
-404  robot/task id không tồn tại
+201  Admin invite đã được tạo
+401  access token REST thiếu, sai hoặc hết hạn
+403  user inactive hoặc không đủ role
+404  robot/task/scenario id không tồn tại
+409  chuyển trạng thái scenario không hợp lệ
 422  request không hợp lệ theo Pydantic
+503  dịch vụ xác thực tạm thời không khả dụng
 500  lỗi server không lường trước
 ```
 

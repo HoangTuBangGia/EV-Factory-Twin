@@ -1,15 +1,18 @@
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
+from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from ev_twin_api.schemas.alert import FactoryAlert
+from ev_twin_api.schemas.auth import AppRole
 from ev_twin_api.schemas.metrics import FactoryMetrics
 from ev_twin_api.schemas.task import Task
 from ev_twin_api.schemas.telemetry import RobotTelemetry
 
 
 class WebSocketEventType(StrEnum):
+    AUTH_OK = "auth.ok"
     ROBOT_TELEMETRY = "robot.telemetry"
     TASK_UPDATED = "task.updated"
     METRICS_UPDATED = "metrics.updated"
@@ -24,6 +27,24 @@ class WebSocketEvent(BaseModel):
 
     type: WebSocketEventType
     data: Any
+
+
+class WebSocketAuthMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["auth"]
+    access_token: str = Field(min_length=1, max_length=8192)
+
+
+class WebSocketAuthOkData(BaseModel):
+    user_id: UUID
+    display_name: str
+    role: AppRole
+    expires_at: int
+
+
+def auth_ok_event(data: WebSocketAuthOkData) -> dict[str, Any]:
+    return {"type": WebSocketEventType.AUTH_OK, "data": data.model_dump(mode="json")}
 
 
 def robot_telemetry_event(telemetry: RobotTelemetry) -> dict[str, Any]:

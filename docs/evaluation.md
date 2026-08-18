@@ -79,6 +79,15 @@ simulation horizon, then uses lower cycle and waiting time as tie-breakers.
 - `evaluation/datasets/simulation_results.json`
 - `evaluation/reports/benchmark_summary.csv`
 
+## Manual evaluation evidence
+
+The recorded MVP evaluation, actual observed outputs, and timestamped screenshots
+are documented in
+[`evaluation/reports/manual_eval_evidence.md`](../evaluation/reports/manual_eval_evidence.md).
+The report contains seven manual test cases covering realtime monitoring,
+scenario benchmarking, the Monitor review workflow, factory apply, and persisted
+workflow state.
+
 ## Tests
 
 Run the full test suite with:

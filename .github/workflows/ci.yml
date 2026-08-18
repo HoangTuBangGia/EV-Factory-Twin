@@ -47,8 +47,11 @@ jobs:
       - name: Check formatting
         run: uv run ruff format --check .
 
+      - name: Check database migrations, schema and RLS contracts
+        run: make migration-check
+
       - name: Typecheck
-        run: uv run mypy packages/twin-core/src apps/backend/src
+        run: make typecheck
 
       - name: Test
         run: uv run pytest
@@ -82,6 +85,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Typecheck
+        run: npm run typecheck
+
       - name: Test
         run: npm test -- --run
 
@@ -91,3 +97,113 @@ jobs:
           NEXT_PUBLIC_DATA_SOURCE: api
           NEXT_PUBLIC_API_URL: http://localhost:8000
           NEXT_PUBLIC_WS_URL: ws://localhost:8000/ws/factory
+
+  hosted-e2e:
+    name: Browser E2E · hosted Supabase RBAC
+    needs:
+      - backend
+      - frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+
+    defaults:
+      run:
+        working-directory: apps/frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check hosted E2E secrets
+        id: e2e_credentials
+        shell: bash
+        env:
+          E2E_DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+          E2E_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
+          E2E_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.E2E_SUPABASE_PUBLISHABLE_KEY }}
+          DESIGNER_EMAIL: ${{ secrets.DESIGNER_EMAIL }}
+          DESIGNER_PASSWORD: ${{ secrets.DESIGNER_PASSWORD }}
+          MONITOR_EMAIL: ${{ secrets.MONITOR_EMAIL }}
+          MONITOR_PASSWORD: ${{ secrets.MONITOR_PASSWORD }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        run: |
+          credential_variables=(
+            E2E_DATABASE_URL
+            E2E_SUPABASE_URL
+            E2E_SUPABASE_PUBLISHABLE_KEY
+            DESIGNER_EMAIL
+            DESIGNER_PASSWORD
+            MONITOR_EMAIL
+            MONITOR_PASSWORD
+            ADMIN_EMAIL
+            ADMIN_PASSWORD
+          )
+          missing_variables=()
+          for credential_variable in "${credential_variables[@]}"; do
+            if [[ -z "${!credential_variable:-}" ]]; then
+              missing_variables+=("${credential_variable}")
+            fi
+          done
+          if (( ${#missing_variables[@]} > 0 )); then
+            echo "enabled=false" >> "${GITHUB_OUTPUT}"
+            echo "Hosted E2E skipped; missing repository secrets: ${missing_variables[*]}"
+          else
+            echo "enabled=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Hosted E2E is not configured
+        if: steps.e2e_credentials.outputs.enabled != 'true'
+        run: echo "Browser workflow intentionally skipped; configure the named E2E secrets to enable it."
+
+      - name: Setup uv
+        if: steps.e2e_credentials.outputs.enabled == 'true'
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          enable-cache: true
+
+      - name: Install Python
+        if: steps.e2e_credentials.outputs.enabled == 'true'
+        run: uv python install 3.12
+        working-directory: .
+
+      - name: Install backend dependencies
+        if: steps.e2e_credentials.outputs.enabled == 'true'
+        run: uv sync --locked --all-packages --dev
+        working-directory: .
+
+      - name: Setup Node
+        if: steps.e2e_credentials.outputs.enabled == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        if: steps.e2e_credentials.outputs.enabled == 'true'
+        run: npm ci
+
+      - name: Install Chromium
+        if: steps.e2e_credentials.outputs.enabled == 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: List browser tests
+        if: steps.e2e_credentials.outputs.enabled == 'true'
+        run: npm run test:e2e:list
+
+      - name: Run browser tests
+        if: steps.e2e_credentials.outputs.enabled == 'true'
+        run: npm run test:e2e
+        env:
+          DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+          DATABASE_SSL_MODE: require
+          SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.E2E_SUPABASE_PUBLISHABLE_KEY }}
+          DESIGNER_EMAIL: ${{ secrets.DESIGNER_EMAIL }}
+          DESIGNER_PASSWORD: ${{ secrets.DESIGNER_PASSWORD }}
+          MONITOR_EMAIL: ${{ secrets.MONITOR_EMAIL }}
+          MONITOR_PASSWORD: ${{ secrets.MONITOR_PASSWORD }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
