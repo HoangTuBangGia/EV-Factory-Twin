@@ -62,6 +62,3 @@ evaluation/reports/*
 # AI logs — tracked structure, ignored content
 .ai-log/*.jsonl
 .ai-log/archive/
-
-# OpenCode local configuration
-opencode.json
