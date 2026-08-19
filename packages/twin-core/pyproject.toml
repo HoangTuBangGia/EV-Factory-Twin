@@ -3,7 +3,7 @@ name = "twin-core"
 version = "0.1.0"
 description = "Core domain models and metrics for the EV Factory Digital Twin"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["pydantic>=2.11"]
 
 [build-system]
 requires = ["hatchling"]

@@ -1,10 +1,12 @@
 # Data retention and time-series decision
 
-## MVP decision
+## Current baseline
 
-Factory Twin uses the Supabase PostgreSQL 17 database for identities, roles,
-scenario workflow state, review/apply actors, business audit events, and coarse
-KPI history. It does not persist the realtime robot telemetry stream.
+Factory Twin uses Supabase PostgreSQL 17 for identities, roles, scenario workflow
+state, review/apply actors, business audit events, and coarse KPI history. The
+current MVP does not persist the realtime robot telemetry stream. CORE requires a
+bounded sampled telemetry history and replay path; that is a follow-up checkpoint
+and must preserve the retention measurements below.
 
 The backend currently publishes one robot telemetry event per robot at 10 Hz.
 Persisting that stream would create:

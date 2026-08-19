@@ -1,21 +1,8 @@
-from pydantic import BaseModel, Field
+from twin_core.models.telemetry import RobotTelemetry
 
-from ev_twin_api.schemas.base import UtcDatetime
-from ev_twin_api.schemas.robot import Pose, Robot, RobotStatus, Velocity
+from ev_twin_api.schemas.robot import Robot
 
-
-class RobotTelemetry(BaseModel):
-    """The FE-BE realtime contract. Field names/units are frozen once frontend
-    integration begins — do not rename casually."""
-
-    timestamp: UtcDatetime
-    robot_id: str
-    pose: Pose
-    velocity: Velocity
-    battery: float = Field(ge=0, le=100)
-    status: RobotStatus
-    task_id: str | None
-    payload_id: str | None
+__all__ = ["RobotTelemetry", "robot_to_telemetry"]
 
 
 def robot_to_telemetry(robot: Robot) -> RobotTelemetry:

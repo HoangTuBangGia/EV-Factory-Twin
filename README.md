@@ -13,9 +13,10 @@ Hệ thống hiện cung cấp:
 - REST API và WebSocket với mock factory engine tích hợp sẵn;
 - mô phỏng sự kiện rời rạc cho các kịch bản vận hành;
 - công cụ chạy batch và xếp hạng kịch bản theo throughput, cycle time và waiting time;
-- các domain model và phép đo dùng chung trong `twin-core`.
+- các contract telemetry nguồn-neutral dùng chung trong `twin-core`.
 
-> Trạng thái hiện tại: backend đang dùng mock factory engine. Kiến trúc giữ ổn định contract REST/WebSocket để có thể thay nguồn dữ liệu bằng ROS 2 trong giai đoạn tiếp theo.
+> Trạng thái hiện tại: MVP mock đã chạy; CORE vẫn đang triển khai. ROS 2/Gazebo/Nav2
+> sẽ chạy tại factory edge và đi qua telemetry bridge trước khi vào FastAPI.
 
 ## Công nghệ
 
@@ -50,7 +51,9 @@ Hệ thống hiện cung cấp:
 - Node.js `22`
 - npm
 
-ROS 2 Jazzy và Gazebo Harmonic chỉ cần cho phần tích hợp robot/mô phỏng vật lý trong tương lai, không bắt buộc để chạy dashboard và mock backend hiện tại.
+ROS 2 Jazzy, Gazebo Harmonic và Nav2 là bắt buộc để đóng CORE, nhưng không bắt
+buộc cho dashboard/mock development. Chúng chạy trong Ubuntu 24.04 edge/container,
+không chạy trên Vercel hoặc Render.
 
 ## Bắt đầu nhanh
 

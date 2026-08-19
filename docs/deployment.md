@@ -1,4 +1,4 @@
-# Deploy frontend lên Vercel và backend lên Render
+# CORE Deployment Strategy
 
 Kiến trúc production:
 
@@ -8,27 +8,40 @@ Browser
   └── HTTPS ──────> Vercel: Next.js frontend
 ```
 
+Factory edge chạy Gazebo, ROS 2 Jazzy, Nav2, fleet/task managers và telemetry
+bridge. Edge chỉ mở kết nối outbound TLS tới Render; browser không truy cập DDS.
+Supabase cung cấp Auth và PostgreSQL cho backend.
+
+## Current readiness
+
+Vercel + Render + Supabase là topology chính, nhưng repository chưa có production
+Dockerfile, `render.yaml`, hoặc deployment workflow. Các file này sẽ được thêm
+cùng checkpoint backend container đầu tiên; tài liệu này là contract triển khai,
+không phải bằng chứng deployment đã sẵn sàng.
+
 Không commit `.env`, `.env.local` hoặc secret. Các file này đã được `.gitignore`.
 
 ## 1. Chuẩn bị
 
 1. Push code lên GitHub, ưu tiên merge vào `main` sau khi CI xanh.
 2. Tạo tài khoản Vercel và Render, rồi kết nối cả hai với GitHub.
-3. Bảo đảm repository có các file sau:
-   - `render.yaml`
-   - `apps/backend/Dockerfile`
-   - `apps/frontend/package-lock.json`
+3. Bảo đảm CI đã xanh và checkpoint backend container đã cung cấp:
+   - `render.yaml` hoặc cấu hình Render tương đương đã được kiểm thử;
+   - `apps/backend/Dockerfile` nếu chọn Docker deploy;
+   - `apps/frontend/package-lock.json`.
 
 ## 2. Deploy backend lên Render
 
-1. Mở Render Dashboard, chọn **New > Blueprint**.
-2. Chọn repository này. Render tự đọc `render.yaml` ở root.
+1. Dùng Render **paid Web Service**, một instance và một Uvicorn worker trong
+   giai đoạn live state/WebSocket còn process-local.
+2. Khi `render.yaml` đã tồn tại, dùng **New > Blueprint**; trước thời điểm đó
+   không giả định repository đã có file này.
 3. Cấu hình các biến môi trường backend trên Render:
 
    ```env
    APP_ENV=production
-   CORS_ORIGINS=http://localhost:3000
-   DATABASE_URL=postgresql://...
+    CORS_ORIGINS=https://YOUR_VERCEL_DOMAIN
+    DATABASE_URL=postgresql+asyncpg://...
    DATABASE_SSL_MODE=require
    SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
    SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVER_ONLY_KEY
@@ -38,14 +51,15 @@ Không commit `.env`, `.env.local` hoặc secret. Các file này đã được `
    Backend không cần service-role key cho login/RBAC; chỉ endpoint Admin mời user
    cần key này. Nếu team tạo account trong Dashboard, có thể bỏ trống nó. Sau khi
    có URL Vercel production, phải thay `CORS_ORIGINS` bằng URL Vercel thật.
-4. Chọn **Apply** và chờ image được build.
-5. Ghi lại URL backend, ví dụ:
+4. Chạy migration bằng pre-deploy command, không chạy migration mỗi lần app start.
+5. Chọn **Apply** và chờ service healthy.
+6. Ghi lại URL backend, ví dụ:
 
    ```text
    https://ev-factory-twin-api.onrender.com
    ```
 
-6. Kiểm tra backend:
+7. Kiểm tra backend:
 
    ```bash
    curl https://ev-factory-twin-api.onrender.com/health
@@ -113,6 +127,9 @@ Trong Render Dashboard mở service backend:
 
 Backend hiện cho phép danh sách origin chính xác. URL Preview ngẫu nhiên của
 Vercel sẽ không được CORS cho phép trừ khi thêm origin tương ứng trên Render.
+Vì vậy production nên allowlist domain ổn định; preview chỉ chạy mock, dùng một
+preview domain ổn định, hoặc được cấp origin có kiểm soát. Không dùng wildcard
+CORS cho backend production.
 
 ## 5. Kiểm tra production
 
@@ -137,8 +154,8 @@ curl -H "Authorization: Bearer <ACCESS_TOKEN>" \
 
 - Vercel tự tạo Preview Deployment cho pull request và production deployment
   khi push/merge vào production branch.
-- Render Blueprint đặt `autoDeployTrigger: checksPass`, nên backend chỉ tự deploy
-  commit mới sau khi GitHub CI thành công.
+- Khi `render.yaml` và smoke test đã được thêm, có thể cấu hình Render chỉ deploy
+  sau khi GitHub CI xanh. Hiện automation này chưa tồn tại trong repository.
 
 ## 7. Lưu ý vận hành
 
@@ -151,6 +168,15 @@ curl -H "Authorization: Bearer <ACCESS_TOKEN>" \
   thể chậm và WebSocket sẽ ngắt khi service ngủ; frontend có reconnect tự động.
 - Chỉ chạy một backend instance. Nếu scale nhiều instance khi chưa có Redis hoặc
   database dùng chung, mỗi instance sẽ có một factory state khác nhau.
+- Không dùng Render Free cho telemetry vận hành: service có thể sleep và làm đứt
+  WebSocket. Paid Web Service là yêu cầu tối thiểu.
+- Chọn Supabase pooler session mode cho backend nếu Render không có IPv6 ổn định;
+  không dùng transaction pooling cho kết nối SQLAlchemy lâu sống.
+- Bật backup/restore phù hợp trên Supabase production và kiểm thử restore trước
+  khi gọi hệ thống production-ready.
+- Không đưa `DATABASE_URL`, service-role key, edge credential hoặc ROS DDS ra
+  frontend. Edge chỉ mở kết nối outbound TLS tới backend.
+- Không scale ngang Render cho đến khi có durable live state và shared pub/sub.
 - Không dùng `NEXT_PUBLIC_DATA_SOURCE=mock` trên Vercel nếu muốn nhận dữ liệu BE.
 
 ## 8. Rollback và xử lý lỗi
@@ -160,3 +186,12 @@ curl -H "Authorization: Bearer <ACCESS_TOKEN>" \
 - CORS error: kiểm tra `CORS_ORIGINS` khớp chính xác origin Vercel.
 - REST chạy nhưng WebSocket lỗi: kiểm tra URL dùng `wss://`, không phải `ws://`.
 - Frontend vẫn dùng URL cũ: cập nhật biến Vercel rồi redeploy frontend.
+
+## 9. Alternative deployment
+
+Nếu Render không đáp ứng latency, WebSocket uptime, outbound networking hoặc
+region yêu cầu, giữ Vercel/Supabase và chuyển FastAPI sang managed containers như
+Fly.io, Railway, AWS App Runner hoặc ECS. Nếu cần private networking với factory,
+dùng VM/container host tại edge hoặc cloud private network. Không đưa Gazebo vào
+Vercel Functions. Mọi phương án vẫn giữ browser → FastAPI → edge và Supabase
+Auth/RLS.

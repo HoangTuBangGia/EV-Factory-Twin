@@ -275,8 +275,7 @@ asyncpg
 ## Database
 
 ```text
-PostgreSQL
-TimescaleDB
+PostgreSQL 17 via Supabase
 ```
 
 ## Simulation
@@ -320,10 +319,8 @@ ECharts
 Git
 GitHub
 GitHub Actions
-Docker
-Docker Compose
-GHCR
-Nginx
+Docker (when a component has a real image)
+GitHub Actions
 ```
 
 ---
@@ -348,7 +345,7 @@ flowchart LR
         API[FastAPI]
         CORE[Twin Core]
         SIM[SimPy Simulation Engine]
-        DB[(PostgreSQL / TimescaleDB)]
+        DB[(Supabase PostgreSQL)]
 
         API --> CORE
         SIM --> CORE
@@ -414,7 +411,8 @@ Lý do:
 
 # 8. Runtime Modes
 
-Platform hỗ trợ ba telemetry source.
+Platform will normalize three telemetry sources. MOCK is implemented; ROS and
+REPLAY are planned CORE sources.
 
 ```text
 MOCK
@@ -1017,11 +1015,11 @@ GET /api/v1/robots/{robot_id}
 ## Telemetry
 
 ```http
-POST /api/v1/telemetry
+POST /internal/v1/telemetry (planned edge ingress)
 ```
 
 ```http
-GET /api/v1/robots/{robot_id}/telemetry
+GET /api/v1/robots/{robot_id}/telemetry (planned history query)
 ```
 
 ---
@@ -1081,7 +1079,7 @@ POST /api/v1/scenarios/{scenario_id}/reject
 Endpoint:
 
 ```text
-/ws/telemetry
+/ws/factory
 ```
 
 WebSocket Manager chịu trách nhiệm:
@@ -1098,7 +1096,6 @@ Message envelope:
 ```json
 {
   "type": "robot.telemetry",
-  "timestamp": "...",
   "data": {}
 }
 ```
@@ -1107,38 +1104,23 @@ Message envelope:
 
 # 22. WebSocket Event Types
 
-Robot:
+The current `/ws/factory` contract is intentionally small and matches the
+backend/frontend schemas:
 
 ```text
+auth.ok
 robot.telemetry
-robot.status_changed
+task.updated
+metrics.updated
+alert.created
+factory.reset
 ```
 
-Task:
+New event types require an update to `docs/api.md`, backend Pydantic schemas,
+frontend Zod schemas, and contract tests in the same checkpoint.
 
-```text
-task.created
-task.assigned
-task.started
-task.completed
-task.failed
-```
-
-Factory:
-
-```text
-factory.alert
-factory.kpi
-```
-
-Simulation:
-
-```text
-simulation.started
-simulation.progress
-simulation.completed
-simulation.failed
-```
+Simulation progress events are planned and are not part of the current browser
+contract.
 
 ---
 
@@ -1159,7 +1141,7 @@ sequenceDiagram
     R->>B: ROS messages
     B->>A: RobotTelemetry
     A->>A: Validate
-    A->>D: Store telemetry
+    A->>D: Persist sampled history (planned)
     A->>W: Broadcast
     W->>F: robot.telemetry
     F->>F: Update Zustand
@@ -1186,7 +1168,7 @@ sequenceDiagram
     end
 ```
 
-Mục tiêu:
+    Mục tiêu:
 
 Frontend/backend development không phụ thuộc ROS.
 
@@ -1854,9 +1836,9 @@ Chứa:
 
 ---
 
-# 41. Database Architecture
+# 41. Database Architecture (target CORE schema)
 
-Core tables:
+Target CORE tables (not all are implemented yet):
 
 ```text
 robots
@@ -1891,9 +1873,10 @@ erDiagram
 
 ---
 
-# 43. Telemetry Storage
+# 43. Telemetry Storage (planned CORE capability)
 
-`robot_telemetry` là time-series table.
+`robot_telemetry` is a planned sampled-history table. The current MVP does not
+persist the realtime stream; see `docs/data-retention.md`.
 
 Columns:
 
@@ -1921,11 +1904,13 @@ Index chính:
 (timestamp, robot_id)
 ```
 
-TimescaleDB có thể dùng hypertable khi cần.
+Use ordinary PostgreSQL indexes first. Native partitioning or another storage
+engine is considered only after measured volume and query latency justify it;
+Supabase PostgreSQL 17 is the current baseline and TimescaleDB is not assumed.
 
 ---
 
-# 44. Replay Architecture
+# 44. Replay Architecture (planned CORE capability)
 
 Replay không có format riêng hoàn toàn khác Live Mode.
 
@@ -2311,7 +2296,7 @@ Frontend
 
 # 57. Deployment Architecture
 
-Hackathon / Development:
+Hackathon / Development (planned; no Compose files are currently committed):
 
 ```text
 Laptop
@@ -2319,25 +2304,22 @@ Laptop
 ├── Gazebo
 └── Telemetry Bridge
 
-Docker Compose
+Optional Docker Compose checkpoint
 ├── Backend
 ├── Frontend
 └── PostgreSQL
 ```
 
-Production-like:
+Production:
 
 ```mermaid
 flowchart TB
 
-    subgraph CLOUD["Application Server"]
-        NG[Nginx]
-        WEB[Next.js]
-        API[FastAPI]
-        DB[(PostgreSQL / TimescaleDB)]
+    subgraph CLOUD["Managed Cloud Services"]
+        WEB[Vercel Next.js]
+        API[Render FastAPI]
+        DB[(Supabase PostgreSQL / Auth)]
 
-        NG --> WEB
-        NG --> API
         API --> DB
     end
 
@@ -2350,7 +2332,8 @@ flowchart TB
         ROS --> BRIDGE
     end
 
-    BRIDGE -->|HTTPS / WSS| API
+    BRIDGE -->|authenticated HTTPS| EDGEAPI[Internal edge telemetry ingress]
+    EDGEAPI --> API
 ```
 
 ---
@@ -2358,12 +2341,7 @@ flowchart TB
 # 58. CI/CD Structure
 
 ```text
-.github/workflows/
-
-ci.yml
-ros-ci.yml
-docker.yml
-deploy.yml
+.github/workflows/ci.yml
 ```
 
 ## `ci.yml`
@@ -2373,7 +2351,7 @@ Python Quality
 Frontend Quality
 ```
 
-## `ros-ci.yml`
+## ROS CI workflow (planned with the first real ROS package)
 
 ```text
 rosdep
@@ -2381,7 +2359,7 @@ colcon build
 colcon test
 ```
 
-## `docker.yml`
+## Docker CI workflow (planned with the first real image)
 
 ```text
 build backend
@@ -2389,13 +2367,14 @@ build frontend
 push GHCR
 ```
 
-## `deploy.yml`
+## Deployment workflow (planned after container smoke tests)
 
 ```text
 deploy application stack
 ```
 
-Deployment được triển khai sau khi core ổn định.
+ROS, Docker, and deployment workflows are added only when their corresponding
+buildable artifacts exist. Empty workflow files are not kept as placeholders.
 
 ---
 

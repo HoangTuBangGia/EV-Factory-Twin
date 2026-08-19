@@ -16,13 +16,13 @@ typecheck:
 	uv run mypy packages/twin-core/src apps/backend/src services/simulation/src evaluation/src
 
 migration-check:
-	uv run pytest tests/integration/test_supabase_migrations.py
+	PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -p pytest_asyncio.plugin tests/integration/test_supabase_migrations.py
 
 test:
-	uv run pytest
+	APP_ENV=test DATABASE_URL= PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -p pytest_asyncio.plugin
 
 test-cov:
-	uv run pytest \
+	APP_ENV=test DATABASE_URL= PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -p pytest_asyncio.plugin \
 		--cov=ev_twin_api \
 		--cov=twin_core \
 		--cov-report=term-missing \

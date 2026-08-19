@@ -30,6 +30,12 @@ uv sync --all-packages --dev
 make check
 ```
 
+The Makefile disables unrelated globally installed pytest plugins and enables
+`pytest-asyncio` explicitly. Tests also clear `DATABASE_URL` so a developer's
+local `.env` cannot accidentally turn unit/API tests into a live PostgreSQL
+dependency. Database/RLS behavior belongs in the hosted or local Supabase E2E
+workflow.
+
 ## Browser E2E với Supabase hosted
 
 Playwright chạy trình duyệt với frontend Next.js và backend FastAPI ở local,

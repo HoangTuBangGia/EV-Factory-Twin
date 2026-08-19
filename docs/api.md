@@ -4,7 +4,8 @@ Nguồn sự thật cho các schema mà backend trả về qua REST và WebSocke
 sau này thay Mock Factory Engine bằng ROS2, các contract dưới đây không đổi, nên
 frontend không phải sửa code khi backend đổi nguồn dữ liệu.
 
-Định nghĩa Pydantic tương ứng nằm ở `apps/backend/src/ev_twin_api/schemas/`.
+Contract nguồn-neutral nằm ở `packages/twin-core`; các schema request/response
+đặc thù FastAPI nằm ở `apps/backend/src/ev_twin_api/schemas/`.
 
 ## Quy ước chung
 
@@ -14,7 +15,7 @@ frontend không phải sửa code khi backend đổi nguồn dữ liệu.
   sang pixel để render.
 - **Timestamp:** ISO 8601, UTC, có hậu tố `Z`, độ chính xác millisecond. Ví dụ:
   `2026-08-11T04:00:00.125Z`. Mọi field `datetime` trong response dùng chung
-  format này (xem `schemas/base.py`).
+  format này (xem `twin_core.models.telemetry`).
 - **Field nullable:** field kiểu `X | None` mà **có** giá trị mặc định `None`
   nghĩa là có thể bỏ qua khi tạo object. Field kiểu `X | None` mà **không có**
   giá trị mặc định (ví dụ `task_id`, `payload_id` trong `RobotTelemetry`) là

@@ -1,32 +1,9 @@
-from enum import StrEnum
-
 from pydantic import BaseModel, Field
+from twin_core.domain.robot import Pose, RobotStatus, Velocity
 
 from ev_twin_api.schemas.base import UtcDatetime
 
-
-class RobotStatus(StrEnum):
-    IDLE = "IDLE"
-    MOVING_TO_PICKUP = "MOVING_TO_PICKUP"
-    PICKING = "PICKING"
-    DELIVERING = "DELIVERING"
-    DROPPING = "DROPPING"
-    MOVING_TO_CHARGER = "MOVING_TO_CHARGER"
-    WAITING = "WAITING"
-    CHARGING = "CHARGING"
-    ERROR = "ERROR"
-    OFFLINE = "OFFLINE"
-
-
-class Pose(BaseModel):
-    x: float
-    y: float
-    yaw: float
-
-
-class Velocity(BaseModel):
-    linear: float
-    angular: float
+__all__ = ["Pose", "Robot", "RobotStatus", "Velocity"]
 
 
 class Robot(BaseModel):
