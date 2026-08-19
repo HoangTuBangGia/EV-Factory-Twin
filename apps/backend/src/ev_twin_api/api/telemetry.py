@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from ev_twin_api.api.dependencies import require_edge_telemetry_secret
 from ev_twin_api.schemas.telemetry import RobotTelemetry, TelemetryIngressResponse
 from ev_twin_api.services.telemetry_ingress import (
+    FutureTimestampError,
     MockSourceActiveError,
     TelemetryIngressService,
     UnknownRobotError,
@@ -42,4 +43,9 @@ async def ingest_telemetry(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Stop the mock factory before sending edge telemetry",
+        ) from error
+    except FutureTimestampError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Telemetry timestamp exceeds the allowed future skew",
         ) from error

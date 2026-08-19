@@ -1,5 +1,5 @@
 from collections.abc import AsyncIterator
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
@@ -142,3 +142,18 @@ async def test_timestamp_without_timezone_returns_422(edge_client: AsyncClient) 
     )
 
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_timestamp_beyond_future_skew_returns_422(edge_client: AsyncClient) -> None:
+    response = await edge_client.post(
+        "/internal/v1/telemetry",
+        json={
+            **telemetry_payload(),
+            "timestamp": (datetime.now(UTC) + timedelta(seconds=301)).isoformat(),
+        },
+        headers=edge_headers(),
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Telemetry timestamp exceeds the allowed future skew"}

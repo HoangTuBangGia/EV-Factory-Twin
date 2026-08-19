@@ -46,6 +46,7 @@ Không commit `.env`, `.env.local` hoặc secret. Các file này đã được `
    SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
     SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVER_ONLY_KEY
     EDGE_TELEMETRY_SHARED_SECRET=GENERATE_AT_LEAST_32_RANDOM_CHARACTERS
+    EDGE_TELEMETRY_MAX_FUTURE_SKEW_SECONDS=5
    ```
 
    `SUPABASE_JWT_ISSUER` và `SUPABASE_JWKS_URL` được suy ra từ `SUPABASE_URL`.
@@ -53,7 +54,8 @@ Không commit `.env`, `.env.local` hoặc secret. Các file này đã được `
    cần key này. Nếu team tạo account trong Dashboard, có thể bỏ trống nó. Sau khi
    có URL Vercel production, phải thay `CORS_ORIGINS` bằng URL Vercel thật.
    Edge secret phải được cấu hình cùng giá trị ở Render và secret store của bridge;
-   không đưa vào Vercel hoặc Supabase client config.
+   không đưa vào Vercel hoặc Supabase client config. Future-skew mặc định 5 giây
+   cho phép sai lệch clock nhỏ; giá trị hợp lệ là 0–300 giây.
 4. Chạy migration bằng pre-deploy command, không chạy migration mỗi lần app start.
 5. Chọn **Apply** và chờ service healthy.
 6. Ghi lại URL backend, ví dụ:

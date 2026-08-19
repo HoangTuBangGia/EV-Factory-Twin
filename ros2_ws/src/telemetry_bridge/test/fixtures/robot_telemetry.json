@@ -1,0 +1,10 @@
+{
+  "timestamp": "2026-08-19T05:00:00.125Z",
+  "robot_id": "AMR-01",
+  "pose": {"x": 1.25, "y": 2.5, "yaw": 0.0},
+  "velocity": {"linear": 0.75, "angular": 0.1},
+  "battery": 50.0,
+  "status": "IDLE",
+  "task_id": null,
+  "payload_id": null
+}

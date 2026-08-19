@@ -1,5 +1,5 @@
 import asyncio
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
@@ -8,6 +8,7 @@ from ev_twin_api.schemas.telemetry import RobotTelemetry, TelemetryIngressStatus
 from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.mock_factory import MockFactory
 from ev_twin_api.services.telemetry_ingress import (
+    FutureTimestampError,
     MockSourceActiveError,
     TelemetryIngressService,
     UnknownRobotError,
@@ -15,12 +16,19 @@ from ev_twin_api.services.telemetry_ingress import (
 from ev_twin_api.services.websocket_manager import WebSocketManager
 
 
-def make_service() -> tuple[TelemetryIngressService, FactoryState, WebSocketManager, MockFactory]:
+def make_service(
+    max_future_skew_seconds: float = 5,
+) -> tuple[TelemetryIngressService, FactoryState, WebSocketManager, MockFactory]:
     config = MockFactoryConfig()
     state = FactoryState(config)
     manager = WebSocketManager()
     mock_factory = MockFactory(state, config, manager, enabled=False)
-    return TelemetryIngressService(state, manager, mock_factory), state, manager, mock_factory
+    return (
+        TelemetryIngressService(state, manager, mock_factory, max_future_skew_seconds),
+        state,
+        manager,
+        mock_factory,
+    )
 
 
 def make_telemetry(state: FactoryState, **overrides: object) -> RobotTelemetry:
@@ -74,6 +82,31 @@ async def test_stale_or_duplicate_sample_is_idempotent_and_not_broadcast() -> No
 
     assert result.status == TelemetryIngressStatus.IGNORED_STALE
     manager.broadcast.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_future_sample_is_rejected_without_poisoning_state_or_broadcasting() -> None:
+    service, state, manager, _ = make_service()
+    manager.broadcast = AsyncMock()  # type: ignore[method-assign]
+    original = state.get_robot("AMR-01")
+    assert original is not None
+    telemetry = make_telemetry(state, timestamp=datetime.now(UTC) + timedelta(seconds=6))
+
+    with pytest.raises(FutureTimestampError):
+        await service.ingest(telemetry)
+
+    assert state.get_robot("AMR-01") == original
+    manager.broadcast.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_future_skew_limit_is_configurable() -> None:
+    service, state, _, _ = make_service(max_future_skew_seconds=10)
+    telemetry = make_telemetry(state, timestamp=datetime.now(UTC) + timedelta(seconds=6))
+
+    result = await service.ingest(telemetry)
+
+    assert result.status == TelemetryIngressStatus.ACCEPTED
 
 
 @pytest.mark.asyncio

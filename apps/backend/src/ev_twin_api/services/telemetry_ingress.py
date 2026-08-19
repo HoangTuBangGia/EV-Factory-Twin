@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from ev_twin_api.schemas.robot import Robot
 from ev_twin_api.schemas.telemetry import (
@@ -20,16 +20,22 @@ class MockSourceActiveError(RuntimeError):
     pass
 
 
+class FutureTimestampError(ValueError):
+    pass
+
+
 class TelemetryIngressService:
     def __init__(
         self,
         factory_state: FactoryState,
         websocket_manager: WebSocketManager,
         mock_factory: MockFactory,
+        max_future_skew_seconds: float,
     ) -> None:
         self._factory_state = factory_state
         self._websocket_manager = websocket_manager
         self._mock_factory = mock_factory
+        self._max_future_skew = timedelta(seconds=max_future_skew_seconds)
 
     async def ingest(self, telemetry: RobotTelemetry) -> TelemetryIngressResponse:
         async with self._mock_factory.exclusive_control():
@@ -48,6 +54,8 @@ class TelemetryIngressService:
                     source_timestamp=telemetry.timestamp,
                     ingested_at=ingested_at,
                 )
+            if telemetry.timestamp > ingested_at + self._max_future_skew:
+                raise FutureTimestampError
 
             self._factory_state.update_robot(
                 Robot(

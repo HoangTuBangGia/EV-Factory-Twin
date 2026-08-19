@@ -101,6 +101,10 @@ có thể gửi sample cho mọi robot đã đăng ký. Multi-bridge identity/al
 follow-up bảo mật riêng. Mock
 factory phải được dừng trước khi edge gửi dữ liệu để hai source không ghi đè nhau.
 
+The ROS bridge sends `pose` and `velocity` from namespaced odometry, uses the
+edge host UTC timestamp, defaults `battery` to `100` and `status` to `IDLE` until
+real ROS producers are connected, and leaves task/payload IDs null.
+
 Response `200`:
 
 ```json
@@ -114,7 +118,9 @@ Response `200`:
 
 `status` là `ACCEPTED` hoặc `IGNORED_STALE`. Sample có timestamp bằng/cũ hơn
 `last_seen_at` là idempotent no-op và không broadcast. Sample được nhận sẽ cập
-nhật runtime robot state và phát cùng event `robot.telemetry` cho browser.
+nhật runtime robot state và phát cùng event `robot.telemetry` cho browser. Timestamp
+mới hơn backend UTC quá `EDGE_TELEMETRY_MAX_FUTURE_SKEW_SECONDS` (mặc định 5 giây)
+bị từ chối để không làm hỏng stale ordering; ngưỡng cấu hình hợp lệ là 0–300 giây.
 
 | Condition | Status |
 |---|---:|
@@ -123,6 +129,7 @@ nhật runtime robot state và phát cùng event `robot.telemetry` cho browser.
 | Unknown `robot_id` | `404` |
 | Mock factory đang chạy | `409` |
 | Invalid telemetry body | `422` |
+| Timestamp vượt quá future-skew cho phép | `422` |
 
 ## RobotStatus
 

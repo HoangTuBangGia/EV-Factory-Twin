@@ -1,4 +1,6 @@
-.PHONY: sync lint format format-check migration-check test test-cov typecheck check backend
+ROS_DISTRO ?= jazzy
+
+.PHONY: sync lint format format-check migration-check test test-cov typecheck check backend ros-deps ros-build ros-test ros-check
 
 sync:
 	uv sync --all-packages --dev
@@ -35,3 +37,15 @@ backend:
 		uvicorn ev_twin_api.main:app \
 		--app-dir apps/backend/src \
 		--reload
+
+ros-deps:
+	python3 -c "from colcon_ros.task.ament_python.build import AmentPythonBuildTask"
+	cd ros2_ws && rosdep check --rosdistro $(ROS_DISTRO) --from-paths src --ignore-src --skip-keys ament_python
+
+ros-build:
+	cd ros2_ws && colcon build --symlink-install
+
+ros-test:
+	cd ros2_ws && colcon test && colcon test-result --verbose
+
+ros-check: ros-deps ros-build ros-test

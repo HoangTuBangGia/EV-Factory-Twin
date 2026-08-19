@@ -55,6 +55,10 @@ ROS 2 Jazzy, Gazebo Harmonic và Nav2 là bắt buộc để đóng CORE, nhưng
 buộc cho dashboard/mock development. Chúng chạy trong Ubuntu 24.04 edge/container,
 không chạy trên Vercel hoặc Render.
 
+The first ROS slice is available with `make ros-check`; see
+[`docs/changes/ros-single-amr-telemetry.md`](docs/changes/ros-single-amr-telemetry.md)
+and [`docs/development.md`](docs/development.md) for the edge run.
+
 ## Bắt đầu nhanh
 
 ### 1. Clone và cài dependency
@@ -134,6 +138,7 @@ Backend đọc file `.env` tại thư mục đang chạy lệnh. Các biến ch�
 | `MOCK_ROBOT_SPEED_MPS` | `1.2` | Tốc độ robot (m/s) |
 | `MOCK_SIMULATION_SPEED` | `1` | Hệ số tốc độ mô phỏng |
 | `EDGE_TELEMETRY_SHARED_SECRET` | trống | Bearer secret backend/edge cho internal telemetry ingress |
+| `EDGE_TELEMETRY_MAX_FUTURE_SKEW_SECONDS` | `5` | Độ lệch UTC tương lai tối đa cho telemetry (`0`–`300` giây) |
 
 Frontend dùng các biến `NEXT_PUBLIC_*` trong `apps/frontend/.env.local`. Xem mẫu đầy đủ tại `apps/frontend/.env.example`.
 

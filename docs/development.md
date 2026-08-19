@@ -30,6 +30,44 @@ uv sync --all-packages --dev
 make check
 ```
 
+## ROS single-AMR slice
+
+Use the prepared Ubuntu 24.04 environment with ROS 2 Jazzy and Gazebo Harmonic:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+make ros-check
+```
+
+`make ros-deps` verifies the installed `ament_python` colcon extension directly,
+then asks `rosdep` to check all remaining manifest keys. The Noble rosdep index
+does not define `ament_python` as a system-package key even though it is the
+standard build type used by `telemetry_bridge`.
+
+For an edge-to-backend run, configure the backend with
+`MOCK_FACTORY_ENABLED=false` and the same `EDGE_TELEMETRY_SHARED_SECRET` used by
+the bridge. After `make ros-build`, run Gazebo in one terminal:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source ros2_ws/install/setup.bash
+ros2 launch amr_gazebo sim.launch.py
+```
+
+Run the bridge in a separate terminal:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source ros2_ws/install/setup.bash
+ros2 launch telemetry_bridge telemetry_bridge.launch.py \
+  backend_url:=https://YOUR_RENDER_HOST \
+  robot_id:=AMR-01
+```
+
+The bridge reads its bearer secret from the `EDGE_TELEMETRY_SHARED_SECRET`
+environment variable. It accepts loopback HTTP for local development only;
+remote backend URLs must use HTTPS.
+
 The Makefile disables unrelated globally installed pytest plugins and enables
 `pytest-asyncio` explicitly. Tests also clear `DATABASE_URL` so a developer's
 local `.env` cannot accidentally turn unit/API tests into a live PostgreSQL

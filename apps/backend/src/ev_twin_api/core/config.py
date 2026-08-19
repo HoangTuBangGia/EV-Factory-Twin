@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal, Self
 
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 BACKEND_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     supabase_jwt_verification_max_in_flight: int = 32
     websocket_auth_timeout_seconds: float = 5.0
     edge_telemetry_shared_secret: SecretStr | None = None
+    edge_telemetry_max_future_skew_seconds: float = Field(default=5.0, ge=0, le=300)
     mock_factory_enabled: bool = True
     mock_robot_count: int = 5
     mock_task_interval_seconds: float = 8

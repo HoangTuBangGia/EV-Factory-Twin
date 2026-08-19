@@ -108,6 +108,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         factory_state=factory_state,
         websocket_manager=websocket_manager,
         mock_factory=mock_factory,
+        max_future_skew_seconds=settings.edge_telemetry_max_future_skew_seconds,
     )
     audit_repository: AuditRepository
     scenario_repository: ScenarioRepository

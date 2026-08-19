@@ -62,3 +62,14 @@ def test_edge_telemetry_secret_is_optional_but_must_be_long_when_set() -> None:
         configured.edge_telemetry_shared_secret.get_secret_value()
         == "0123456789abcdef0123456789abcdef"
     )
+
+
+def test_edge_telemetry_future_skew_is_bounded() -> None:
+    assert Settings(_env_file=None).edge_telemetry_max_future_skew_seconds == 5
+
+    for invalid_value in (-1, 301):
+        with pytest.raises(ValidationError):
+            Settings(
+                _env_file=None,
+                edge_telemetry_max_future_skew_seconds=invalid_value,
+            )
