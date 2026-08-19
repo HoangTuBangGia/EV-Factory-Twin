@@ -15,7 +15,7 @@ Contract nguồn-neutral nằm ở `packages/twin-core`; các schema request/res
   sang pixel để render.
 - **Timestamp:** ISO 8601, UTC, có hậu tố `Z`, độ chính xác millisecond. Ví dụ:
   `2026-08-11T04:00:00.125Z`. Mọi field `datetime` trong response dùng chung
-  format này (xem `twin_core.models.telemetry`).
+  format này (xem `twin_core.models.telemetry`). Input thiếu timezone bị từ chối.
 - **Field nullable:** field kiểu `X | None` mà **có** giá trị mặc định `None`
   nghĩa là có thể bỏ qua khi tạo object. Field kiểu `X | None` mà **không có**
   giá trị mặc định (ví dụ `task_id`, `payload_id` trong `RobotTelemetry`) là
@@ -23,9 +23,10 @@ Contract nguồn-neutral nằm ở `packages/twin-core`; các schema request/res
 
 ## Danh sách endpoint
 
-Mọi endpoint đều nằm dưới `/api/v1`, **trừ `/health`**.
+Mọi browser endpoint đều nằm dưới `/api/v1`, **trừ `/health`**. Machine edge
+telemetry dùng `/internal/v1/telemetry`.
 
-Mọi REST endpoint ngoài `/health` yêu cầu Supabase access token trong header:
+Mọi browser REST endpoint ngoài `/health` yêu cầu Supabase access token trong header:
 
 ```http
 Authorization: Bearer <access-token>
@@ -35,6 +36,16 @@ Token thiếu/sai/hết hạn trả `401`; tài khoản bị khóa hoặc sai qu
 dịch vụ xác thực/JWKS/profile database chưa sẵn sàng trả `503`. Role được đọc từ
 `public.profiles`, không lấy từ request frontend hay generic claim
 `role=authenticated` của Supabase.
+
+`POST /internal/v1/telemetry` là machine endpoint riêng cho factory-edge bridge.
+Nó dùng opaque bearer secret độc lập, không dùng Supabase user token:
+
+```http
+Authorization: Bearer <EDGE_TELEMETRY_SHARED_SECRET>
+```
+
+Secret phải có ít nhất 32 ký tự, chỉ truyền qua HTTPS, không đặt trong query
+string/log/frontend và không được tái sử dụng service-role key.
 
 | Method | Path | Response | Mô tả |
 |---|---|---|---|
@@ -63,6 +74,7 @@ dịch vụ xác thực/JWKS/profile database chưa sẵn sàng trả `503`. Rol
 | POST | `/api/v1/admin/users/invite` | `AdminUser` | Mời user qua Supabase Auth; chỉ `ADMIN` |
 | GET | `/api/v1/admin/audit` | `AuditEvent[]` | Audit nghiệp vụ; chỉ `ADMIN` |
 | WS | `/ws/factory` | [envelope](#websocket-event-envelope) | Stream realtime |
+| POST | `/internal/v1/telemetry` | `TelemetryIngressResponse` | Edge bridge gửi một canonical robot sample |
 
 Ma trận quyền REST hiện tại:
 
@@ -80,6 +92,37 @@ không đặt token trên query string.
 
 `/ws/factory` không xuất hiện trong `/docs` (OpenAPI không mô tả WebSocket) —
 hợp đồng của nó nằm ở mục [WebSocket event envelope](#websocket-event-envelope).
+
+## Edge telemetry ingress
+
+`POST /internal/v1/telemetry` nhận đúng một `RobotTelemetry` source-neutral. Chỉ
+một trusted bridge được hỗ trợ trong deployment hiện tại; holder của shared secret
+có thể gửi sample cho mọi robot đã đăng ký. Multi-bridge identity/allowlist là
+follow-up bảo mật riêng. Mock
+factory phải được dừng trước khi edge gửi dữ liệu để hai source không ghi đè nhau.
+
+Response `200`:
+
+```json
+{
+  "status": "ACCEPTED",
+  "robot_id": "AMR-01",
+  "source_timestamp": "2026-08-11T04:00:00.125Z",
+  "ingested_at": "2026-08-11T04:00:00.150Z"
+}
+```
+
+`status` là `ACCEPTED` hoặc `IGNORED_STALE`. Sample có timestamp bằng/cũ hơn
+`last_seen_at` là idempotent no-op và không broadcast. Sample được nhận sẽ cập
+nhật runtime robot state và phát cùng event `robot.telemetry` cho browser.
+
+| Condition | Status |
+|---|---:|
+| Missing/wrong edge credential | `401` |
+| Edge secret chưa cấu hình | `503` |
+| Unknown `robot_id` | `404` |
+| Mock factory đang chạy | `409` |
+| Invalid telemetry body | `422` |
 
 ## RobotStatus
 

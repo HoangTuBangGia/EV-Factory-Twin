@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     supabase_jwt_verification_max_workers: int = 4
     supabase_jwt_verification_max_in_flight: int = 32
     websocket_auth_timeout_seconds: float = 5.0
+    edge_telemetry_shared_secret: SecretStr | None = None
     mock_factory_enabled: bool = True
     mock_robot_count: int = 5
     mock_task_interval_seconds: float = 8
@@ -51,6 +52,7 @@ class Settings(BaseSettings):
         "supabase_jwks_url",
         "database_url",
         "supabase_service_role_key",
+        "edge_telemetry_shared_secret",
         mode="before",
     )
     @classmethod
@@ -110,6 +112,13 @@ class Settings(BaseSettings):
     def validate_websocket_auth_timeout(cls, value: float) -> float:
         if not 0.1 <= value <= 30:
             raise ValueError("WEBSOCKET_AUTH_TIMEOUT_SECONDS must be between 0.1 and 30")
+        return value
+
+    @field_validator("edge_telemetry_shared_secret")
+    @classmethod
+    def validate_edge_telemetry_shared_secret(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and len(value.get_secret_value()) < 32:
+            raise ValueError("EDGE_TELEMETRY_SHARED_SECRET must be at least 32 characters")
         return value
 
     @property

@@ -44,13 +44,16 @@ Không commit `.env`, `.env.local` hoặc secret. Các file này đã được `
     DATABASE_URL=postgresql+asyncpg://...
    DATABASE_SSL_MODE=require
    SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
-   SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVER_ONLY_KEY
+    SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVER_ONLY_KEY
+    EDGE_TELEMETRY_SHARED_SECRET=GENERATE_AT_LEAST_32_RANDOM_CHARACTERS
    ```
 
    `SUPABASE_JWT_ISSUER` và `SUPABASE_JWKS_URL` được suy ra từ `SUPABASE_URL`.
    Backend không cần service-role key cho login/RBAC; chỉ endpoint Admin mời user
    cần key này. Nếu team tạo account trong Dashboard, có thể bỏ trống nó. Sau khi
    có URL Vercel production, phải thay `CORS_ORIGINS` bằng URL Vercel thật.
+   Edge secret phải được cấu hình cùng giá trị ở Render và secret store của bridge;
+   không đưa vào Vercel hoặc Supabase client config.
 4. Chạy migration bằng pre-deploy command, không chạy migration mỗi lần app start.
 5. Chọn **Apply** và chờ service healthy.
 6. Ghi lại URL backend, ví dụ:
@@ -176,6 +179,8 @@ curl -H "Authorization: Bearer <ACCESS_TOKEN>" \
   khi gọi hệ thống production-ready.
 - Không đưa `DATABASE_URL`, service-role key, edge credential hoặc ROS DDS ra
   frontend. Edge chỉ mở kết nối outbound TLS tới backend.
+- Rotate edge secret bằng cách cập nhật Render và bridge trong một maintenance
+  window. Phiên bản hiện tại hỗ trợ một active secret, nên rotation không zero-downtime.
 - Không scale ngang Render cho đến khi có durable live state và shared pub/sub.
 - Không dùng `NEXT_PUBLIC_DATA_SOURCE=mock` trên Vercel nếu muốn nhận dữ liệu BE.
 

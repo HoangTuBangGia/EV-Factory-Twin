@@ -133,12 +133,14 @@ Backend đọc file `.env` tại thư mục đang chạy lệnh. Các biến ch�
 | `MOCK_TASK_INTERVAL_SECONDS` | `8` | Khoảng thời gian sinh task |
 | `MOCK_ROBOT_SPEED_MPS` | `1.2` | Tốc độ robot (m/s) |
 | `MOCK_SIMULATION_SPEED` | `1` | Hệ số tốc độ mô phỏng |
+| `EDGE_TELEMETRY_SHARED_SECRET` | trống | Bearer secret backend/edge cho internal telemetry ingress |
 
 Frontend dùng các biến `NEXT_PUBLIC_*` trong `apps/frontend/.env.local`. Xem mẫu đầy đủ tại `apps/frontend/.env.example`.
 
 ## API chính
 
-Mọi REST endpoint nghiệp vụ nằm dưới `/api/v1`, ngoại trừ `/health`.
+Mọi browser REST endpoint nghiệp vụ nằm dưới `/api/v1`, ngoại trừ `/health`.
+Factory-edge telemetry dùng machine endpoint riêng tại `/internal/v1/telemetry`.
 
 | Method | Endpoint | Mô tả |
 |---|---|---|
@@ -152,6 +154,7 @@ Mọi REST endpoint nghiệp vụ nằm dưới `/api/v1`, ngoại trừ `/healt
 | `POST` | `/api/v1/mock/stop` | Dừng mock engine |
 | `POST` | `/api/v1/mock/reset` | Reset trạng thái mô phỏng |
 | `POST` | `/api/v1/mock/config` | Cập nhật tham số mô phỏng |
+| `POST` | `/internal/v1/telemetry` | Edge bridge gửi canonical robot telemetry |
 | `WS` | `/ws/factory` | Stream sự kiện realtime |
 
 Schema và contract chi tiết nằm trong [docs/api.md](docs/api.md).

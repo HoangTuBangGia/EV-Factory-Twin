@@ -44,3 +44,19 @@ def test_robot_telemetry_rejects_invalid_battery(battery: float) -> None:
                 "payload_id": None,
             }
         )
+
+
+def test_robot_telemetry_rejects_timestamp_without_timezone() -> None:
+    with pytest.raises(ValidationError, match="timezone"):
+        RobotTelemetry.model_validate(
+            {
+                "timestamp": "2026-08-11T04:00:00.125",
+                "robot_id": "AMR-01",
+                "pose": {"x": 0, "y": 0, "yaw": 0},
+                "velocity": {"linear": 0, "angular": 0},
+                "battery": 80,
+                "status": "IDLE",
+                "task_id": None,
+                "payload_id": None,
+            }
+        )

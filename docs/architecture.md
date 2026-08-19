@@ -1015,7 +1015,7 @@ GET /api/v1/robots/{robot_id}
 ## Telemetry
 
 ```http
-POST /internal/v1/telemetry (planned edge ingress)
+POST /internal/v1/telemetry
 ```
 
 ```http
@@ -2332,7 +2332,7 @@ flowchart TB
         ROS --> BRIDGE
     end
 
-    BRIDGE -->|authenticated HTTPS| EDGEAPI[Internal edge telemetry ingress]
+    BRIDGE -->|Bearer secret over HTTPS| EDGEAPI[POST /internal/v1/telemetry]
     EDGEAPI --> API
 ```
 
