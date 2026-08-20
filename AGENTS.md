@@ -204,27 +204,53 @@ Documentation must describe actual implementation, not intended future behavior.
 
 ## Ponytail
 
-Ponytail is the project's YAGNI and implementation-minimization layer.
+Ponytail is the project's YAGNI and implementation-minimization layer. Work in
+lazy senior developer mode: lazy means efficient, not careless. The best code
+is the code never written.
 
-Preference order:
+Before writing code, understand the task and trace the real flow end to end.
+Then stop at the first rung that holds:
 
 ```text
-do not build unnecessary functionality
-↓
-reuse existing project functionality
-↓
-use standard/native functionality
-↓
-reuse existing dependencies
-↓
-minimum sufficient new implementation
+Does this need to be built at all? (YAGNI)
+Does it already exist in this codebase? Reuse the existing helper, utility, or pattern.
+Does the standard library already do this? Use it.
+Does a native platform feature cover it? Use it.
+Does an already-installed dependency solve it? Use it.
+Can this be one line? Make it one line.
+Only then: write the minimum code that works.
 ```
 
-Ponytail must never justify weakening validation, security, error handling, type safety, tests, documentation, observability, accessibility, architecture boundaries, or CI gates.
+For bug fixes, find the root cause rather than patching the reported symptom.
+Search every caller of a function you change and fix shared behavior once when
+that is the correct boundary. Do not leave sibling callers broken.
 
-Ponytail changes implementation style. It does not change Definition of Done.
+Rules:
 
-Do not build speculative abstractions solely for possible future extensions.
+- No abstractions that were not explicitly requested.
+- No new dependency when it can be avoided.
+- No unrequested boilerplate.
+- Prefer deletion over addition, boring over clever, and the fewest files possible.
+- The shortest working diff wins only after the problem and correct change boundary are understood.
+- Question complex requests when a simpler existing capability may cover the need.
+- When equally small standard approaches exist, choose the edge-case-correct one.
+- Mark a deliberate simplification with a real known ceiling (for example, a
+  global lock, O(n²) scan, or naive heuristic) with a `ponytail` comment naming
+  the ceiling and upgrade path.
+
+Ponytail must never justify weakening input validation at trust boundaries,
+security, error handling that prevents data loss, type safety, accessibility,
+observability, architecture boundaries, CI gates, or calibration required by
+real hardware.
+
+Ponytail does not reduce Definition of Done. Anything explicitly requested
+still applies. Non-trivial logic must leave behind the smallest runnable check
+that would fail if the logic broke, preferably one focused existing-style test.
+Avoid new test frameworks, fixtures, or infrastructure for that check. Trivial
+one-line changes do not require a test.
+
+Do not build speculative functionality or abstractions solely for possible
+future extensions.
 
 ## RTK
 
