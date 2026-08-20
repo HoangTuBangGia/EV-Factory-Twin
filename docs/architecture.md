@@ -1,4 +1,4 @@
-# EV Factory Digital Twin — Core Architecture
+# EV Factory Digital Twin — MVP Advanced Architecture
 
 > **Project:** EV Factory Digital Twin for AMR-based Battery Intralogistics  
 > **Scope:** Core Platform Architecture  
@@ -2854,3 +2854,27 @@ Human Approval
 ```
 
 Đây là boundary chính thức của **EV Factory Digital Twin Core v0.1**.
+
+## MVP Advanced Boundary
+
+Đối với checkpoint bám sát `TOPIC.md`, runtime acceptance path là:
+
+```text
+Gazebo nhiều AMR
+  ↕ ROS 2 topics/services
+Fleet/Task Manager
+  ↕
+Telemetry Bridge → FastAPI → WebSocket → Next.js/Three.js
+                                      ↑
+Layout → SimPy → KPI → Compare → Approve → Apply
+```
+
+ROS 2/Gazebo chạy tại factory edge hoặc robotics VM/container host. Browser chỉ
+gọi FastAPI; không expose ROS DDS, Gazebo hoặc ROS graph ra Internet.
+
+MVP bắt buộc có layout làm input chung cho SimPy và route/configuration của Gazebo,
+ít nhất hai AMR, command/task path hai chiều, cảnh báo bất thường và benchmark
+latency/FPS cơ bản. Mock factory chỉ dùng cho test/local fallback.
+
+Replay raw telemetry, time-series retention dài hạn, admin portal, battery genealogy,
+AI/ML, MES/ERP và tự động tối ưu layout nằm ngoài boundary MVP này.

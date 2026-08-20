@@ -3,10 +3,9 @@
 ## Current baseline
 
 Factory Twin uses Supabase PostgreSQL 17 for identities, roles, scenario workflow
-state, review/apply actors, business audit events, and coarse KPI history. The
-current MVP does not persist the realtime robot telemetry stream. CORE requires a
-bounded sampled telemetry history and replay path; that is a follow-up checkpoint
-and must preserve the retention measurements below.
+state, layout versions, review/apply actors, business audit events, and coarse KPI
+history. The advanced MVP does not persist the realtime robot telemetry stream.
+Telemetry history/replay is outside the current `TOPIC.md` acceptance path.
 
 The backend currently publishes one robot telemetry event per robot at 10 Hz.
 Persisting that stream would create:
@@ -65,7 +64,7 @@ evaluation data. When enabled, the job must run under a restricted backend
 role, record how many rows it aggregated/deleted, and never modify
 `audit_events`.
 
-## When to revisit PostgreSQL
+## When to revisit PostgreSQL and pg_partman
 
 Plain PostgreSQL with timestamp indexes is the default. Before considering a
 dedicated TimescaleDB/Timescale Cloud or ClickHouse deployment, capture:
@@ -78,6 +77,9 @@ dedicated TimescaleDB/Timescale Cloud or ClickHouse deployment, capture:
 
 Re-evaluate the storage engine only if measured PostgreSQL performance misses
 an agreed target (initially p95 under 500 ms for a 24-hour KPI query) after
-appropriate indexing, batching, and native partitioning. The hosted project is
-PostgreSQL 17, so this roadmap does not assume that the deprecated Supabase
-TimescaleDB extension is available.
+appropriate indexing and batching. Do not add `pg_partman` for the MVP: there is
+no raw telemetry table to partition. Consider native partitioning or `pg_partman`
+only after measured telemetry volume justifies maintenance complexity and the
+Supabase project confirms extension/job support. The hosted project is PostgreSQL
+17, so this roadmap does not assume that the deprecated Supabase TimescaleDB
+extension is available.

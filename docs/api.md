@@ -1,8 +1,8 @@
 # FE-BE Domain Contracts
 
-Nguồn sự thật cho các schema mà backend trả về qua REST và WebSocket. Mục tiêu:
-sau này thay Mock Factory Engine bằng ROS2, các contract dưới đây không đổi, nên
-frontend không phải sửa code khi backend đổi nguồn dữ liệu.
+Nguồn sự thật cho các schema mà backend trả về qua REST và WebSocket. ROS2/Gazebo
+là nguồn runtime chính của MVP; mock factory chỉ là fallback. Contract không đổi
+khi chuyển giữa ROS2 và mock để frontend không phụ thuộc vào nguồn dữ liệu.
 
 Contract nguồn-neutral nằm ở `packages/twin-core`; các schema request/response
 đặc thù FastAPI nằm ở `apps/backend/src/ev_twin_api/schemas/`.
@@ -58,7 +58,7 @@ string/log/frontend và không được tái sử dụng service-role key.
 | GET | `/api/v1/tasks/{task_id}` | [`Task`](#task) | 1 task; id lạ → 404 |
 | GET | `/api/v1/metrics` | [`FactoryMetrics`](#factorymetrics) | Số liệu vận hành |
 | GET | `/api/v1/alerts` | [`FactoryAlert[]`](#alertseverity--alertcode--factoryalert) | Alert đã phát |
-| POST | `/api/v1/mock/start` | [`MockControlResponse`](#mockcontrolresponse) | Chạy engine mock |
+| POST | `/api/v1/mock/start` | [`MockControlResponse`](#mockcontrolresponse) | Chạy engine mock local/test |
 | POST | `/api/v1/mock/stop` | [`MockControlResponse`](#mockcontrolresponse) | Dừng engine mock |
 | POST | `/api/v1/mock/reset` | [`MockControlResponse`](#mockcontrolresponse) | Reset state về ban đầu |
 | POST | `/api/v1/mock/config` | [`MockFactoryConfig`](#mockfactoryconfig) | Đổi tham số mô phỏng |
@@ -68,11 +68,11 @@ string/log/frontend và không được tái sử dụng service-role key.
 | POST | `/api/v1/scenarios/run` | [`Scenario`](#scenario) | Chạy benchmark SimPy cho candidate |
 | POST | `/api/v1/scenarios/{scenario_id}/approve` | [`Scenario`](#scenario) | Phê duyệt candidate đã mô phỏng |
 | POST | `/api/v1/scenarios/{scenario_id}/reject` | [`Scenario`](#scenario) | Từ chối candidate đã mô phỏng |
-| POST | `/api/v1/scenarios/{scenario_id}/apply` | [`Scenario`](#scenario) | Áp dụng candidate đã duyệt vào mock realtime |
-| GET | `/api/v1/admin/users` | `AdminUser[]` | Danh sách account/profile; chỉ `ADMIN` |
-| PATCH | `/api/v1/admin/users/{user_id}` | `AdminUser` | Đổi role hoặc trạng thái; chỉ `ADMIN` |
-| POST | `/api/v1/admin/users/invite` | `AdminUser` | Mời user qua Supabase Auth; chỉ `ADMIN` |
-| GET | `/api/v1/admin/audit` | `AuditEvent[]` | Audit nghiệp vụ; chỉ `ADMIN` |
+| POST | `/api/v1/scenarios/{scenario_id}/apply` | [`Scenario`](#scenario) | Áp dụng candidate đã duyệt vào ROS2/fallback runtime |
+| GET | `/api/v1/admin/users` | `AdminUser[]` | Admin extension, ngoài MVP |
+| PATCH | `/api/v1/admin/users/{user_id}` | `AdminUser` | Admin extension, ngoài MVP |
+| POST | `/api/v1/admin/users/invite` | `AdminUser` | Admin extension, ngoài MVP |
+| GET | `/api/v1/admin/audit` | `AuditEvent[]` | Audit extension, ngoài MVP |
 | WS | `/ws/factory` | [envelope](#websocket-event-envelope) | Stream realtime |
 | POST | `/internal/v1/telemetry` | `TelemetryIngressResponse` | Edge bridge gửi một canonical robot sample |
 

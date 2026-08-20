@@ -25,56 +25,66 @@
 - [ ] Hiển thị kết quả benchmark và bước phê duyệt (1 phút)
 - [ ] Tóm tắt impact (< 30 giây)
 
-## Slide kiến trúc hiện tại — MVP
+## Slide kiến trúc hiện tại — MVP nâng cao
 
 ```mermaid
 flowchart LR
     AUTH[Supabase Auth]
-    FE[Next.js UI<br/>Login + role-aware 2D dashboard]
+    FE[Next.js UI<br/>Login + role-aware 3D dashboard]
     API[FastAPI<br/>JWT/RBAC + REST + authenticated WS]
-    MOCK[MockFactory<br/>Realtime telemetry]
-    SIM[SimPy<br/>Offline KPI benchmark]
-    DB[(PostgreSQL<br/>profiles + scenarios + audit)]
+    GZ[Gazebo Harmonic<br/>2+ AMR]
+    ROS[ROS 2 Jazzy + Nav2<br/>Fleet/Task Manager]
+    BRIDGE[Telemetry + Command Bridge]
+    SIM[SimPy<br/>Layout KPI benchmark]
+    DB[(Supabase PostgreSQL<br/>profiles + scenarios + KPI)]
 
     AUTH -->|Session| FE
     FE -->|Designer run / Monitor review-apply| API
     API --> SIM
-    API --> MOCK
-    MOCK -->|Telemetry 10 Hz| API
+    GZ <--> ROS
+    ROS <--> BRIDGE
+    BRIDGE <--> API
     API -->|WebSocket| FE
     API <--> DB
 ```
 
 Thông điệp trình bày:
 
-- MockFactory phục vụ monitoring realtime.
+- Gazebo/ROS2 là nguồn realtime chính; MockFactory chỉ là fallback test/local.
 - SimPy phục vụ so sánh nhanh baseline/candidate.
 - Server chặn sai role và chặn Apply nếu scenario chưa được Approve.
-- Scenario/actor/audit lưu PostgreSQL; state robot/task đang chạy vẫn ở RAM.
-- Factory view hiện là 2D; 3D/ROS2/Gazebo chưa hoàn thành.
+- Scenario/actor/KPI lưu PostgreSQL; raw telemetry replay không thuộc MVP.
+- Factory view chính là 3D và browser không truy cập trực tiếp ROS DDS.
 
-## Slide kiến trúc mục tiêu — sau MVP
+## Slide kiến trúc deployment
 
 ```mermaid
 flowchart LR
-    GZ[Gazebo / Isaac Sim]
-    ROS[ROS2 + Nav2]
+    EDGE[Ubuntu 24.04 Edge/VM]
+    GZ[Gazebo Harmonic]
+    ROS[ROS2 Jazzy + Nav2]
     BRIDGE[Telemetry & Command Bridge]
     API[FastAPI]
-    DB[(Time-series DB + Audit log)]
+    DB[(Supabase PostgreSQL + Auth)]
+    RENDER[Render FastAPI]
+    VERCEL[Vercel Next.js]
     WEB[Next.js + Three.js 3D]
     REVIEW[Designer / Monitor]
 
+    EDGE --> GZ
     GZ <--> ROS
     ROS <--> BRIDGE
-    BRIDGE <--> API
+    BRIDGE <-->|Outbound TLS| RENDER
+    RENDER --> API
     API <--> DB
-    API <-->|REST + WebSocket| WEB
+    API <-->|REST + WebSocket| VERCEL
+    VERCEL --> WEB
     REVIEW --> WEB
 ```
 
-Không trình bày kiến trúc mục tiêu như phần đã hoàn thành. Nêu rõ bước tiếp theo là
-thay nguồn telemetry MockFactory bằng ROS2 bridge mà không đổi contract frontend.
+ROS2/Gazebo không chạy trên Vercel hoặc Render. Edge chỉ mở outbound TLS và không
+expose ROS DDS ra Internet. `pg_partman` chưa cần cho MVP vì chưa lưu raw telemetry
+dài hạn.
 
 ## Luồng demo 5 phút
 
@@ -84,4 +94,4 @@ thay nguồn telemetry MockFactory bằng ROS2 bridge mà không đổi contract
 4. Chứng minh Designer không có quyền Approve/Apply và Monitor không có quyền Run.
 5. Monitor bấm Apply trước Approve để giải thích server-side state guard.
 6. Monitor Approve rồi Apply; quay lại Factory và quan sát số robot/config đã reset.
-7. Admin xem actor/action/time trong audit log; kết thúc bằng roadmap 3D/ROS2/Gazebo.
+7. Kết thúc bằng latency/FPS benchmark và sơ đồ edge deployment.

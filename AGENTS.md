@@ -201,39 +201,6 @@ Update canonical documentation when affected: `README.md`, `docs/architecture.md
 
 Documentation must describe actual implementation, not intended future behavior.
 
-## AI Engineering Architecture
-
-OpenCode is the sole implementation orchestrator. The project uses one model: GPT-5.6 Sol. Different engineering responsibilities are represented by agents and prompts, not by different models.
-
-```text
-HUMAN
-  ↓
-OpenCode → GPT-5.6 Sol
-  ↓
-Researcher / Specialists / Reviewer
-  ↓
-Ponytail (YAGNI / minimal)
-  ↓
-shell/tools → RTK → uv / npm / make / colcon
-  ↓
-tests + docs + CI
-  ↓
-STOP → HUMAN GIT COMMIT
-```
-
-## Model Policy
-
-The only approved model for project agents is `codelypixverse-openai/gpt-5.6-sol`.
-
-Do not introduce another model or provider without explicit human approval.
-
-Model specialization is achieved through agent role, system prompt, repository context, permissions, and tool access rather than multiple models.
-
-## OpenCode
-
-OpenCode owns research coordination, repository inspection, architecture checking, planning, delegation, implementation, testing, documentation coordination, CI/build verification, independent review, and checkpoint control.
-
-No other AI tool owns project implementation orchestration.
 
 ## Ponytail
 
@@ -302,41 +269,71 @@ Agents must not perform `git add`, `git commit`, `git push`, `git merge`, `git r
 
 The human owns Git history.
 
-## Mandatory Development Workflow
+## Human-Controlled Execution
 
-Every non-trivial checkpoint:
+The human must understand and control project execution.
+
+Before running any command that changes files, installs dependencies, starts
+services, runs migrations, modifies containers, or affects external systems:
+
+1. Explain what the command does.
+2. Show the exact command.
+3. State its expected effect and relevant risks.
+4. Wait for explicit human approval.
+5. Run only the approved command.
+
+Agents may run read-only inspection commands without approval, including
+`git status`, `git diff`, `rg`, `ls`, and reading files. Briefly state their
+purpose before running them.
+
+For tests, lint, type checks, and builds, show the exact command and wait for
+approval unless the human explicitly authorized verification for the current
+checkpoint.
+
+Never combine an approved command with additional unapproved operations.
+
+If the human requests command-only guidance, do not execute commands. Provide
+the commands in execution order with a short explanation and wait for the
+human to return the output.
+
+## Token Efficiency
+
+Minimize token use without weakening correctness.
+
+- Keep plans, progress updates, and final summaries concise.
+- Do not repeat information already available in the conversation.
+- Use `rg`, targeted file reads, and concise Git output.
+- Run targeted checks first. Run full quality gates only for non-trivial changes
+  or when explicitly requested.
+- Prefer quiet test output. Expand logs only when diagnosing a failure.
+- Let RTK transparently optimize supported command output; never wrap commands
+  with `rtk`.
+- Apply Ponytail principles: reuse existing functionality and implement only the
+  minimum sufficient change.
+- Do not use subagents for trivial or tightly coupled work.
+- Avoid reading generated files, lockfiles, build artifacts, and unrelated code
+  unless required.
+- For trivial checkpoints, respond only with the result, verification, and a
+  suggested commit message.
+
+## Development Workflow
+
+For non-trivial code, architecture, or contract changes:
 
 ```text
-RESEARCH
-↓
-REPOSITORY INSPECTION
-↓
-ARCHITECTURE / CONTRACT CHECK
-↓
-PLAN
-↓
-IMPLEMENT
-↓
-TARGETED TESTS
-↓
-FULL QUALITY GATES
-↓
-DOCUMENTATION
-↓
-BUILD / CI VERIFICATION
-↓
-INDEPENDENT REVIEW
-↓
-CHECKPOINT SUMMARY
-↓
-STOP
-↓
-HUMAN GIT COMMIT
+INSPECT → CHECK ARCHITECTURE → PLAN → IMPLEMENT → TEST
+→ DOCUMENT → VERIFY CI/BUILD → REVIEW → SUMMARIZE → HUMAN COMMIT
 ```
 
-Do not automatically begin another logical checkpoint.
+For trivial configuration, documentation, or formatting changes, perform only
+proportionate inspection and validation. Do not run the full quality gates,
+create change documentation, or request an independent review unless the change
+has broader impact.
 
-Final response must contain:
+Do not automatically begin another logical checkpoint. Stop after completing
+the requested checkpoint and wait for explicit human approval to continue.
+
+For non-trivial checkpoints, the final response must contain:
 
 ```text
 CHECKPOINT READY FOR HUMAN COMMIT
@@ -368,4 +365,5 @@ Next recommended checkpoint:
 Waiting for you to review and git commit this checkpoint.
 ```
 
-Then stop. Do not continue until the human explicitly asks to continue.
+For trivial changes, provide only a concise summary, verification result, and
+suggested commit message, then stop for human review and commit.

@@ -6,17 +6,17 @@ Dự án **P-078** được phát triển bởi nhóm **Super Extraordinary X** 
 
 ## Tổng quan
 
-Hệ thống hiện cung cấp:
+Phạm vi MVP nâng cao của hệ thống:
 
-- dashboard theo dõi đội AMR, task, KPI và cảnh báo;
-- bản đồ nhà máy và telemetry realtime;
-- REST API và WebSocket với mock factory engine tích hợp sẵn;
-- mô phỏng sự kiện rời rạc cho các kịch bản vận hành;
-- công cụ chạy batch và xếp hạng kịch bản theo throughput, cycle time và waiting time;
-- các contract telemetry nguồn-neutral dùng chung trong `twin-core`.
+- Gazebo/ROS 2 mô phỏng nhiều AMR và telemetry realtime;
+- telemetry bridge qua FastAPI/WebSocket tới giao diện 3D;
+- task/fleet lifecycle, cảnh báo bất thường và KPI vận hành;
+- chỉnh layout/configuration, chạy SimPy what-if và so sánh phương án;
+- workflow Designer/Monitor: submit, approve/reject và apply;
+- benchmark cơ bản cho telemetry latency và 3D rendering.
 
-> Trạng thái hiện tại: MVP mock đã chạy; CORE vẫn đang triển khai. ROS 2/Gazebo/Nav2
-> sẽ chạy tại factory edge và đi qua telemetry bridge trước khi vào FastAPI.
+> Mock factory chỉ là fallback cho test/local development. Acceptance path của MVP
+> là Gazebo/ROS 2 → telemetry bridge → FastAPI → WebSocket → frontend 3D.
 
 ## Công nghệ
 
@@ -51,9 +51,9 @@ Hệ thống hiện cung cấp:
 - Node.js `22`
 - npm
 
-ROS 2 Jazzy, Gazebo Harmonic và Nav2 là bắt buộc để đóng CORE, nhưng không bắt
-buộc cho dashboard/mock development. Chúng chạy trong Ubuntu 24.04 edge/container,
-không chạy trên Vercel hoặc Render.
+ROS 2 Jazzy, Gazebo Harmonic và Nav2 chạy trên Ubuntu 24.04 tại factory edge hoặc
+VM/container host có quyền truy cập đồ họa/robotics. Chúng không chạy trên Vercel
+hoặc Render. Browser không truy cập trực tiếp ROS DDS.
 
 The first ROS slice is available with `make ros-check`; see
 [`docs/changes/ros-single-amr-telemetry.md`](docs/changes/ros-single-amr-telemetry.md)
@@ -73,7 +73,7 @@ cd apps/frontend && npm ci && cd ../..
 
 ### 2. Chọn chế độ chạy
 
-#### Chỉ chạy frontend với dữ liệu mock
+#### Local mock development
 
 Đây là cách nhanh nhất để xem giao diện, không cần khởi động backend:
 
@@ -85,7 +85,21 @@ npm run dev
 
 Giữ `NEXT_PUBLIC_DATA_SOURCE=mock` trong `.env.local`, sau đó mở <http://localhost:3000>.
 
-#### Chạy full-stack với backend realtime
+#### Full stack với ROS 2/Gazebo
+
+Khởi động backend và frontend theo phần full-stack, sau đó chạy tại edge:
+
+```bash
+make ros-check
+make ros-build
+ros2 launch amr_gazebo sim.launch.py
+ros2 launch telemetry_bridge telemetry_bridge.launch.py
+```
+
+Bridge gửi telemetry outbound tới `/internal/v1/telemetry`; command/task từ
+backend đi qua ROS 2 fleet/task manager. Không expose ROS graph hoặc DDS ra Internet.
+
+#### Full stack với backend realtime
 
 Tại terminal thứ nhất, từ thư mục gốc repository:
 
