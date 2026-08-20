@@ -47,7 +47,8 @@ def generate_test_description():
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     str(Path(__file__).parents[1] / "launch" / "sim.launch.py")
-                )
+                ),
+                launch_arguments={"gz_args": "-s -r"}.items(),
             ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(

@@ -22,13 +22,17 @@ def generate_launch_description():
         [
             DeclareLaunchArgument("namespace", default_value="amr_01"),
             DeclareLaunchArgument("robot_name", default_value="amr_01"),
+            DeclareLaunchArgument("gz_args", default_value="-r"),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     PathJoinSubstitution(
                         [FindPackageShare("ros_gz_sim"), "launch", "gz_sim.launch.py"]
                     )
                 ),
-                launch_arguments={"gz_args": ["-r ", world], "on_exit_shutdown": "true"}.items(),
+                launch_arguments={
+                    "gz_args": [LaunchConfiguration("gz_args"), " ", world],
+                    "on_exit_shutdown": "true",
+                }.items(),
             ),
             Node(
                 package="robot_state_publisher",
