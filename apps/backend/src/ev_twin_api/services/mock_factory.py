@@ -164,6 +164,10 @@ class MockFactory:
             await asyncio.sleep(max(0.0, self.TICK_SECONDS - elapsed))
 
     async def tick(self, dt: float, *, wall_dt: float | None = None) -> None:
+        async with self.exclusive_control():
+            await self._tick(dt, wall_dt=wall_dt)
+
+    async def _tick(self, dt: float, *, wall_dt: float | None = None) -> None:
         """Advance simulated state by ``dt`` seconds.
 
         ``wall_dt`` controls transport publishing cadence independently of

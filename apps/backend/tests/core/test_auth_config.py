@@ -45,3 +45,31 @@ def test_jwt_verification_capacity_must_cover_worker_count() -> None:
             supabase_jwt_verification_max_workers=4,
             supabase_jwt_verification_max_in_flight=3,
         )
+
+
+def test_edge_telemetry_secret_is_optional_but_must_be_long_when_set() -> None:
+    assert Settings(_env_file=None).edge_telemetry_shared_secret is None
+
+    with pytest.raises(ValidationError, match="at least 32 characters"):
+        Settings(_env_file=None, edge_telemetry_shared_secret="too-short")
+
+    configured = Settings(
+        _env_file=None,
+        edge_telemetry_shared_secret="0123456789abcdef0123456789abcdef",
+    )
+    assert configured.edge_telemetry_shared_secret is not None
+    assert (
+        configured.edge_telemetry_shared_secret.get_secret_value()
+        == "0123456789abcdef0123456789abcdef"
+    )
+
+
+def test_edge_telemetry_future_skew_is_bounded() -> None:
+    assert Settings(_env_file=None).edge_telemetry_max_future_skew_seconds == 5
+
+    for invalid_value in (-1, 301):
+        with pytest.raises(ValidationError):
+            Settings(
+                _env_file=None,
+                edge_telemetry_max_future_skew_seconds=invalid_value,
+            )

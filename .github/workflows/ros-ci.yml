@@ -1,0 +1,32 @@
+name: ROS CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, develop]
+    paths:
+      - "ros2_ws/**"
+      - "Makefile"
+      - ".github/workflows/ros-ci.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "ros2_ws/**"
+      - "Makefile"
+      - ".github/workflows/ros-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  jazzy:
+    runs-on: ubuntu-24.04
+    container:
+      image: rostooling/setup-ros-docker:ubuntu-noble-latest@sha256:8cff2857878d920cb3dcc131c9bfe8800e8fde89dbfaf37030d3295680c7e31a
+    steps:
+      - uses: ros-tooling/action-ros-ci@3a640b10f09b756dabe556dac5413aba369f71b0
+        with:
+          target-ros2-distro: jazzy
+          package-name: amr_description amr_gazebo telemetry_bridge
+          rosdep-check: true
+          rosdep-skip-keys: ament_python

@@ -1,10 +1,11 @@
 # FE-BE Domain Contracts
 
-Nguồn sự thật cho các schema mà backend trả về qua REST và WebSocket. Mục tiêu:
-sau này thay Mock Factory Engine bằng ROS2, các contract dưới đây không đổi, nên
-frontend không phải sửa code khi backend đổi nguồn dữ liệu.
+Nguồn sự thật cho các schema mà backend trả về qua REST và WebSocket. ROS2/Gazebo
+là nguồn runtime chính của MVP; mock factory chỉ là fallback. Contract không đổi
+khi chuyển giữa ROS2 và mock để frontend không phụ thuộc vào nguồn dữ liệu.
 
-Định nghĩa Pydantic tương ứng nằm ở `apps/backend/src/ev_twin_api/schemas/`.
+Contract nguồn-neutral nằm ở `packages/twin-core`; các schema request/response
+đặc thù FastAPI nằm ở `apps/backend/src/ev_twin_api/schemas/`.
 
 ## Quy ước chung
 
@@ -14,7 +15,7 @@ frontend không phải sửa code khi backend đổi nguồn dữ liệu.
   sang pixel để render.
 - **Timestamp:** ISO 8601, UTC, có hậu tố `Z`, độ chính xác millisecond. Ví dụ:
   `2026-08-11T04:00:00.125Z`. Mọi field `datetime` trong response dùng chung
-  format này (xem `schemas/base.py`).
+  format này (xem `twin_core.models.telemetry`). Input thiếu timezone bị từ chối.
 - **Field nullable:** field kiểu `X | None` mà **có** giá trị mặc định `None`
   nghĩa là có thể bỏ qua khi tạo object. Field kiểu `X | None` mà **không có**
   giá trị mặc định (ví dụ `task_id`, `payload_id` trong `RobotTelemetry`) là
@@ -22,9 +23,10 @@ frontend không phải sửa code khi backend đổi nguồn dữ liệu.
 
 ## Danh sách endpoint
 
-Mọi endpoint đều nằm dưới `/api/v1`, **trừ `/health`**.
+Mọi browser endpoint đều nằm dưới `/api/v1`, **trừ `/health`**. Machine edge
+telemetry dùng `/internal/v1/telemetry`.
 
-Mọi REST endpoint ngoài `/health` yêu cầu Supabase access token trong header:
+Mọi browser REST endpoint ngoài `/health` yêu cầu Supabase access token trong header:
 
 ```http
 Authorization: Bearer <access-token>
@@ -34,6 +36,16 @@ Token thiếu/sai/hết hạn trả `401`; tài khoản bị khóa hoặc sai qu
 dịch vụ xác thực/JWKS/profile database chưa sẵn sàng trả `503`. Role được đọc từ
 `public.profiles`, không lấy từ request frontend hay generic claim
 `role=authenticated` của Supabase.
+
+`POST /internal/v1/telemetry` là machine endpoint riêng cho factory-edge bridge.
+Nó dùng opaque bearer secret độc lập, không dùng Supabase user token:
+
+```http
+Authorization: Bearer <EDGE_TELEMETRY_SHARED_SECRET>
+```
+
+Secret phải có ít nhất 32 ký tự, chỉ truyền qua HTTPS, không đặt trong query
+string/log/frontend và không được tái sử dụng service-role key.
 
 | Method | Path | Response | Mô tả |
 |---|---|---|---|
@@ -46,7 +58,7 @@ dịch vụ xác thực/JWKS/profile database chưa sẵn sàng trả `503`. Rol
 | GET | `/api/v1/tasks/{task_id}` | [`Task`](#task) | 1 task; id lạ → 404 |
 | GET | `/api/v1/metrics` | [`FactoryMetrics`](#factorymetrics) | Số liệu vận hành |
 | GET | `/api/v1/alerts` | [`FactoryAlert[]`](#alertseverity--alertcode--factoryalert) | Alert đã phát |
-| POST | `/api/v1/mock/start` | [`MockControlResponse`](#mockcontrolresponse) | Chạy engine mock |
+| POST | `/api/v1/mock/start` | [`MockControlResponse`](#mockcontrolresponse) | Chạy engine mock local/test |
 | POST | `/api/v1/mock/stop` | [`MockControlResponse`](#mockcontrolresponse) | Dừng engine mock |
 | POST | `/api/v1/mock/reset` | [`MockControlResponse`](#mockcontrolresponse) | Reset state về ban đầu |
 | POST | `/api/v1/mock/config` | [`MockFactoryConfig`](#mockfactoryconfig) | Đổi tham số mô phỏng |
@@ -56,12 +68,13 @@ dịch vụ xác thực/JWKS/profile database chưa sẵn sàng trả `503`. Rol
 | POST | `/api/v1/scenarios/run` | [`Scenario`](#scenario) | Chạy benchmark SimPy cho candidate |
 | POST | `/api/v1/scenarios/{scenario_id}/approve` | [`Scenario`](#scenario) | Phê duyệt candidate đã mô phỏng |
 | POST | `/api/v1/scenarios/{scenario_id}/reject` | [`Scenario`](#scenario) | Từ chối candidate đã mô phỏng |
-| POST | `/api/v1/scenarios/{scenario_id}/apply` | [`Scenario`](#scenario) | Áp dụng candidate đã duyệt vào mock realtime |
-| GET | `/api/v1/admin/users` | `AdminUser[]` | Danh sách account/profile; chỉ `ADMIN` |
-| PATCH | `/api/v1/admin/users/{user_id}` | `AdminUser` | Đổi role hoặc trạng thái; chỉ `ADMIN` |
-| POST | `/api/v1/admin/users/invite` | `AdminUser` | Mời user qua Supabase Auth; chỉ `ADMIN` |
-| GET | `/api/v1/admin/audit` | `AuditEvent[]` | Audit nghiệp vụ; chỉ `ADMIN` |
+| POST | `/api/v1/scenarios/{scenario_id}/apply` | [`Scenario`](#scenario) | Áp dụng candidate đã duyệt vào ROS2/fallback runtime |
+| GET | `/api/v1/admin/users` | `AdminUser[]` | Admin extension, ngoài MVP |
+| PATCH | `/api/v1/admin/users/{user_id}` | `AdminUser` | Admin extension, ngoài MVP |
+| POST | `/api/v1/admin/users/invite` | `AdminUser` | Admin extension, ngoài MVP |
+| GET | `/api/v1/admin/audit` | `AuditEvent[]` | Audit extension, ngoài MVP |
 | WS | `/ws/factory` | [envelope](#websocket-event-envelope) | Stream realtime |
+| POST | `/internal/v1/telemetry` | `TelemetryIngressResponse` | Edge bridge gửi một canonical robot sample |
 
 Ma trận quyền REST hiện tại:
 
@@ -79,6 +92,44 @@ không đặt token trên query string.
 
 `/ws/factory` không xuất hiện trong `/docs` (OpenAPI không mô tả WebSocket) —
 hợp đồng của nó nằm ở mục [WebSocket event envelope](#websocket-event-envelope).
+
+## Edge telemetry ingress
+
+`POST /internal/v1/telemetry` nhận đúng một `RobotTelemetry` source-neutral. Chỉ
+một trusted bridge được hỗ trợ trong deployment hiện tại; holder của shared secret
+có thể gửi sample cho mọi robot đã đăng ký. Multi-bridge identity/allowlist là
+follow-up bảo mật riêng. Mock
+factory phải được dừng trước khi edge gửi dữ liệu để hai source không ghi đè nhau.
+
+The ROS bridge sends `pose` and `velocity` from namespaced odometry, uses the
+edge host UTC timestamp, defaults `battery` to `100` and `status` to `IDLE` until
+real ROS producers are connected, and leaves task/payload IDs null.
+
+Response `200`:
+
+```json
+{
+  "status": "ACCEPTED",
+  "robot_id": "AMR-01",
+  "source_timestamp": "2026-08-11T04:00:00.125Z",
+  "ingested_at": "2026-08-11T04:00:00.150Z"
+}
+```
+
+`status` là `ACCEPTED` hoặc `IGNORED_STALE`. Sample có timestamp bằng/cũ hơn
+`last_seen_at` là idempotent no-op và không broadcast. Sample được nhận sẽ cập
+nhật runtime robot state và phát cùng event `robot.telemetry` cho browser. Timestamp
+mới hơn backend UTC quá `EDGE_TELEMETRY_MAX_FUTURE_SKEW_SECONDS` (mặc định 5 giây)
+bị từ chối để không làm hỏng stale ordering; ngưỡng cấu hình hợp lệ là 0–300 giây.
+
+| Condition | Status |
+|---|---:|
+| Missing/wrong edge credential | `401` |
+| Edge secret chưa cấu hình | `503` |
+| Unknown `robot_id` | `404` |
+| Mock factory đang chạy | `409` |
+| Invalid telemetry body | `422` |
+| Timestamp vượt quá future-skew cho phép | `422` |
 
 ## RobotStatus
 

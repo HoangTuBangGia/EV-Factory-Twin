@@ -18,6 +18,7 @@ from ev_twin_api.api.mock import router as mock_router
 from ev_twin_api.api.robots import router as robots_router
 from ev_twin_api.api.scenarios import router as scenarios_router
 from ev_twin_api.api.tasks import router as tasks_router
+from ev_twin_api.api.telemetry import router as telemetry_router
 from ev_twin_api.api.websocket import router as websocket_router
 from ev_twin_api.core.config import get_settings
 from ev_twin_api.core.database import Database
@@ -45,6 +46,7 @@ from ev_twin_api.services.scenario_repository import (
     SqlAlchemyScenarioRepository,
 )
 from ev_twin_api.services.scenario_service import ScenarioService
+from ev_twin_api.services.telemetry_ingress import TelemetryIngressService
 from ev_twin_api.services.websocket_manager import WebSocketManager
 
 configure_logging()
@@ -102,6 +104,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
     app.state.factory_state = factory_state
     app.state.mock_factory = mock_factory
+    app.state.telemetry_ingress_service = TelemetryIngressService(
+        factory_state=factory_state,
+        websocket_manager=websocket_manager,
+        mock_factory=mock_factory,
+        max_future_skew_seconds=settings.edge_telemetry_max_future_skew_seconds,
+    )
     audit_repository: AuditRepository
     scenario_repository: ScenarioRepository
     if database.configured:
@@ -156,7 +164,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="EV Factory Digital Twin API",
     version=__version__,
-    description="Mock-data backend mô phỏng đội AMR chở pin trong nhà máy, đẩy telemetry realtime.",
+    description="Application API for AMR battery intralogistics telemetry and scenarios.",
     lifespan=lifespan,
 )
 
@@ -179,4 +187,5 @@ app.include_router(metrics_router)
 app.include_router(alerts_router)
 app.include_router(mock_router)
 app.include_router(scenarios_router)
+app.include_router(telemetry_router)
 app.include_router(websocket_router)

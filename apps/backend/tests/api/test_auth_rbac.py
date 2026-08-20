@@ -329,5 +329,7 @@ def test_openapi_declares_bearer_security_for_all_non_health_rest_operations() -
                 continue
             if path == "/health":
                 assert "security" not in operation
+            elif path == "/internal/v1/telemetry":
+                assert {"EdgeTelemetrySecret": []} in operation["security"]
             else:
                 assert {"SupabaseAccessToken": []} in operation["security"]
