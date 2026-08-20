@@ -254,7 +254,8 @@ future extensions.
 
 ## RTK
 
-RTK is a transparent shell-output optimization layer. Agents issue normal commands such as:
+RTK is an optional transparent shell-output optimization layer. Agents always
+issue normal commands such as:
 
 ```bash
 git status
@@ -265,11 +266,17 @@ npm test
 colcon test
 ```
 
-RTK may transparently optimize supported command output through its OpenCode integration. Agents should not explicitly wrap normal commands with `rtk`.
+When RTK integration is available in the current environment, it may
+transparently optimize supported command output. Agents must not explicitly
+wrap commands with `rtk`. When RTK is unavailable, run the same commands
+normally; do not install or configure RTK as a prerequisite.
 
-RTK never changes acceptance criteria. If compressed output hides information needed to diagnose a failure, obtain enough detailed/raw diagnostic output before modifying code.
+RTK never changes acceptance criteria. If optimized output hides information
+needed to diagnose a failure, obtain enough detailed/raw diagnostic output
+before modifying code.
 
-RTK is developer tooling only. It must not become a project dependency or CI dependency.
+RTK is optional developer tooling only. It must not become a project, runtime,
+build, or CI dependency.
 
 ## Source of Truth
 
