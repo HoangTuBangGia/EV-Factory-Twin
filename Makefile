@@ -1,6 +1,6 @@
 ROS_DISTRO ?= jazzy
 
-.PHONY: sync lint format format-check migration-check test test-cov typecheck check backend ros-deps ros-build ros-test ros-check
+.PHONY: sync lint format format-check migration-check test test-cov typecheck check backend supabase-start supabase-status supabase-reset supabase-stop ros-deps ros-build ros-test ros-check
 
 sync:
 	uv sync --all-packages --dev
@@ -37,6 +37,18 @@ backend:
 		uvicorn ev_twin_api.main:app \
 		--app-dir apps/backend/src \
 		--reload
+
+supabase-start:
+	supabase start
+
+supabase-status:
+	supabase status
+
+supabase-reset:
+	supabase db reset
+
+supabase-stop:
+	supabase stop
 
 ros-deps:
 	python3 -c "from colcon_ros.task.ament_python.build import AmentPythonBuildTask"

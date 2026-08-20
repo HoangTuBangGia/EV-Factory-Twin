@@ -21,9 +21,17 @@ supabase db push
 connection URL in a command, migration, committed config file, screenshot, or
 CI log. Migration history makes these one-time files run in timestamp order.
 
-For a fully local Supabase stack, run `supabase start` and then
-`supabase db reset`. The reset command is destructive to the local database but
-replays the complete migration chain.
+For a fully local Supabase stack, use:
+
+```bash
+make supabase-start
+make supabase-status
+make supabase-reset
+```
+
+`make supabase-reset` is destructive to the local database but replays the
+complete migration chain. Use `make supabase-stop` when finished. Never run a
+linked reset against staging or production.
 
 ## Offline CI checks
 

@@ -9,6 +9,7 @@ Ubuntu 24.04
 - Python 3.12
 - uv
 - Node.js 22
+- Docker and Supabase CLI for the local database/auth stack
 - ROS 2 Jazzy
 - Gazebo Harmonic
 
@@ -28,6 +29,33 @@ not `/mnt/c`.
 ```bash
 uv sync --all-packages --dev
 make check
+```
+
+## Local Supabase
+
+Development uses the local Supabase stack rather than a separately configured
+host PostgreSQL installation. From the repository root:
+
+```bash
+make supabase-start
+make supabase-status
+```
+
+Copy `apps/backend/.env.example` to the backend environment and
+`apps/frontend/.env.example` to `apps/frontend/.env.local`. Replace the frontend
+publishable key with the local key printed by `make supabase-status`.
+
+Replay all migrations against the local database with:
+
+```bash
+make supabase-reset
+```
+
+`supabase-reset` deletes local Supabase data before replaying migrations. Never
+run a linked reset against staging or production. Stop the local stack with:
+
+```bash
+make supabase-stop
 ```
 
 ## ROS multi-AMR MVP slice
@@ -80,11 +108,11 @@ local `.env` cannot accidentally turn unit/API tests into a live PostgreSQL
 dependency. Database/RLS behavior belongs in the hosted or local Supabase E2E
 workflow.
 
-## Browser E2E với Supabase hosted
+## Browser E2E với Supabase staging
 
 Playwright chạy trình duyệt với frontend Next.js và backend FastAPI ở local,
 nhưng xác thực bằng hai tài khoản thật (`DESIGNER`, `MONITOR`) trong một Supabase
-project dành riêng cho development/E2E. Suite tạo scenario, approve/apply và
+project staging dành riêng cho development/E2E. Suite tạo scenario, approve/apply và
 kiểm tra quyền, vì vậy không chạy nó với database production.
 
 Chuẩn bị trước:
