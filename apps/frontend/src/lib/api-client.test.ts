@@ -36,28 +36,6 @@ const scenario = {
   version: 1,
 };
 
-const adminUser = {
-  id: "22222222-2222-4222-8222-222222222222",
-  email: "designer@example.com",
-  display_name: "Demo Designer",
-  role: "DESIGNER",
-  is_active: true,
-  created_at: "2026-08-14T00:00:00.000Z",
-};
-
-const auditEvent = {
-  id: 1,
-  actor_id: "11111111-1111-4111-8111-111111111111",
-  actor_role: "ADMIN",
-  action: "ROLE_CHANGED",
-  resource_type: "profile",
-  resource_id: adminUser.id,
-  before_data: { role: "MONITOR" },
-  after_data: { role: "DESIGNER" },
-  request_id: "33333333-3333-4333-8333-333333333333",
-  created_at: "2026-08-14T00:05:00.000Z",
-};
-
 describe("apiClient mock configuration", () => {
   afterEach(() => {
     setApiAccessToken(null);
@@ -187,56 +165,5 @@ describe("apiClient authentication", () => {
 
     await expect(apiClient.getRobots()).rejects.toMatchObject({ status: 401 });
     expect(onUnauthorized).toHaveBeenCalledOnce();
-  });
-});
-
-describe("apiClient administration", () => {
-  afterEach(() => {
-    setApiAccessToken(null);
-    setApiUnauthorizedHandler(null);
-    vi.restoreAllMocks();
-  });
-
-  it("loads users and the bounded audit history", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(new Response(JSON.stringify([adminUser]), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify([auditEvent]), { status: 200 }));
-
-    await expect(apiClient.getAdminUsers()).resolves.toEqual([adminUser]);
-    await expect(apiClient.getAdminAudit(500)).resolves.toEqual([auditEvent]);
-
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("http://localhost:8000/api/v1/admin/users");
-    expect(fetchMock.mock.calls[1]?.[0]).toBe("http://localhost:8000/api/v1/admin/audit?limit=100");
-  });
-
-  it("patches only the requested role or activation fields", async () => {
-    const updated = { ...adminUser, role: "MONITOR" };
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify(updated), { status: 200 }),
-    );
-
-    await expect(apiClient.updateAdminUser(adminUser.id, { role: "MONITOR" })).resolves.toEqual(updated);
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      `http://localhost:8000/api/v1/admin/users/${adminUser.id}`,
-      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ role: "MONITOR" }) }),
-    );
-  });
-
-  it("invites without accepting or transmitting a password", async () => {
-    const invite = {
-      email: "new.user@example.com",
-      display_name: "New User",
-      role: "DESIGNER" as const,
-    };
-    const invited = { ...adminUser, ...invite };
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify(invited), { status: 201 }),
-    );
-
-    await expect(apiClient.inviteAdminUser(invite)).resolves.toEqual(invited);
-    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
-    expect(body).toEqual(invite);
-    expect(body).not.toHaveProperty("password");
   });
 });

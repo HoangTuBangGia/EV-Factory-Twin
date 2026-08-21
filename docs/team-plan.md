@@ -75,7 +75,7 @@ Phụ trách:
 - Backend command tới edge/fleet manager có acknowledgement.
 - Layout/version API và scenario gắn với layout.
 - SimPy tính throughput, cycle time, waiting và congestion.
-- Supabase lưu profiles, layouts, scenarios, KPI, approvals và audit cần thiết.
+- Supabase lưu profiles, layouts, scenarios, runs/KPI, commands, alerts, audit và telemetry cần thiết.
 - Alert stale telemetry, command timeout, robot error và congestion.
 - Render service chạy được với Supabase hosted.
 
@@ -264,9 +264,7 @@ POST /api/v1/layouts
 
 ## Không thuộc MVP
 
-- raw telemetry replay dài hạn;
-- `pg_partman`/time-series platform;
+- incident replay UI đầy đủ và telemetry retention ngoài policy;
 - CAD/BIM toàn nhà máy;
-- Admin portal mở rộng;
 - AI chatbot, predictive maintenance, MES/ERP;
 - tự động tối ưu layout.

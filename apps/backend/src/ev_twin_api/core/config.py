@@ -21,7 +21,6 @@ class Settings(BaseSettings):
     database_url: SecretStr | None = None
     database_ssl_mode: Literal["disable", "prefer", "require"] = "require"
     supabase_url: str | None = None
-    supabase_service_role_key: SecretStr | None = None
     supabase_jwt_issuer: str | None = None
     supabase_jwks_url: str | None = None
     supabase_jwt_audience: str = "authenticated"
@@ -52,7 +51,6 @@ class Settings(BaseSettings):
         "supabase_jwt_issuer",
         "supabase_jwks_url",
         "database_url",
-        "supabase_service_role_key",
         "edge_telemetry_shared_secret",
         mode="before",
     )

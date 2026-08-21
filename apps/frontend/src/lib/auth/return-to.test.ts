@@ -18,6 +18,5 @@ describe("safeReturnTo", () => {
   it("uses role-specific default routes", () => {
     expect(defaultRouteForRole("DESIGNER")).toBe("/scenarios");
     expect(defaultRouteForRole("MONITOR")).toBe("/");
-    expect(defaultRouteForRole("ADMIN")).toBe("/admin");
   });
 });

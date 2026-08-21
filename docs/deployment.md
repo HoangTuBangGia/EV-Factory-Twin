@@ -82,14 +82,12 @@ secret trong frontend, Supabase client hoặc Git.
     DATABASE_URL=postgresql+asyncpg://...
    DATABASE_SSL_MODE=require
    SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
-    SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVER_ONLY_KEY
     EDGE_TELEMETRY_SHARED_SECRET=GENERATE_AT_LEAST_32_RANDOM_CHARACTERS
     EDGE_TELEMETRY_MAX_FUTURE_SKEW_SECONDS=5
    ```
 
    `SUPABASE_JWT_ISSUER` và `SUPABASE_JWKS_URL` được suy ra từ `SUPABASE_URL`.
-   Backend không cần service-role key cho login/RBAC; chỉ endpoint Admin mời user
-   cần key này. Nếu team tạo account trong Dashboard, có thể bỏ trống nó. Sau khi
+   Backend MVP không dùng service-role key; team tạo account trong Supabase Dashboard. Sau khi
    có URL Vercel production, phải thay `CORS_ORIGINS` bằng URL Vercel thật.
    Edge secret phải được cấu hình cùng giá trị ở Render và secret store của bridge;
    không đưa vào Vercel hoặc Supabase client config. Future-skew mặc định 5 giây
@@ -179,7 +177,7 @@ CORS cho backend production.
 Mở frontend Vercel và kiểm tra:
 
 - Mở URL khi chưa login sẽ được chuyển về `/login`.
-- Designer, Monitor và Admin login vào đúng landing page/quyền tương ứng.
+- Designer và Monitor login vào đúng landing page/quyền tương ứng.
 - Topbar chuyển từ `CONNECTING` sang `LIVE`.
 - Overview hiển thị 5 AMR từ `/api/v1/robots`.
 - Vị trí, pin và trạng thái robot thay đổi theo WebSocket.
@@ -234,14 +232,11 @@ curl -H "Authorization: Bearer <ACCESS_TOKEN>" \
 
 ## 10. Supabase và pg_partman
 
-Không cần `pg_partman` cho MVP hiện tại. MVP không lưu raw telemetry 10 Hz dài hạn;
-chỉ lưu scenario, simulation metrics, approval/audit cần thiết. PostgreSQL tables
-và index thông thường trên Supabase là đủ.
-
-Chỉ xem xét partitioning/`pg_partman` khi đã đo được raw telemetry làm phình bảng
-hoặc query history vượt ngưỡng chấp nhận. Khi đó cần xác nhận extension được bật
-trên project Supabase, quyền tạo extension, retention policy, backup/restore và
-maintenance job. Không thêm dependency này chỉ để “chuẩn bị cho tương lai”.
+Target database là Supabase PostgreSQL 17.6.1.155. Telemetry history cần thiết
+thuộc MVP và dự kiến dùng time partition do `pg_partman` quản lý. Trước migration,
+phải xác minh extension/version, quyền tạo, maintenance scheduling và backup/restore
+trên hosted project. Nếu không đáp ứng, dừng để duyệt phương án native PostgreSQL
+partitioning; không tự động hạ xuống bảng telemetry không partition.
 
 ## 11. Alternative deployment
 

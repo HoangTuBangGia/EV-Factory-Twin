@@ -15,7 +15,7 @@ also needed an explicit, repeatable separation.
 ## Architecture / Contract Impact
 
 - No runtime API or database contract changes.
-- Admin functionality remains in the codebase but is not an MVP E2E prerequisite.
+- Admin functionality was subsequently removed by the two-role MVP checkpoint.
 - Local Supabase provides PostgreSQL and Auth for development.
 - Hosted Supabase remains the staging/production database and Auth provider.
 

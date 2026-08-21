@@ -2876,5 +2876,6 @@ MVP bắt buộc có layout làm input chung cho SimPy và route/configuration c
 ít nhất hai AMR, command/task path hai chiều, cảnh báo bất thường và benchmark
 latency/FPS cơ bản. Mock factory chỉ dùng cho test/local fallback.
 
-Replay raw telemetry, time-series retention dài hạn, admin portal, battery genealogy,
-AI/ML, MES/ERP và tự động tối ưu layout nằm ngoài boundary MVP này.
+Incident replay UI đầy đủ, retention dài hạn ngoài policy, battery genealogy,
+AI/ML và MES/ERP nằm ngoài boundary MVP. Telemetry history cần thiết, bounded
+deterministic flow optimization và partition/retention policy thuộc MVP.

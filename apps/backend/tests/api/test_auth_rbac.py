@@ -53,22 +53,6 @@ PROTECTED_REQUESTS: list[tuple[str, str, dict[str, object] | None]] = [
     ("POST", "/api/v1/mock/stop", None),
     ("POST", "/api/v1/mock/reset", None),
     ("POST", "/api/v1/mock/config", MOCK_CONFIG),
-    ("GET", "/api/v1/admin/audit", None),
-    ("GET", "/api/v1/admin/users", None),
-    (
-        "PATCH",
-        "/api/v1/admin/users/00000000-0000-0000-0000-000000000008",
-        {"is_active": False},
-    ),
-    (
-        "POST",
-        "/api/v1/admin/users/invite",
-        {
-            "email": "new@example.com",
-            "display_name": "New User",
-            "role": "DESIGNER",
-        },
-    ),
 ]
 
 
@@ -139,9 +123,8 @@ async def test_designer_run_then_monitor_review_and_apply(client: AsyncClient) -
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("role", [AppRole.MONITOR, AppRole.ADMIN])
-async def test_only_designer_can_run_scenario(client: AsyncClient, role: AppRole) -> None:
-    use_role(role)
+async def test_only_designer_can_run_scenario(client: AsyncClient) -> None:
+    use_role(AppRole.MONITOR)
 
     response = await client.post("/api/v1/scenarios/run", json=SCENARIO_PAYLOAD)
 
@@ -149,7 +132,6 @@ async def test_only_designer_can_run_scenario(client: AsyncClient, role: AppRole
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("role", [AppRole.DESIGNER, AppRole.ADMIN])
 @pytest.mark.parametrize(
     "path",
     [
@@ -164,95 +146,14 @@ async def test_only_designer_can_run_scenario(client: AsyncClient, role: AppRole
 )
 async def test_only_monitor_can_mutate_review_or_factory(
     client: AsyncClient,
-    role: AppRole,
     path: str,
 ) -> None:
-    use_role(role)
+    use_role(AppRole.DESIGNER)
     payload = MOCK_CONFIG if path.endswith("/config") else None
 
     response = await request(client, "POST", path, payload)
 
     assert response.status_code == 403
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("role", [AppRole.DESIGNER, AppRole.MONITOR])
-async def test_only_admin_can_read_audit_events(client: AsyncClient, role: AppRole) -> None:
-    use_role(role)
-
-    response = await client.get("/api/v1/admin/audit")
-
-    assert response.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_admin_reads_scenario_audit_with_actor_and_time(client: AsyncClient) -> None:
-    designer = make_test_user(AppRole.DESIGNER)
-    use_role(AppRole.DESIGNER)
-    run_response = await client.post("/api/v1/scenarios/run", json=SCENARIO_PAYLOAD)
-    assert run_response.status_code == 200
-    scenario_id = run_response.json()["id"]
-
-    use_role(AppRole.ADMIN)
-    response = await client.get(
-        "/api/v1/admin/audit",
-        params={"resource_type": "scenario", "resource_id": scenario_id},
-    )
-
-    assert response.status_code == 200
-    events = response.json()
-    assert len(events) == 1
-    assert events[0]["action"] == "SCENARIO_RUN"
-    assert events[0]["actor_id"] == str(designer.id)
-    assert events[0]["created_at"].endswith("Z")
-
-
-@pytest.mark.asyncio
-async def test_manual_factory_reset_is_audited(client: AsyncClient) -> None:
-    monitor = make_test_user(AppRole.MONITOR)
-    use_role(AppRole.MONITOR)
-    reset_response = await client.post("/api/v1/mock/reset")
-    assert reset_response.status_code == 200
-
-    use_role(AppRole.ADMIN)
-    response = await client.get(
-        "/api/v1/admin/audit",
-        params={"resource_type": "factory", "resource_id": "mock-factory"},
-    )
-
-    assert response.status_code == 200
-    events = response.json()
-    assert [event["action"] for event in events[:2]] == [
-        "FACTORY_RESET",
-        "FACTORY_RESET_REQUESTED",
-    ]
-    assert {event["request_id"] for event in events[:2]} == {events[0]["request_id"]}
-    assert events[0]["actor_id"] == str(monitor.id)
-    assert events[0]["after_data"]["reason"] == "manual"
-
-
-@pytest.mark.asyncio
-async def test_manual_factory_config_records_before_after_and_intent(client: AsyncClient) -> None:
-    monitor = make_test_user(AppRole.MONITOR)
-    use_role(AppRole.MONITOR)
-    config_response = await client.post("/api/v1/mock/config", json=MOCK_CONFIG)
-    assert config_response.status_code == 200
-
-    use_role(AppRole.ADMIN)
-    response = await client.get(
-        "/api/v1/admin/audit",
-        params={"resource_type": "factory", "resource_id": "mock-factory"},
-    )
-
-    assert response.status_code == 200
-    events = response.json()
-    assert [event["action"] for event in events[:2]] == [
-        "FACTORY_CONFIG_CHANGED",
-        "FACTORY_CONFIG_CHANGE_REQUESTED",
-    ]
-    assert {event["request_id"] for event in events[:2]} == {events[0]["request_id"]}
-    assert events[0]["actor_id"] == str(monitor.id)
-    assert events[0]["after_data"] == MOCK_CONFIG
 
 
 @pytest.mark.asyncio

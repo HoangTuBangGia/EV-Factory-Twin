@@ -7,8 +7,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from ev_twin_api import __version__
-from ev_twin_api.api.admin_audit import router as admin_audit_router
-from ev_twin_api.api.admin_users import router as admin_users_router
 from ev_twin_api.api.alerts import router as alerts_router
 from ev_twin_api.api.auth import router as auth_router
 from ev_twin_api.api.factory import router as factory_router
@@ -25,11 +23,6 @@ from ev_twin_api.core.database import Database
 from ev_twin_api.core.logging_config import configure_logging
 from ev_twin_api.core.security import JwtVerifier
 from ev_twin_api.schemas.factory import MockFactoryConfig
-from ev_twin_api.services.admin_user_service import (
-    AdminUserService,
-    SqlAlchemyAdminUserRepository,
-    SupabaseUserInvitationGateway,
-)
 from ev_twin_api.services.audit_service import (
     AuditRepository,
     AuditService,
@@ -125,19 +118,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.audit_service = AuditService(audit_repository)
     app.state.scenario_service = ScenarioService(mock_factory, scenario_repository)
     app.state.websocket_manager = websocket_manager
-    invitation_gateway = (
-        SupabaseUserInvitationGateway(
-            supabase_url=settings.supabase_url,
-            service_role_key=settings.supabase_service_role_key,
-        )
-        if settings.supabase_url is not None and settings.supabase_service_role_key is not None
-        else None
-    )
-    app.state.admin_user_service = AdminUserService(
-        repository=SqlAlchemyAdminUserRepository(database),
-        invitations=invitation_gateway,
-        websocket_manager=websocket_manager,
-    )
     kpi_snapshot_writer = build_kpi_snapshot_writer(
         database=database,
         factory_state=factory_state,
@@ -178,8 +158,6 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(auth_router)
-app.include_router(admin_audit_router)
-app.include_router(admin_users_router)
 app.include_router(factory_router)
 app.include_router(robots_router)
 app.include_router(tasks_router)

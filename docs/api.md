@@ -69,24 +69,19 @@ string/log/frontend và không được tái sử dụng service-role key.
 | POST | `/api/v1/scenarios/{scenario_id}/approve` | [`Scenario`](#scenario) | Phê duyệt candidate đã mô phỏng |
 | POST | `/api/v1/scenarios/{scenario_id}/reject` | [`Scenario`](#scenario) | Từ chối candidate đã mô phỏng |
 | POST | `/api/v1/scenarios/{scenario_id}/apply` | [`Scenario`](#scenario) | Áp dụng candidate đã duyệt vào ROS2/fallback runtime |
-| GET | `/api/v1/admin/users` | `AdminUser[]` | Admin extension, ngoài MVP |
-| PATCH | `/api/v1/admin/users/{user_id}` | `AdminUser` | Admin extension, ngoài MVP |
-| POST | `/api/v1/admin/users/invite` | `AdminUser` | Admin extension, ngoài MVP |
-| GET | `/api/v1/admin/audit` | `AuditEvent[]` | Audit extension, ngoài MVP |
 | WS | `/ws/factory` | [envelope](#websocket-event-envelope) | Stream realtime |
 | POST | `/internal/v1/telemetry` | `TelemetryIngressResponse` | Edge bridge gửi một canonical robot sample |
 
 Ma trận quyền REST hiện tại:
 
-| Nhóm endpoint | DESIGNER | MONITOR | ADMIN |
-|---|---:|---:|---:|
-| GET auth/factory/robot/task/KPI/alert/scenario | Có | Có | Có |
-| `POST /scenarios/run` | Có | Không | Không |
-| Approve/Reject/Apply scenario | Không | Có | Không |
-| Start/Stop/Reset/Config MockFactory | Không | Có | Không |
-| Quản lý user/role và đọc business audit | Không | Không | Có |
+| Nhóm endpoint | DESIGNER | MONITOR |
+|---|---:|---:|
+| GET auth/factory/robot/task/KPI/alert/scenario | Có | Có |
+| `POST /scenarios/run` | Có | Không |
+| Approve/Reject/Apply scenario | Không | Có |
+| Start/Stop/Reset/Config MockFactory | Không | Có |
 
-`ADMIN` là role quản trị kỹ thuật, không tự động kế thừa quyền vận hành.
+MVP chỉ có hai application role. User provisioning thực hiện bằng Supabase Dashboard.
 WebSocket dùng cùng Supabase access token nhưng gửi token trong message đầu tiên,
 không đặt token trên query string.
 
@@ -528,51 +523,17 @@ với PostgreSQL. Backend giữ row lock trong lúc reset và khôi phục cấu
 lại factory nếu reset, audit hoặc commit lỗi. Nếu chính bước khôi phục cũng lỗi,
 backend ghi log kỹ thuật mức error để operator can thiệp.
 
-## Admin user management
-
-Ba endpoint `/api/v1/admin/users*` chỉ dành cho `ADMIN`. Response không chứa
-password, hash, access token hoặc service-role key:
-
-```json
-{
-  "id": "00000000-0000-0000-0000-000000000003",
-  "email": "monitor@example.com",
-  "display_name": "Factory Monitor",
-  "role": "MONITOR",
-  "is_active": true,
-  "created_at": "2026-08-14T03:00:00.000Z"
-}
-```
-
-`PATCH /api/v1/admin/users/{user_id}` nhận ít nhất một trong hai field:
-
-```json
-{"role":"DESIGNER","is_active":false}
-```
-
-Backend khóa các row Admin active khi kiểm tra, nên hai request đồng thời không
-thể cùng loại bỏ Admin cuối cùng; thao tác đó trả `409`. Disable user đóng toàn
-bộ WebSocket hiện tại của user với code `4403`. Request REST tiếp theo cũng bị
-profile guard từ chối `403`.
-
-`POST /api/v1/admin/users/invite` nhận `email`, `display_name`, `role`, trả `201`
-và không nhận password. Supabase gửi luồng thiết lập account. Endpoint này cần
-`SUPABASE_SERVICE_ROLE_KEY` ở backend; thiếu integration trả `503` mà không ảnh
-hưởng login/RBAC hoặc hai endpoint quản trị bằng PostgreSQL.
-
 ## Business audit
 
-`GET /api/v1/admin/audit?limit=100` chỉ dành cho `ADMIN`. Có thể lọc bằng
-`resource_type`, `resource_id`, `created_after` và `created_before`. Mỗi event có
+Audit chưa có browser endpoint trong MVP hiện tại. Mỗi event durable có
 `actor_id`, snapshot `actor_role`, `action`, `before_data`, `after_data`,
-`request_id` và `created_at`. Bảng này append-only; Designer/Monitor không có
-quyền đọc, sửa hoặc xoá qua API. Các action scenario hiện có là `SCENARIO_RUN`,
+`request_id` và `created_at`. Bảng này append-only; chỉ Monitor active được đọc
+qua Supabase RLS khi cần điều tra. Các action scenario hiện có là `SCENARIO_RUN`,
 `SCENARIO_APPROVED`, `SCENARIO_REJECTED`, `SCENARIO_APPLIED`; reset thủ công và
 reset do apply đều tạo `FACTORY_RESET`. Reset/config thủ công ghi event
 `*_REQUESTED` trước side effect và event hoàn tất dùng cùng `request_id`; nhờ đó
 nếu side effect hoặc audit hoàn tất lỗi vẫn còn durable intent để điều tra. Các
-thay đổi Admin tạo `USER_INVITED`, `ROLE_CHANGED`, `USER_DISABLED` hoặc
-`USER_ENABLED` trong cùng transaction với thay đổi profile.
+operation result sẽ bổ sung action command ở checkpoint command path.
 
 ## Health
 
@@ -712,7 +673,6 @@ Sau `auth.ok`, mọi message server trên `/ws/factory` bọc trong envelope:
 
 ```text
 200  thành công
-201  Admin invite đã được tạo
 401  access token REST thiếu, sai hoặc hết hạn
 403  user inactive hoặc không đủ role
 404  robot/task/scenario id không tồn tại

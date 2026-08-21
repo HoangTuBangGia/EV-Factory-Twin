@@ -162,7 +162,7 @@ def test_application_enums_match_the_api_contract() -> None:
         qualified_name = ".".join(part.sval for part in statement.typeName)
         enums[qualified_name] = tuple(value.sval for value in statement.vals)
 
-    assert enums["public.app_role"] == ("DESIGNER", "MONITOR", "ADMIN")
+    assert enums["public.app_role"] == ("DESIGNER", "MONITOR")
     assert enums["public.scenario_status"] == (
         "DRAFT",
         "SIMULATED",
@@ -284,13 +284,13 @@ def test_authenticated_policies_are_select_only_and_cover_each_public_table() ->
     ("policy_name", "required_fragments"),
     [
         (
-            "profiles_select_own_or_admin",
-            ("private.is_active_user", "auth.uid", "private.current_app_role", "'ADMIN'"),
+            "profiles_select_own",
+            ("private.is_active_user", "auth.uid"),
         ),
         ("scenarios_select_active_users", ("private.is_active_user",)),
         (
-            "audit_events_select_admin",
-            ("private.is_active_user", "private.current_app_role", "'ADMIN'"),
+            "audit_events_select_monitor",
+            ("private.is_active_user", "private.current_app_role", "'MONITOR'"),
         ),
         ("kpi_snapshots_select_active_users", ("private.is_active_user",)),
     ],
@@ -368,9 +368,18 @@ def test_audit_events_remains_append_only() -> None:
 
 
 def test_migrations_contain_no_destructive_schema_statements() -> None:
-    destructive = [
+    destructive = {
         RawStream()(statement)
         for statement in _statements()
         if isinstance(statement, (ast.DropStmt, ast.TruncateStmt))
-    ]
-    assert not destructive, f"destructive migration statement(s): {destructive}"
+    }
+    reviewed_role_reduction = {
+        "DROP POLICY profiles_select_own_or_admin ON public.profiles",
+        "DROP POLICY audit_events_select_admin ON public.audit_events",
+        "DROP TRIGGER ev_twin_on_auth_user_created ON auth.users",
+        "DROP FUNCTION private.handle_new_auth_user ()",
+        "DROP FUNCTION private.current_app_role ()",
+        "DROP TYPE public.app_role_legacy",
+    }
+    unexpected = destructive - reviewed_role_reduction
+    assert not unexpected, f"destructive migration statement(s): {sorted(unexpected)}"

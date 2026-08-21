@@ -7,9 +7,7 @@ function copyCookies(source: NextResponse, target: NextResponse) {
 }
 
 export async function middleware(request: NextRequest) {
-  const isAdminRoute = request.nextUrl.pathname === "/admin"
-    || request.nextUrl.pathname.startsWith("/admin/");
-  const { response, user, role } = await refreshSupabaseSession(request, isAdminRoute);
+  const { response, user } = await refreshSupabaseSession(request, false);
   const isLogin = request.nextUrl.pathname === "/login";
 
   if (!user && !isLogin) {
@@ -21,13 +19,6 @@ export async function middleware(request: NextRequest) {
       `${request.nextUrl.pathname}${request.nextUrl.search}`,
     );
     return copyCookies(response, NextResponse.redirect(loginUrl));
-  }
-
-  if (user && isAdminRoute && role !== "ADMIN") {
-    const forbiddenUrl = request.nextUrl.clone();
-    forbiddenUrl.pathname = "/forbidden";
-    forbiddenUrl.search = "";
-    return copyCookies(response, NextResponse.redirect(forbiddenUrl));
   }
 
   response.headers.set("Cache-Control", "private, no-store");
