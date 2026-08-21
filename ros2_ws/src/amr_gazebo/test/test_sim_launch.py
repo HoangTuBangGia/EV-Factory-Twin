@@ -10,6 +10,8 @@ import launch_testing.actions
 import pytest
 import rclpy
 from amr_interfaces.action import NavigateToStation
+from amr_interfaces.msg import TaskState
+from amr_interfaces.srv import CreateTransportTask
 from geometry_msgs.msg import Twist
 from launch.actions import IncludeLaunchDescription, SetEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -55,9 +57,7 @@ def generate_test_description():
                 ),
                 launch_arguments={
                     "gz_args": "-s -r",
-                    "stations_config": str(
-                        Path(__file__).parent / "fixtures" / "stations.json"
-                    ),
+                    "stations_config": str(Path(__file__).parent / "fixtures" / "stations.json"),
                 }.items(),
             ),
             IncludeLaunchDescription(
@@ -92,6 +92,7 @@ class TestSimRuntime(unittest.TestCase):
         statuses = {"amr_01": [], "amr_02": []}
         task_ids = {"amr_01": [], "amr_02": []}
         payload_ids = {"amr_01": [], "amr_02": []}
+        task_updates = []
 
         def record_tf(message: TFMessage, target: set[tuple[str, str]]):
             target.update(
@@ -147,6 +148,7 @@ class TestSimRuntime(unittest.TestCase):
                 10,
             )
         node.create_subscription(Clock, "/clock", clocks.append, qos_profile_sensor_data)
+        node.create_subscription(TaskState, "/fleet/task_updates", task_updates.append, 100)
         command_publisher = node.create_publisher(Twist, "/amr_01/cmd_vel", 10)
         deadline = time.monotonic() + 60
         try:
@@ -156,8 +158,7 @@ class TestSimRuntime(unittest.TestCase):
                 and all(statuses.values())
                 and clocks
                 and all(
-                    (f"{namespace}/odom", f"{namespace}/base_footprint")
-                    in dynamic[namespace]
+                    (f"{namespace}/odom", f"{namespace}/base_footprint") in dynamic[namespace]
                     and (f"{namespace}/base_footprint", f"{namespace}/base_link")
                     in static[namespace]
                     for namespace in odom
@@ -184,12 +185,38 @@ class TestSimRuntime(unittest.TestCase):
                     parents.setdefault(child, set()).add(parent)
             assert all(len(child_parents) == 1 for child_parents in parents.values())
 
-            amr_01_action = ActionClient(
-                node, NavigateToStation, "/amr_01/navigate_to_station"
-            )
-            amr_02_action = ActionClient(
-                node, NavigateToStation, "/amr_02/navigate_to_station"
-            )
+            create_task = node.create_client(CreateTransportTask, "/fleet/tasks/create")
+            assert create_task.wait_for_service(timeout_sec=5.0)
+            request = CreateTransportTask.Request()
+            request.task_id = "TASK-FLEET-0001"
+            request.payload_id = "BP-FLEET-0001"
+            request.pickup_station_id = "BATTERY_BUFFER"
+            request.dropoff_station_id = "MARRIAGE_STATION"
+            request.navigation_timeout_seconds = 8.0
+            response_future = create_task.call_async(request)
+            rclpy.spin_until_future_complete(node, response_future, timeout_sec=5.0)
+            response = response_future.result()
+            assert response is not None and response.accepted
+
+            task_deadline = time.monotonic() + 30.0
+            while time.monotonic() < task_deadline and not any(
+                update.task_id == request.task_id and update.status == "COMPLETED"
+                for update in task_updates
+            ):
+                rclpy.spin_once(node, timeout_sec=0.05)
+            lifecycle = [
+                update.status for update in task_updates if update.task_id == request.task_id
+            ]
+            assert lifecycle == ["QUEUED", "ASSIGNED", "PICKUP", "DELIVERING", "COMPLETED"]
+            assigned = [
+                update.assigned_robot_id
+                for update in task_updates
+                if update.task_id == request.task_id and update.status == "ASSIGNED"
+            ]
+            assert assigned == ["AMR-01"]
+
+            amr_01_action = ActionClient(node, NavigateToStation, "/amr_01/navigate_to_station")
+            amr_02_action = ActionClient(node, NavigateToStation, "/amr_02/navigate_to_station")
             assert amr_01_action.wait_for_server(timeout_sec=5.0)
             assert amr_02_action.wait_for_server(timeout_sec=5.0)
 
@@ -264,7 +291,7 @@ class TestSimRuntime(unittest.TestCase):
             assert set(payload["velocity"]) == {"linear", "angular"}
             assert all(isinstance(value, (int, float)) for value in payload["pose"].values())
             assert all(isinstance(value, (int, float)) for value in payload["velocity"].values())
-            assert payload["battery"] == 100.0
+            assert 0.0 <= payload["battery"] <= 100.0
             assert payload["status"] == "IDLE"
             assert payload["task_id"] is None
             assert payload["payload_id"] is None

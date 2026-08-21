@@ -742,16 +742,21 @@ GO_CHARGE
 REPOSITION
 ```
 
-Task state:
+Canonical MVP task state:
 
 ```text
-PENDING
+QUEUED
 ASSIGNED
-IN_PROGRESS
+PICKUP
+DELIVERING
 COMPLETED
-CANCELLED
 FAILED
+TIMED_OUT
 ```
+
+Failed and timed-out attempts may return to `QUEUED` while their bounded retry
+budget remains. Backend accepts legacy `IN_PROGRESS` and `DELIVERED` snapshots
+for compatibility but does not emit them for new tasks.
 
 ---
 
@@ -1331,16 +1336,19 @@ Fleet:
 ```mermaid
 sequenceDiagram
 
+    participant TM as Task Manager
     participant FM as Fleet Manager
-    participant NAV as Nav2
+    participant NAV as Navigation Simulator
     participant AMR as AMR
     participant ODOM as Odometry
 
-    FM->>NAV: Navigation Goal
+    TM->>FM: ExecuteTransportTask
+    FM->>NAV: NavigateToStation
     NAV->>AMR: cmd_vel
     AMR->>ODOM: Pose
     ODOM->>NAV: Current Pose
     NAV->>FM: Goal Result
+    FM->>TM: Task feedback/result
 ```
 
 Fleet Manager quyết định:
@@ -1349,11 +1357,15 @@ Fleet Manager quyết định:
 WHERE TO GO
 ```
 
-Nav2 quyết định:
+Navigation simulator quyết định:
 
 ```text
 HOW TO GET THERE
 ```
+
+For M3, Task Manager owns queue/retry/lifecycle while Fleet Manager owns the
+robot registry, eligibility selection and pickup/delivery execution. Nav2 and
+advanced path planning remain outside the MVP.
 
 ---
 

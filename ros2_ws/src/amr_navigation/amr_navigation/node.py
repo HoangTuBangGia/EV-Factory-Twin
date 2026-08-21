@@ -157,7 +157,9 @@ class NavigationSimulator(Node):
         request = goal_handle.request
         target = self._stations.get(request.station_id)
         if target is None:
-            return self._finish_failed(goal_handle, result, f"unknown station: {request.station_id}")
+            return self._finish_failed(
+                goal_handle, result, f"unknown station: {request.station_id}"
+            )
 
         started = self.get_clock().now()
         last_distance = math.inf

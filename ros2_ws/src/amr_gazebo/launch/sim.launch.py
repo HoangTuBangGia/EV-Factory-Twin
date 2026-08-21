@@ -141,14 +141,34 @@ def _robot_actions(context):
                 ),
             ]
         )
+    actions.extend(
+        [
+            Node(
+                package="fleet_manager",
+                executable="fleet_manager",
+                parameters=[
+                    {
+                        "robots_config": config_path,
+                        "stations_config": stations_config,
+                        "use_sim_time": True,
+                    }
+                ],
+                output="screen",
+            ),
+            Node(
+                package="task_manager",
+                executable="task_manager",
+                parameters=[{"use_sim_time": True}],
+                output="screen",
+            ),
+        ]
+    )
     return actions
 
 
 def generate_launch_description():
     world = PathJoinSubstitution([FindPackageShare("amr_gazebo"), "worlds", "amr_test.sdf"])
-    default_config = PathJoinSubstitution(
-        [FindPackageShare("amr_gazebo"), "config", "robots.json"]
-    )
+    default_config = PathJoinSubstitution([FindPackageShare("amr_gazebo"), "config", "robots.json"])
     default_stations = PathJoinSubstitution(
         [FindPackageShare("amr_navigation"), "config", "stations.json"]
     )

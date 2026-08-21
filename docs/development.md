@@ -114,6 +114,25 @@ Valid default station IDs are `BATTERY_BUFFER`, `MARRIAGE_STATION` and
 `task_id` and `payload_id`; `state_override` accepts `ERROR` or `OFFLINE` for
 fault-path simulation. Navigation results are `SUCCESS`, `FAILED` or `TIMED_OUT`.
 
+Create a queued battery transport task through the Task Manager service:
+
+```bash
+ros2 service call /fleet/tasks/create \
+  amr_interfaces/srv/CreateTransportTask \
+  "{task_id: TASK-0001, payload_id: BP-0001, pickup_station_id: BATTERY_BUFFER, dropoff_station_id: MARRIAGE_STATION, navigation_timeout_seconds: 30.0, max_retries: 1}"
+```
+
+The service response is the acceptance acknowledgement. Observe assignment and
+execution results on the durable task update topic:
+
+```bash
+ros2 topic echo /fleet/task_updates amr_interfaces/msg/TaskState
+```
+
+The default launch runs one Task Manager and one Fleet Manager for all configured
+robots. Task Manager owns queue/lifecycle/retry; Fleet Manager owns registry,
+eligibility selection and robot navigation calls.
+
 Run the bridge in a separate terminal:
 
 ```bash

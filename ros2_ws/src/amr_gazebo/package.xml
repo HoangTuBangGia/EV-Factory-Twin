@@ -8,6 +8,7 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
   <exec_depend>amr_description</exec_depend>
   <exec_depend>amr_navigation</exec_depend>
+  <exec_depend>fleet_manager</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>ros_gz_bridge</exec_depend>
@@ -17,6 +18,7 @@
   <exec_depend>nav_msgs</exec_depend>
   <exec_depend>rosgraph_msgs</exec_depend>
   <exec_depend>tf2_msgs</exec_depend>
+  <exec_depend>task_manager</exec_depend>
   <exec_depend>xacro</exec_depend>
   <test_depend>launch_testing_ament_cmake</test_depend>
   <test_depend>ament_cmake_pytest</test_depend>

@@ -61,6 +61,13 @@ Each robot exposes the namespaced `navigate_to_station` action. Its goal carries
 `FAILED` or `TIMED_OUT`. Navigation uses deterministic planar velocity control
 for the simulation MVP, not Nav2 path planning or a collision guarantee.
 
+Task Manager acknowledges `/fleet/tasks/create`, queues one canonical battery
+transport task and publishes durable `/fleet/task_updates`. It invokes Fleet
+Manager through the typed `/fleet/execute_transport_task` action. Fleet Manager
+tracks namespaced robot status, battery and odometry, then selects the nearest
+idle robot above the configured battery threshold. Failed and timed-out attempts
+are retried only within the task's bounded retry budget.
+
 ## Runtime contracts
 
 MOCK and ROS normalize to the same `RobotTelemetry`. Browser snapshot resources

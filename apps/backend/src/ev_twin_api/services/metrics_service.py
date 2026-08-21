@@ -48,7 +48,13 @@ class MetricsService:
         active = [
             task
             for task in tasks
-            if task.status not in (TaskStatus.QUEUED, TaskStatus.COMPLETED, TaskStatus.FAILED)
+            if task.status
+            not in (
+                TaskStatus.QUEUED,
+                TaskStatus.COMPLETED,
+                TaskStatus.FAILED,
+                TaskStatus.TIMED_OUT,
+            )
         ]
 
         throughput_per_hour = 0.0

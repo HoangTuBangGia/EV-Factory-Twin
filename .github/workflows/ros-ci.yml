@@ -27,6 +27,6 @@ jobs:
       - uses: ros-tooling/action-ros-ci@3a640b10f09b756dabe556dac5413aba369f71b0
         with:
           target-ros2-distro: jazzy
-          package-name: amr_description amr_gazebo amr_interfaces amr_navigation telemetry_bridge
+          package-name: amr_description amr_gazebo amr_interfaces amr_navigation fleet_manager task_manager telemetry_bridge
           rosdep-check: true
           rosdep-skip-keys: ament_python

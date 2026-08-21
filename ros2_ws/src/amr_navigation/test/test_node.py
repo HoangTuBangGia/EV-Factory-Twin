@@ -2,7 +2,6 @@ import json
 import math
 
 import pytest
-
 from amr_navigation.node import STATUSES, load_stations, next_battery, normalize_angle
 
 
@@ -42,7 +41,7 @@ def test_battery_drains_moves_charges_and_stays_bounded() -> None:
 
 
 def test_state_simulator_supports_the_mvp_status_contract() -> None:
-    assert STATUSES == {
+    assert {
         "IDLE",
         "MOVING",
         "PICKING",
@@ -50,4 +49,4 @@ def test_state_simulator_supports_the_mvp_status_contract() -> None:
         "CHARGING",
         "ERROR",
         "OFFLINE",
-    }
+    } == STATUSES

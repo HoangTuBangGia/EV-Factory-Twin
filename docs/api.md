@@ -211,11 +211,18 @@ robot đang hoạt động. Đây là ranh giới FE-BE quan trọng nhất củ
 QUEUED
 ASSIGNED
 PICKUP
+DELIVERING
+TIMED_OUT
 IN_PROGRESS
 DELIVERED
 COMPLETED
 FAILED
 ```
+
+`IN_PROGRESS` and `DELIVERED` are read-compatibility values for snapshots from
+before M3. New MOCK and ROS task flows emit the canonical MVP lifecycle:
+`QUEUED → ASSIGNED → PICKUP → DELIVERING → COMPLETED`, with `FAILED` and
+`TIMED_OUT` as execution outcomes.
 
 ## Task
 
