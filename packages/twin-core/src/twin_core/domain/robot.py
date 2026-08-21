@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 class RobotStatus(StrEnum):
     IDLE = "IDLE"
+    MOVING = "MOVING"
     MOVING_TO_PICKUP = "MOVING_TO_PICKUP"
     PICKING = "PICKING"
     DELIVERING = "DELIVERING"

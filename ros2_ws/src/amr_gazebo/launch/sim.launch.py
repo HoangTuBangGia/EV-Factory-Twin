@@ -48,14 +48,31 @@ def load_robot_config(path: str | Path) -> list[dict[str, str | float]]:
                 raise ValueError(f"robots[{index}].{field} must be finite")
             pose[field] = float(value)
 
+        initial_battery = robot.get("initial_battery", 1.0)
+        if (
+            isinstance(initial_battery, bool)
+            or not isinstance(initial_battery, (int, float))
+            or not math.isfinite(initial_battery)
+            or not 0.0 <= initial_battery <= 1.0
+        ):
+            raise ValueError(f"robots[{index}].initial_battery must be in [0, 1]")
+
         robot_ids.add(robot_id)
         namespaces.add(namespace)
-        validated.append({"robot_id": robot_id, "namespace": namespace, **pose})
+        validated.append(
+            {
+                "robot_id": robot_id,
+                "namespace": namespace,
+                "initial_battery": float(initial_battery),
+                **pose,
+            }
+        )
     return validated
 
 
 def _robot_actions(context):
     config_path = LaunchConfiguration("robots_config").perform(context)
+    stations_config = LaunchConfiguration("stations_config")
     description = PathJoinSubstitution(
         [FindPackageShare("amr_description"), "urdf", "amr.urdf.xacro"]
     )
@@ -108,6 +125,20 @@ def _robot_actions(context):
                     ],
                     output="screen",
                 ),
+                Node(
+                    package="amr_navigation",
+                    executable="navigation_simulator",
+                    namespace=namespace,
+                    parameters=[
+                        {
+                            "robot_id": str(robot["robot_id"]),
+                            "stations_config": stations_config,
+                            "initial_battery": robot["initial_battery"],
+                            "use_sim_time": True,
+                        }
+                    ],
+                    output="screen",
+                ),
             ]
         )
     return actions
@@ -118,10 +149,14 @@ def generate_launch_description():
     default_config = PathJoinSubstitution(
         [FindPackageShare("amr_gazebo"), "config", "robots.json"]
     )
+    default_stations = PathJoinSubstitution(
+        [FindPackageShare("amr_navigation"), "config", "stations.json"]
+    )
     return LaunchDescription(
         [
             DeclareLaunchArgument("gz_args", default_value="-r"),
             DeclareLaunchArgument("robots_config", default_value=default_config),
+            DeclareLaunchArgument("stations_config", default_value=default_stations),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     PathJoinSubstitution(

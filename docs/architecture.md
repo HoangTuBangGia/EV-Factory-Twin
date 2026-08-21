@@ -1303,11 +1303,18 @@ Topics:
 The Gazebo launch reads a validated fleet JSON and spawns at least two robots with
 unique public IDs, ROS namespaces, entity names and poses. `/clock` is bridged once;
 each robot independently bridges `cmd_vel`, `odom` and `tf` in its namespace.
-DiffDrive owns `odom -> base_footprint`; `robot_state_publisher`, using simulation
-time, owns the static `base_footprint -> base_link` transform. Dynamic wheel
-transforms are intentionally deferred until Gazebo joint states are bridged.
-Battery/status/task producers are not simulated yet, so the telemetry bridge uses
-documented defaults until those producers exist.
+Gazebo `OdometryPublisher` owns `odom -> base_footprint`; `robot_state_publisher`,
+using simulation time, owns the static `base_footprint -> base_link` transform.
+`VelocityControl` provides planar motion without wheel-contact physics. Dynamic
+wheel transforms are intentionally deferred until Gazebo joint states are bridged.
+The state simulator publishes battery/status/task/payload topics. The telemetry
+bridge does not consume task/payload yet, so those canonical fields remain null
+until the multi-robot bridge checkpoint.
+
+The M2 edge runtime adds one namespaced `amr_navigation` action server per robot.
+It translates typed station goals into bounded planar velocity commands and
+publishes battery/status/task/payload state. The zero-gravity world deliberately
+keeps M2 deterministic; advanced physics, obstacle avoidance and Nav2 are outside M2.
 
 Fleet:
 

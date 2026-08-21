@@ -5,10 +5,11 @@ from ev_twin_api.schemas.robot import Pose, Robot, RobotStatus, Velocity
 from pydantic import ValidationError
 
 
-def test_robot_status_has_ten_values() -> None:
-    assert len(RobotStatus) == 10
+def test_robot_status_has_eleven_values() -> None:
+    assert len(RobotStatus) == 11
     assert {status.value for status in RobotStatus} == {
         "IDLE",
+        "MOVING",
         "MOVING_TO_PICKUP",
         "PICKING",
         "DELIVERING",

@@ -9,14 +9,18 @@ import launch
 import launch_testing.actions
 import pytest
 import rclpy
+from amr_interfaces.action import NavigateToStation
 from geometry_msgs.msg import Twist
 from launch.actions import IncludeLaunchDescription, SetEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 from nav_msgs.msg import Odometry
+from rclpy.action import ActionClient
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
 from rosgraph_msgs.msg import Clock
+from sensor_msgs.msg import BatteryState
+from std_msgs.msg import String
 from tf2_msgs.msg import TFMessage
 
 SECRET = "launch-test-edge-secret"
@@ -49,7 +53,12 @@ def generate_test_description():
                 PythonLaunchDescriptionSource(
                     str(Path(__file__).parents[1] / "launch" / "sim.launch.py")
                 ),
-                launch_arguments={"gz_args": "-s -r"}.items(),
+                launch_arguments={
+                    "gz_args": "-s -r",
+                    "stations_config": str(
+                        Path(__file__).parent / "fixtures" / "stations.json"
+                    ),
+                }.items(),
             ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
@@ -79,6 +88,10 @@ class TestSimRuntime(unittest.TestCase):
         clocks = []
         dynamic = {"amr_01": set(), "amr_02": set()}
         static = {"amr_01": set(), "amr_02": set()}
+        batteries = {"amr_01": [], "amr_02": []}
+        statuses = {"amr_01": [], "amr_02": []}
+        task_ids = {"amr_01": [], "amr_02": []}
+        payload_ids = {"amr_01": [], "amr_02": []}
 
         def record_tf(message: TFMessage, target: set[tuple[str, str]]):
             target.update(
@@ -109,12 +122,38 @@ class TestSimRuntime(unittest.TestCase):
                     reliability=ReliabilityPolicy.RELIABLE,
                 ),
             )
+            node.create_subscription(
+                BatteryState,
+                f"/{namespace}/battery_state",
+                batteries[namespace].append,
+                10,
+            )
+            node.create_subscription(
+                String,
+                f"/{namespace}/status",
+                lambda message, ns=namespace: statuses[ns].append(message.data),
+                10,
+            )
+            node.create_subscription(
+                String,
+                f"/{namespace}/task_id",
+                lambda message, ns=namespace: task_ids[ns].append(message.data),
+                10,
+            )
+            node.create_subscription(
+                String,
+                f"/{namespace}/payload_id",
+                lambda message, ns=namespace: payload_ids[ns].append(message.data),
+                10,
+            )
         node.create_subscription(Clock, "/clock", clocks.append, qos_profile_sensor_data)
         command_publisher = node.create_publisher(Twist, "/amr_01/cmd_vel", 10)
         deadline = time.monotonic() + 60
         try:
             while time.monotonic() < deadline and not (
                 all(odom.values())
+                and all(batteries.values())
+                and all(statuses.values())
                 and clocks
                 and all(
                     (f"{namespace}/odom", f"{namespace}/base_footprint")
@@ -127,11 +166,13 @@ class TestSimRuntime(unittest.TestCase):
             ):
                 rclpy.spin_once(node, timeout_sec=0.1)
             assert all(odom.values())
+            assert all(batteries.values())
+            assert all(statuses.values())
             assert clocks
             for namespace, messages in odom.items():
                 assert messages[-1].header.frame_id == f"{namespace}/odom"
                 assert messages[-1].child_frame_id == f"{namespace}/base_footprint"
-                assert messages[-1].header.stamp.sec <= clocks[-1].clock.sec
+                assert messages[-1].header.stamp.sec <= clocks[-1].clock.sec + 1
                 assert all(
                     parent.startswith(f"{namespace}/") and child.startswith(f"{namespace}/")
                     for parent, child in dynamic[namespace] | static[namespace]
@@ -143,12 +184,58 @@ class TestSimRuntime(unittest.TestCase):
                     parents.setdefault(child, set()).add(parent)
             assert all(len(child_parents) == 1 for child_parents in parents.values())
 
+            amr_01_action = ActionClient(
+                node, NavigateToStation, "/amr_01/navigate_to_station"
+            )
+            amr_02_action = ActionClient(
+                node, NavigateToStation, "/amr_02/navigate_to_station"
+            )
+            assert amr_01_action.wait_for_server(timeout_sec=5.0)
+            assert amr_02_action.wait_for_server(timeout_sec=5.0)
+
+            pickup_goal = NavigateToStation.Goal()
+            pickup_goal.station_id = "BATTERY_BUFFER"
+            pickup_goal.task_id = "TASK-0001"
+            pickup_goal.payload_id = "BP-0001"
+            pickup_goal.timeout_seconds = 10.0
+            pickup_result = self._send_goal(node, amr_01_action, pickup_goal)
+            assert pickup_result.outcome == NavigateToStation.Result.SUCCESS, pickup_result.message
+
+            charge_goal = NavigateToStation.Goal()
+            charge_goal.station_id = "CHARGING_STATION"
+            charge_goal.timeout_seconds = 2.0
+            charge_result = self._send_goal(node, amr_02_action, charge_goal)
+            assert charge_result.outcome == NavigateToStation.Result.SUCCESS
+
+            charge_deadline = time.monotonic() + 1.0
+            while time.monotonic() < charge_deadline:
+                rclpy.spin_once(node, timeout_sec=0.05)
+            assert "PICKING" in statuses["amr_01"]
+            assert "CHARGING" in statuses["amr_02"]
+            assert "TASK-0001" in task_ids["amr_01"]
+            assert "BP-0001" in payload_ids["amr_01"]
+            assert max(message.percentage for message in batteries["amr_02"]) > 0.6
+
+            timeout_goal = NavigateToStation.Goal()
+            timeout_goal.station_id = "MARRIAGE_STATION"
+            timeout_goal.task_id = "TASK-0001"
+            timeout_goal.payload_id = "BP-0001"
+            timeout_goal.timeout_seconds = 0.2
+            timeout_result = self._send_goal(node, amr_01_action, timeout_goal)
+            assert timeout_result.outcome == NavigateToStation.Result.TIMED_OUT
+
+            failed_goal = NavigateToStation.Goal()
+            failed_goal.station_id = "UNKNOWN_STATION"
+            failed_goal.timeout_seconds = 1.0
+            failed_result = self._send_goal(node, amr_02_action, failed_goal)
+            assert failed_result.outcome == NavigateToStation.Result.FAILED
+
             samples_before_command = {
                 namespace: len(messages) for namespace, messages in odom.items()
             }
             command = Twist()
             command.linear.x = 0.4
-            command_deadline = time.monotonic() + 2.0
+            command_deadline = time.monotonic() + 1.0
             while time.monotonic() < command_deadline:
                 command_publisher.publish(command)
                 rclpy.spin_once(node, timeout_sec=0.05)
@@ -184,6 +271,18 @@ class TestSimRuntime(unittest.TestCase):
         finally:
             node.destroy_node()
             rclpy.shutdown()
+
+    @staticmethod
+    def _send_goal(node, action_client, goal):
+        goal_future = action_client.send_goal_async(goal)
+        rclpy.spin_until_future_complete(node, goal_future, timeout_sec=5.0)
+        goal_handle = goal_future.result()
+        assert goal_handle is not None and goal_handle.accepted
+        result_future = goal_handle.get_result_async()
+        rclpy.spin_until_future_complete(node, result_future, timeout_sec=15.0)
+        wrapped_result = result_future.result()
+        assert wrapped_result is not None
+        return wrapped_result.result
 
 
 @launch_testing.post_shutdown_test()

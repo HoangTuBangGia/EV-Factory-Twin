@@ -43,16 +43,17 @@
   <gazebo reference="${p}left_wheel"><mu1>1.0</mu1><mu2>1.0</mu2></gazebo>
   <gazebo reference="${p}right_wheel"><mu1>1.0</mu1><mu2>1.0</mu2></gazebo>
   <gazebo>
-    <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
-      <left_joint>${p}left_wheel_joint</left_joint>
-      <right_joint>${p}right_wheel_joint</right_joint>
-      <wheel_separation>0.54</wheel_separation>
-      <wheel_radius>0.10</wheel_radius>
+    <plugin filename="gz-sim-velocity-control-system" name="gz::sim::systems::VelocityControl">
       <topic>/${ns}/cmd_vel</topic>
+      <initial_linear>0 0 0</initial_linear>
+      <initial_angular>0 0 0</initial_angular>
+    </plugin>
+    <plugin filename="gz-sim-odometry-publisher-system" name="gz::sim::systems::OdometryPublisher">
+      <dimensions>2</dimensions>
       <odom_topic>/${ns}/odom</odom_topic>
       <tf_topic>/${ns}/tf</tf_topic>
-      <frame_id>${ns}/odom</frame_id>
-      <child_frame_id>${ns}/base_footprint</child_frame_id>
+      <odom_frame>${ns}/odom</odom_frame>
+      <robot_base_frame>${ns}/base_footprint</robot_base_frame>
       <odom_publish_frequency>30</odom_publish_frequency>
     </plugin>
   </gazebo>

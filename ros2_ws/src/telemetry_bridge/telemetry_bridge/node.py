@@ -19,6 +19,7 @@ from std_msgs.msg import String
 
 STATUSES = {
     "IDLE",
+    "MOVING",
     "MOVING_TO_PICKUP",
     "PICKING",
     "DELIVERING",

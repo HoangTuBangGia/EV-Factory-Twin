@@ -99,6 +99,21 @@ ros2 launch amr_gazebo sim.launch.py robots_config:=/absolute/path/robots.json
 The launch rejects fewer than two robots, invalid namespaces, duplicate IDs and
 non-finite poses before spawning any robot.
 
+Each robot also runs the M2 navigation/state simulator. Send a typed station goal
+from a sourced ROS terminal with:
+
+```bash
+ros2 action send_goal /amr_01/navigate_to_station \
+  amr_interfaces/action/NavigateToStation \
+  "{station_id: BATTERY_BUFFER, task_id: TASK-0001, payload_id: BP-0001, timeout_seconds: 30.0}" \
+  --feedback
+```
+
+Valid default station IDs are `BATTERY_BUFFER`, `MARRIAGE_STATION` and
+`CHARGING_STATION`. State is published on namespaced `battery_state`, `status`,
+`task_id` and `payload_id`; `state_override` accepts `ERROR` or `OFFLINE` for
+fault-path simulation. Navigation results are `SUCCESS`, `FAILED` or `TIMED_OUT`.
+
 Run the bridge in a separate terminal:
 
 ```bash

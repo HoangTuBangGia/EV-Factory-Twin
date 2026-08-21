@@ -56,6 +56,11 @@ Retries retain one `operation_id` and create distinct attempt records. Duplicate
 delivery of a command with the same operation/attempt is idempotent. Apply is
 complete only after a positive ROS execution result, not merely HTTP acceptance.
 
+Each robot exposes the namespaced `navigate_to_station` action. Its goal carries
+`station_id`, task/payload IDs and timeout; its result is exactly `SUCCESS`,
+`FAILED` or `TIMED_OUT`. Navigation uses deterministic planar velocity control
+for the simulation MVP, not Nav2 path planning or a collision guarantee.
+
 ## Runtime contracts
 
 MOCK and ROS normalize to the same `RobotTelemetry`. Browser snapshot resources
