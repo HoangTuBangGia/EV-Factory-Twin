@@ -1,29 +1,31 @@
 "use client";
 
-import { FACTORY_SIZE, worldToScreen } from "@/lib/coordinate";
-import { LANE_WIDTH, MAIN_ROUTE, STATION_ANCHOR, ZONE, type WorldRect } from "@/lib/factory-layout";
+import { worldToScreen } from "@/lib/coordinate";
+import { LANE_WIDTH } from "@/lib/factory-layout";
+import type { FactoryLayout } from "@/schemas/factory";
 import type { Robot } from "@/schemas/robot";
+import type { FactoryMapLayers } from "./factory-map";
 
-const W = FACTORY_SIZE.width, H = FACTORY_SIZE.height;
-
-/** World rect to SVG rect, accounting for the flipped vertical axis. */
-function svgRect(rect: WorldRect) {
-  return { x: rect.x0, y: H - rect.y1, width: rect.x1 - rect.x0, height: rect.y1 - rect.y0 };
-}
-
-const ROUTE_PATH = MAIN_ROUTE
-  .map((point, index) => `${index ? "L" : "M"}${point.x} ${H - point.y}`)
-  .join(" ");
+const STATION_COLOR = {
+  BATTERY_BUFFER: "#2f7d8f",
+  MARRIAGE_STATION: "#3f6ea8",
+  CHARGING_STATION: "#2f8f7a",
+} as const;
 
 /**
  * Top-down fallback used when WebGL is unavailable. It reads from the same
- * layout constants as the 3D scene, so a browser without WebGL still sees the
- * true station positions and route rather than a stale sketch.
+ * layout object as the 3D scene, so a browser without WebGL still sees the true
+ * station positions and routes rather than a stale sketch.
  */
-export function FactoryMap2D({ robots, selectedRobotId, onSelect }: {
-  robots: Robot[]; selectedRobotId: string | null; onSelect: (id: string | null) => void;
+export function FactoryMap2D({ robots, selectedRobotId, onSelect, layers, layout }: {
+  robots: Robot[];
+  selectedRobotId: string | null;
+  onSelect: (id: string | null) => void;
+  layers: FactoryMapLayers;
+  layout: FactoryLayout;
 }) {
-  return <svg className="factory-map-2d" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="2D factory map">
+  const { width: w, height: h } = layout;
+  return <svg className="factory-map-2d" viewBox={`0 0 ${w} ${h}`} role="img" aria-label="2D factory map">
     <defs>
       <pattern id="fm-grid" width="1" height="1" patternUnits="userSpaceOnUse">
         <path d="M 1 0 L 0 0 0 1" fill="none" stroke="#173039" strokeWidth=".035"/>
@@ -38,39 +40,37 @@ export function FactoryMap2D({ robots, selectedRobotId, onSelect }: {
       </radialGradient>
     </defs>
 
-    <rect width={W} height={H} fill="url(#fm-floor)"/>
-    <rect width={W} height={H} fill="url(#fm-grid)"/>
+    <rect width={w} height={h} fill="url(#fm-floor)"/>
+    <rect width={w} height={h} fill="url(#fm-grid)"/>
 
-    <path className="fm-lane" d={ROUTE_PATH} strokeWidth={LANE_WIDTH}/>
-    <path className="fm-lane-edge" d={ROUTE_PATH}/>
-
-    {([
-      ["BATTERY BUFFER", ZONE.BATTERY_BUFFER, "#2f7d8f"],
-      ["MARRIAGE STATION", ZONE.MARRIAGE_STATION, "#3f6ea8"],
-      ["CHARGING", ZONE.CHARGING_STATION, "#2f8f7a"],
-      ["IDLE / STAGING", ZONE.IDLE_ZONE, "#6b8794"],
-    ] as const).map(([name, rect, color]) => {
-      const box = svgRect(rect);
-      return <g key={name} className="fm-zone">
-        <rect {...box} fill={color} fillOpacity=".14" stroke={color} strokeOpacity=".7" strokeWidth=".08"/>
-        <text x={box.x + 0.22} y={box.y + 0.62} fill={color}>{name}</text>
+    {layers.routes && layout.routes.map((route) => {
+      const path = route.waypoints
+        .map((point, index) => `${index ? "L" : "M"}${point.x} ${h - point.y}`)
+        .join(" ");
+      return <g key={route.id}>
+        <path className="fm-lane" d={path} strokeWidth={LANE_WIDTH}/>
+        <path className="fm-lane-edge" d={path}/>
       </g>;
     })}
 
-    {(() => {
-      const box = svgRect(ZONE.NO_GO);
-      return <g className="fm-zone fm-nogo">
-        <rect {...box} fill="url(#fm-hazard)" fillOpacity=".3"/>
-        <rect {...box} fill="none" stroke="#fb7185" strokeWidth=".11"/>
-        <text x={box.x + 0.22} y={box.y + 0.62} fill="#fb7185">NO-GO ZONE</text>
+    {layers.stations && layout.stations.map((station) => {
+      const color = STATION_COLOR[station.type];
+      return <g key={station.id} className="fm-zone">
+        <circle cx={station.x} cy={h - station.y} r=".7" fill={color} fillOpacity=".14" stroke={color} strokeWidth=".08"/>
+        <text x={station.x + 0.22} y={h - station.y - 0.45} fill={color}>{station.type.replaceAll("_", " ")}</text>
       </g>;
-    })()}
+    })}
 
-    {Object.entries(STATION_ANCHOR).map(([id, anchor]) =>
-      <circle key={id} className="fm-anchor" cx={anchor.x} cy={H - anchor.y} r=".13"/>)}
+    {layers.noGoZones && layout.no_go_zones.map((zone) => {
+      const points = zone.points.map((point) => `${point.x},${h - point.y}`).join(" ");
+      return <g key={zone.id} className="fm-zone fm-nogo">
+        <polygon points={points} fill="url(#fm-hazard)" fillOpacity=".3" stroke="#fb7185" strokeWidth=".11"/>
+        <text x={zone.points[0].x + 0.22} y={h - zone.points[0].y - 0.22} fill="#fb7185">NO-GO ZONE</text>
+      </g>;
+    })}
 
     {robots.map((robot) => {
-      const point = worldToScreen(robot.pose.x, robot.pose.y, W, H, W, H);
+      const point = worldToScreen(robot.pose.x, robot.pose.y, w, h, w, h);
       const low = robot.battery < 20;
       return <g
         key={robot.id}

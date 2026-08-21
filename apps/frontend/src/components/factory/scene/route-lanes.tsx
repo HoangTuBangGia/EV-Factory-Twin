@@ -5,7 +5,8 @@ import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { Line2 } from "three-stdlib";
-import { LANE_WIDTH, MAIN_ROUTE, STATION_ANCHOR, toScene, type WorldPoint } from "@/lib/factory-layout";
+import { LANE_WIDTH, toScene } from "@/lib/factory-layout";
+import type { FactoryLayout, FactoryRoute, WorldPoint } from "@/schemas/factory";
 import { laneChevronTexture } from "./textures";
 
 interface Segment {
@@ -16,30 +17,35 @@ interface Segment {
 }
 
 /**
- * The drivable aisle, derived straight from MAIN_ROUTE so painted lanes and AMR
- * poses always agree. Chevrons scroll toward the dropoff to show flow direction.
+ * Drivable aisles derived from the active layout so painted lanes and AMR poses
+ * use the same coordinate system. Chevrons show flow direction.
  */
-export function RouteLanes() {
+export function RouteLanes({ routes, layout }: {
+  routes: FactoryRoute[];
+  layout: FactoryLayout;
+}) {
   const segments = useMemo<Segment[]>(() => {
     const base = laneChevronTexture();
     const built: Segment[] = [];
-    for (let i = 0; i < MAIN_ROUTE.length - 1; i += 1) {
-      const [ax, , az] = toScene(MAIN_ROUTE[i]);
-      const [bx, , bz] = toScene(MAIN_ROUTE[i + 1]);
-      const dx = bx - ax, dz = bz - az;
-      const length = Math.hypot(dx, dz);
-      const chevrons = base.clone();
-      chevrons.needsUpdate = true;
-      chevrons.repeat.set(length / 1.5, 1);
-      built.push({
-        mid: [(ax + bx) / 2, 0, (az + bz) / 2],
-        length,
-        angle: Math.atan2(-dz, dx),
-        chevrons,
-      });
+    for (const route of routes) {
+      for (let i = 0; i < route.waypoints.length - 1; i += 1) {
+        const [ax, , az] = toScene(route.waypoints[i], layout);
+        const [bx, , bz] = toScene(route.waypoints[i + 1], layout);
+        const dx = bx - ax, dz = bz - az;
+        const length = Math.hypot(dx, dz);
+        const chevrons = base.clone();
+        chevrons.needsUpdate = true;
+        chevrons.repeat.set(length / 1.5, 1);
+        built.push({
+          mid: [(ax + bx) / 2, 0, (az + bz) / 2],
+          length,
+          angle: Math.atan2(-dz, dx),
+          chevrons,
+        });
+      }
     }
     return built;
-  }, []);
+  }, [layout, routes]);
 
   useFrame((_, delta) => {
     for (const segment of segments) {
@@ -64,9 +70,9 @@ export function RouteLanes() {
       </mesh>
     </group>)}
 
-    {MAIN_ROUTE.slice(1, -1).map((joint, index) => {
-      const [x, , z] = toScene(joint);
-      return <group key={`joint${index}`} position={[x, 0, z]}>
+    {routes.flatMap((route) => route.waypoints.slice(1, -1).map((joint, index) => {
+      const [x, , z] = toScene(joint, layout);
+      return <group key={`${route.id}-joint${index}`} position={[x, 0, z]}>
         <mesh position={[0, 0.007, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <circleGeometry args={[LANE_WIDTH / 2, 28]}/>
           <meshStandardMaterial color="#132630" roughness={0.78} metalness={0.1} transparent opacity={0.95} depthWrite={false}/>
@@ -80,7 +86,7 @@ export function RouteLanes() {
           <meshBasicMaterial color="#f4c236" transparent opacity={0.55} depthWrite={false}/>
         </mesh>
       </group>;
-    })}
+    }))}
   </group>;
 }
 
@@ -89,7 +95,11 @@ export function RouteLanes() {
  * stands (CHARGER_ROUTE_KEY), so this corridor is drawn live per robot instead
  * of being painted on the slab.
  */
-export function ChargerApproach({ from }: { from: WorldPoint }) {
+export function ChargerApproach({ from, charger, layout }: {
+  from: WorldPoint;
+  charger: WorldPoint;
+  layout: FactoryLayout;
+}) {
   const line = useRef<Line2>(null);
   const target = useRef(from);
   target.current = from;
@@ -104,8 +114,8 @@ export function ChargerApproach({ from }: { from: WorldPoint }) {
     if (!object) return;
     const pose = target.current;
     if (pose.x !== drawn.current.x || pose.y !== drawn.current.y) {
-      const [ax, , az] = toScene(pose, 0.06);
-      const [bx, , bz] = toScene(STATION_ANCHOR.CHARGING_STATION, 0.06);
+      const [ax, , az] = toScene(pose, layout, 0.06);
+      const [bx, , bz] = toScene(charger, layout, 0.06);
       object.geometry.setPositions([ax, 0.06, az, bx, 0.06, bz]);
       object.computeLineDistances();
       drawn.current = { x: pose.x, y: pose.y };

@@ -1,18 +1,53 @@
+"use client";
+
+import { useState } from "react";
 import { AlertList } from "@/components/alerts/alert-list";
-import { FactoryMap } from "@/components/factory/factory-map";
+import {
+  DEFAULT_FACTORY_MAP_LAYERS,
+  FactoryMap,
+  type FactoryMapLayers,
+} from "@/components/factory/factory-map";
 import { RobotDrawer } from "@/components/fleet/robot-drawer";
 
 export default function FactoryPage() {
+  const [layers, setLayers] = useState<FactoryMapLayers>(DEFAULT_FACTORY_MAP_LAYERS);
+  const allLayersVisible = Object.values(layers).every(Boolean);
+
+  function toggleLayer(layer: keyof FactoryMapLayers) {
+    setLayers((current) => ({ ...current, [layer]: !current[layer] }));
+  }
+
   return <>
     <header className="page-head">
       <div>
         <h2>Factory Digital Twin</h2>
-        <p>Realtime 2D visualization using factory-meter coordinates.</p>
+        <p>Realtime 3D visualization using factory-meter coordinates.</p>
       </div>
-      <div className="toolbar">
-        <button className="filter active">All layers</button>
-        <button className="filter">Routes</button>
-        <button className="filter">No-go zones</button>
+      <div className="toolbar" aria-label="Factory map layers">
+        <button
+          type="button"
+          className={`filter ${allLayersVisible ? "active" : ""}`}
+          aria-pressed={allLayersVisible}
+          onClick={() => setLayers(DEFAULT_FACTORY_MAP_LAYERS)}
+        >All layers</button>
+        <button
+          type="button"
+          className={`filter ${layers.stations ? "active" : ""}`}
+          aria-pressed={layers.stations}
+          onClick={() => toggleLayer("stations")}
+        >Stations</button>
+        <button
+          type="button"
+          className={`filter ${layers.routes ? "active" : ""}`}
+          aria-pressed={layers.routes}
+          onClick={() => toggleLayer("routes")}
+        >Routes</button>
+        <button
+          type="button"
+          className={`filter ${layers.noGoZones ? "active" : ""}`}
+          aria-pressed={layers.noGoZones}
+          onClick={() => toggleLayer("noGoZones")}
+        >No-go zones</button>
       </div>
     </header>
     <div className="grid main-grid factory-page-grid">
@@ -21,7 +56,7 @@ export default function FactoryPage() {
           <h3>Battery transfer zone</h3>
           <span>Click an AMR to inspect</span>
         </div>
-        <FactoryMap view="2d"/>
+        <FactoryMap layers={layers}/>
       </section>
       <section className="panel factory-alert-panel">
         <div className="panel-head">
