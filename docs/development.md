@@ -15,7 +15,12 @@ Ubuntu 24.04
 
 ## Arch Linux
 
-ROS development runs inside an Ubuntu 24.04 Distrobox.
+ROS development runs inside the prepared Ubuntu 24.04 Distrobox named `ros-jazzy`:
+
+```bash
+distrobox enter ros-jazzy
+source /opt/ros/jazzy/setup.bash
+```
 
 ## Windows
 
@@ -83,6 +88,17 @@ source ros2_ws/install/setup.bash
 ros2 launch amr_gazebo sim.launch.py
 ```
 
+The default `amr_gazebo/config/robots.json` spawns two robots. To add robots or
+change individual spawn poses, copy that file, keep every `robot_id` and namespace
+unique, then run:
+
+```bash
+ros2 launch amr_gazebo sim.launch.py robots_config:=/absolute/path/robots.json
+```
+
+The launch rejects fewer than two robots, invalid namespaces, duplicate IDs and
+non-finite poses before spawning any robot.
+
 Run the bridge in a separate terminal:
 
 ```bash
@@ -97,8 +113,8 @@ The bridge reads its bearer secret from the `EDGE_TELEMETRY_SHARED_SECRET`
 environment variable. It accepts loopback HTTP for local development only;
 remote backend URLs must use HTTPS.
 
-For the second robot, launch a second namespaced bridge (for example `AMR-02`)
-with its own odometry/status topics. The bridge is outbound-only. Task assignment
+To publish telemetry for the second robot, launch a second namespaced bridge with
+`namespace:=amr_02 robot_id:=AMR-02`. The bridge is outbound-only. Task assignment
 and reset commands must travel through the edge fleet/task manager; the browser
 must never publish ROS messages directly.
 

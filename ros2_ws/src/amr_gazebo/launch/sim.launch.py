@@ -1,28 +1,127 @@
+import json
+import math
+import re
+from pathlib import Path
+
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
+NAMESPACE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
+ROBOT_ID_PATTERN = re.compile(r"^AMR-[0-9]{2,}$")
+POSE_FIELDS = ("x", "y", "z", "yaw")
 
-def generate_launch_description():
-    namespace = LaunchConfiguration("namespace")
-    robot_name = LaunchConfiguration("robot_name")
-    world = PathJoinSubstitution([FindPackageShare("amr_gazebo"), "worlds", "amr_test.sdf"])
+
+def load_robot_config(path: str | Path) -> list[dict[str, str | float]]:
+    with Path(path).open(encoding="utf-8") as config_file:
+        document = json.load(config_file)
+    robots = document.get("robots") if isinstance(document, dict) else None
+    if not isinstance(robots, list) or len(robots) < 2:
+        raise ValueError("robots config must contain at least two robots")
+
+    validated: list[dict[str, str | float]] = []
+    robot_ids: set[str] = set()
+    namespaces: set[str] = set()
+    for index, robot in enumerate(robots):
+        if not isinstance(robot, dict):
+            raise ValueError(f"robots[{index}] must be an object")
+        robot_id = robot.get("robot_id")
+        namespace = robot.get("namespace")
+        if not isinstance(robot_id, str) or not ROBOT_ID_PATTERN.fullmatch(robot_id):
+            raise ValueError(f"robots[{index}].robot_id must match AMR-NN")
+        if not isinstance(namespace, str) or not NAMESPACE_PATTERN.fullmatch(namespace):
+            raise ValueError(f"robots[{index}].namespace is invalid")
+        if robot_id in robot_ids:
+            raise ValueError(f"duplicate robot_id: {robot_id}")
+        if namespace in namespaces:
+            raise ValueError(f"duplicate namespace: {namespace}")
+
+        pose: dict[str, float] = {}
+        for field in POSE_FIELDS:
+            value = robot.get(field)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"robots[{index}].{field} must be numeric")
+            if not math.isfinite(value):
+                raise ValueError(f"robots[{index}].{field} must be finite")
+            pose[field] = float(value)
+
+        robot_ids.add(robot_id)
+        namespaces.add(namespace)
+        validated.append({"robot_id": robot_id, "namespace": namespace, **pose})
+    return validated
+
+
+def _robot_actions(context):
+    config_path = LaunchConfiguration("robots_config").perform(context)
     description = PathJoinSubstitution(
         [FindPackageShare("amr_description"), "urdf", "amr.urdf.xacro"]
     )
-    robot_description = {
-        "robot_description": Command(
-            ["xacro ", description, " prefix:=", namespace, "/ namespace:=", namespace]
+    actions = []
+    for robot in load_robot_config(config_path):
+        namespace = str(robot["namespace"])
+        robot_description = {
+            "robot_description": Command(
+                ["xacro ", description, " prefix:=", namespace, "/ namespace:=", namespace]
+            )
+        }
+        actions.extend(
+            [
+                Node(
+                    package="robot_state_publisher",
+                    executable="robot_state_publisher",
+                    namespace=namespace,
+                    parameters=[robot_description, {"use_sim_time": True}],
+                    remappings=[("/tf", "tf"), ("/tf_static", "tf_static")],
+                    output="screen",
+                ),
+                Node(
+                    package="ros_gz_sim",
+                    executable="create",
+                    namespace=namespace,
+                    arguments=[
+                        "-name",
+                        namespace,
+                        "-topic",
+                        "robot_description",
+                        "-x",
+                        str(robot["x"]),
+                        "-y",
+                        str(robot["y"]),
+                        "-z",
+                        str(robot["z"]),
+                        "-Y",
+                        str(robot["yaw"]),
+                    ],
+                    output="screen",
+                ),
+                Node(
+                    package="ros_gz_bridge",
+                    executable="parameter_bridge",
+                    namespace=namespace,
+                    arguments=[
+                        f"/{namespace}/cmd_vel@geometry_msgs/msg/Twist]gz.msgs.Twist",
+                        f"/{namespace}/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry",
+                        f"/{namespace}/tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V",
+                    ],
+                    output="screen",
+                ),
+            ]
         )
-    }
+    return actions
+
+
+def generate_launch_description():
+    world = PathJoinSubstitution([FindPackageShare("amr_gazebo"), "worlds", "amr_test.sdf"])
+    default_config = PathJoinSubstitution(
+        [FindPackageShare("amr_gazebo"), "config", "robots.json"]
+    )
     return LaunchDescription(
         [
-            DeclareLaunchArgument("namespace", default_value="amr_01"),
-            DeclareLaunchArgument("robot_name", default_value="amr_01"),
             DeclareLaunchArgument("gz_args", default_value="-r"),
+            DeclareLaunchArgument("robots_config", default_value=default_config),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     PathJoinSubstitution(
@@ -35,41 +134,12 @@ def generate_launch_description():
                 }.items(),
             ),
             Node(
-                package="robot_state_publisher",
-                executable="robot_state_publisher",
-                namespace=namespace,
-                parameters=[robot_description, {"use_sim_time": True}],
-                remappings=[("/tf", "tf"), ("/tf_static", "tf_static")],
-                output="screen",
-            ),
-            Node(
-                package="ros_gz_sim",
-                executable="create",
-                arguments=[
-                    "-name",
-                    robot_name,
-                    "-topic",
-                    "robot_description",
-                    "-x",
-                    "0",
-                    "-y",
-                    "0",
-                    "-z",
-                    "0.2",
-                ],
-                namespace=namespace,
-                output="screen",
-            ),
-            Node(
                 package="ros_gz_bridge",
                 executable="parameter_bridge",
-                arguments=[
-                    "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock",
-                    ["/", namespace, "/cmd_vel@geometry_msgs/msg/Twist]gz.msgs.Twist"],
-                    ["/", namespace, "/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry"],
-                    ["/", namespace, "/tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V"],
-                ],
+                name="clock_bridge",
+                arguments=["/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"],
                 output="screen",
             ),
+            OpaqueFunction(function=_robot_actions),
         ]
     )

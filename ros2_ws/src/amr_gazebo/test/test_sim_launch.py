@@ -9,6 +9,7 @@ import launch
 import launch_testing.actions
 import pytest
 import rclpy
+from geometry_msgs.msg import Twist
 from launch.actions import IncludeLaunchDescription, SetEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import PathJoinSubstitution
@@ -71,13 +72,13 @@ def generate_test_description():
 
 
 class TestSimRuntime(unittest.TestCase):
-    def test_odom_connected_tf_clock_and_authenticated_telemetry(self):
+    def test_two_robots_have_isolated_odom_cmd_vel_tf_and_telemetry(self):
         rclpy.init()
         node = rclpy.create_node("amr_sim_smoke_test")
-        odom = []
+        odom = {"amr_01": [], "amr_02": []}
         clocks = []
-        dynamic = set()
-        static = set()
+        dynamic = {"amr_01": set(), "amr_02": set()}
+        static = {"amr_01": set(), "amr_02": set()}
 
         def record_tf(message: TFMessage, target: set[tuple[str, str]]):
             target.update(
@@ -85,42 +86,77 @@ class TestSimRuntime(unittest.TestCase):
                 for transform in message.transforms
             )
 
-        node.create_subscription(Odometry, "/amr_01/odom", odom.append, qos_profile_sensor_data)
+        for namespace in odom:
+            node.create_subscription(
+                Odometry,
+                f"/{namespace}/odom",
+                odom[namespace].append,
+                qos_profile_sensor_data,
+            )
+            node.create_subscription(
+                TFMessage,
+                f"/{namespace}/tf",
+                lambda message, ns=namespace: record_tf(message, dynamic[ns]),
+                10,
+            )
+            node.create_subscription(
+                TFMessage,
+                f"/{namespace}/tf_static",
+                lambda message, ns=namespace: record_tf(message, static[ns]),
+                QoSProfile(
+                    depth=1,
+                    durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                    reliability=ReliabilityPolicy.RELIABLE,
+                ),
+            )
         node.create_subscription(Clock, "/clock", clocks.append, qos_profile_sensor_data)
-        node.create_subscription(
-            TFMessage, "/amr_01/tf", lambda message: record_tf(message, dynamic), 10
-        )
-        node.create_subscription(
-            TFMessage,
-            "/amr_01/tf_static",
-            lambda message: record_tf(message, static),
-            QoSProfile(
-                depth=1,
-                durability=DurabilityPolicy.TRANSIENT_LOCAL,
-                reliability=ReliabilityPolicy.RELIABLE,
-            ),
-        )
+        command_publisher = node.create_publisher(Twist, "/amr_01/cmd_vel", 10)
         deadline = time.monotonic() + 60
         try:
             while time.monotonic() < deadline and not (
-                odom
+                all(odom.values())
                 and clocks
-                and ("amr_01/odom", "amr_01/base_footprint") in dynamic
-                and ("amr_01/base_footprint", "amr_01/base_link") in static
+                and all(
+                    (f"{namespace}/odom", f"{namespace}/base_footprint")
+                    in dynamic[namespace]
+                    and (f"{namespace}/base_footprint", f"{namespace}/base_link")
+                    in static[namespace]
+                    for namespace in odom
+                )
                 and received.is_set()
             ):
                 rclpy.spin_once(node, timeout_sec=0.1)
-            assert odom
+            assert all(odom.values())
             assert clocks
-            assert odom[-1].header.frame_id == "amr_01/odom"
-            assert odom[-1].child_frame_id == "amr_01/base_footprint", odom[-1].child_frame_id
-            assert ("amr_01/odom", "amr_01/base_footprint") in dynamic
-            assert ("amr_01/base_footprint", "amr_01/base_link") in static
-            assert odom[-1].header.stamp.sec <= clocks[-1].clock.sec
+            for namespace, messages in odom.items():
+                assert messages[-1].header.frame_id == f"{namespace}/odom"
+                assert messages[-1].child_frame_id == f"{namespace}/base_footprint"
+                assert messages[-1].header.stamp.sec <= clocks[-1].clock.sec
+                assert all(
+                    parent.startswith(f"{namespace}/") and child.startswith(f"{namespace}/")
+                    for parent, child in dynamic[namespace] | static[namespace]
+                )
+
             parents: dict[str, set[str]] = {}
-            for parent, child in dynamic | static:
-                parents.setdefault(child, set()).add(parent)
+            for namespace in odom:
+                for parent, child in dynamic[namespace] | static[namespace]:
+                    parents.setdefault(child, set()).add(parent)
             assert all(len(child_parents) == 1 for child_parents in parents.values())
+
+            samples_before_command = {
+                namespace: len(messages) for namespace, messages in odom.items()
+            }
+            command = Twist()
+            command.linear.x = 0.4
+            command_deadline = time.monotonic() + 2.0
+            while time.monotonic() < command_deadline:
+                command_publisher.publish(command)
+                rclpy.spin_once(node, timeout_sec=0.05)
+            amr_01_after = odom["amr_01"][samples_before_command["amr_01"] :]
+            amr_02_after = odom["amr_02"][samples_before_command["amr_02"] :]
+            assert any(message.twist.twist.linear.x > 0.1 for message in amr_01_after)
+            assert all(abs(message.twist.twist.linear.x) < 0.05 for message in amr_02_after)
+
             assert received.is_set()
             path, authorization, payload = requests[0]
             assert path == "/internal/v1/telemetry"

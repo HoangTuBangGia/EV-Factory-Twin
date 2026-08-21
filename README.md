@@ -96,8 +96,11 @@ ros2 launch amr_gazebo sim.launch.py
 ros2 launch telemetry_bridge telemetry_bridge.launch.py
 ```
 
-Bridge gửi telemetry outbound tới `/internal/v1/telemetry`; command/task từ
-backend đi qua ROS 2 fleet/task manager. Không expose ROS graph hoặc DDS ra Internet.
+`sim.launch.py` đọc `amr_gazebo/config/robots.json` và mặc định spawn AMR-01,
+AMR-02 với namespace/pose riêng. Có thể copy file JSON, thêm robot rồi truyền
+`robots_config:=/absolute/path/robots.json`. Bridge hiện gửi telemetry outbound
+tới `/internal/v1/telemetry`; command/task path sẽ được thêm ở checkpoint Fleet
+Manager. Không expose ROS graph hoặc DDS ra Internet.
 
 #### Full stack với backend realtime
 

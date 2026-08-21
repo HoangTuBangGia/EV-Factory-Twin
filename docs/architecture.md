@@ -1300,7 +1300,9 @@ Topics:
 /amr_01/task
 ```
 
-The first ROS slice also bridges `/clock` and `/${namespace}/tf` from Gazebo.
+The Gazebo launch reads a validated fleet JSON and spawns at least two robots with
+unique public IDs, ROS namespaces, entity names and poses. `/clock` is bridged once;
+each robot independently bridges `cmd_vel`, `odom` and `tf` in its namespace.
 DiffDrive owns `odom -> base_footprint`; `robot_state_publisher`, using simulation
 time, owns the static `base_footprint -> base_link` transform. Dynamic wheel
 transforms are intentionally deferred until Gazebo joint states are bridged.

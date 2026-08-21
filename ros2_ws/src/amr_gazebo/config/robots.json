@@ -1,0 +1,20 @@
+{
+  "robots": [
+    {
+      "robot_id": "AMR-01",
+      "namespace": "amr_01",
+      "x": 0.0,
+      "y": -1.0,
+      "z": 0.2,
+      "yaw": 0.0
+    },
+    {
+      "robot_id": "AMR-02",
+      "namespace": "amr_02",
+      "x": 0.0,
+      "y": 1.0,
+      "z": 0.2,
+      "yaw": 0.0
+    }
+  ]
+}
