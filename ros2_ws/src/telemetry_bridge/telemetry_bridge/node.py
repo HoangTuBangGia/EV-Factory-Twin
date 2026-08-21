@@ -6,10 +6,14 @@ import os
 import threading
 import urllib.error
 import urllib.request
+from collections import deque
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import rclpy
+from amr_interfaces.msg import TaskState
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
@@ -35,6 +39,17 @@ MAX_ATTEMPTS = 4
 MAX_BACKOFF_SECONDS = 1.0
 
 
+@dataclass
+class RobotSnapshot:
+    robot_id: str
+    namespace: str
+    odom: Odometry | None = None
+    battery: float = 1.0
+    status: str = "IDLE"
+    task_id: str = ""
+    payload_id: str = ""
+
+
 class RejectRedirectHandler(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -54,7 +69,7 @@ def iso_timestamp(now: datetime) -> str:
     return now.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
-def telemetry_endpoint(backend_url: str) -> str:
+def edge_endpoint(backend_url: str, path: str) -> str:
     parsed = urlsplit(backend_url)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise ValueError("backend_url must be an HTTP(S) URL")
@@ -66,15 +81,48 @@ def telemetry_endpoint(backend_url: str) -> str:
         raise ValueError("remote backend_url must use HTTPS")
     if parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise ValueError("backend_url must not contain credentials, query, or fragment")
-    return backend_url.rstrip("/") + "/internal/v1/telemetry"
+    return backend_url.rstrip("/") + path
+
+
+def telemetry_endpoint(backend_url: str) -> str:
+    return edge_endpoint(backend_url, "/internal/v1/telemetry")
 
 
 def is_retryable_status(status: int) -> bool:
     return status in RETRYABLE_STATUSES or 500 <= status <= 599
 
 
+def load_robot_snapshots(path: str | Path) -> dict[str, RobotSnapshot]:
+    with Path(path).open(encoding="utf-8") as config_file:
+        document = json.load(config_file)
+    robots = document.get("robots") if isinstance(document, dict) else None
+    if not isinstance(robots, list) or not robots:
+        raise ValueError("robots config must contain a non-empty robots array")
+    snapshots: dict[str, RobotSnapshot] = {}
+    namespaces: set[str] = set()
+    for index, robot in enumerate(robots):
+        if not isinstance(robot, dict):
+            raise ValueError(f"robots[{index}] must be an object")
+        robot_id, namespace = robot.get("robot_id"), robot.get("namespace")
+        if not isinstance(robot_id, str) or not robot_id:
+            raise ValueError(f"robots[{index}].robot_id must be a non-empty string")
+        if not isinstance(namespace, str) or not namespace or "/" in namespace:
+            raise ValueError(f"robots[{index}].namespace must be one ROS name segment")
+        if robot_id in snapshots or namespace in namespaces:
+            raise ValueError("robot IDs and namespaces must be unique")
+        snapshots[robot_id] = RobotSnapshot(robot_id, namespace)
+        namespaces.add(namespace)
+    return snapshots
+
+
 def encode_payload(
-    robot_id: str, odom: Odometry, battery: float, status: str, now: datetime
+    robot_id: str,
+    odom: Odometry,
+    battery: float,
+    status: str,
+    now: datetime,
+    task_id: str | None = None,
+    payload_id: str | None = None,
 ) -> bytes:
     p, q, twist = odom.pose.pose.position, odom.pose.pose.orientation, odom.twist.twist
     scalars = (p.x, p.y, twist.linear.x, twist.angular.z, battery)
@@ -89,27 +137,21 @@ def encode_payload(
         "velocity": {"linear": twist.linear.x, "angular": twist.angular.z},
         "battery": battery * 100.0,
         "status": status,
-        "task_id": None,
-        "payload_id": None,
+        "task_id": task_id or None,
+        "payload_id": payload_id or None,
     }
-    return json.dumps(payload, allow_nan=False, separators=(",", ":")).encode("utf-8")
+    return json.dumps(payload, allow_nan=False, separators=(",", ":")).encode()
 
 
-class LatestWorker:
-    def __init__(self, send, warning) -> None:
+class DeliveryWorker:
+    def __init__(self, send, warning, result=None) -> None:
         self._send = send
         self._warning = warning
+        self._result = result or (lambda _success, _detail: None)
         self._condition = threading.Condition()
-        self._pending: bytes | None = None
         self._stopping = False
-        self._thread = threading.Thread(target=self._run, name="telemetry-http", daemon=True)
+        self._thread = threading.Thread(target=self._run, name="edge-http", daemon=True)
         self._thread.start()
-
-    def submit(self, body: bytes) -> None:
-        with self._condition:
-            if not self._stopping:
-                self._pending = body
-                self._condition.notify()
 
     def close(self) -> None:
         with self._condition:
@@ -119,20 +161,21 @@ class LatestWorker:
 
     def _wait_for_stop(self, seconds: float) -> bool:
         with self._condition:
-            self._condition.wait_for(
-                lambda: self._stopping,
-                timeout=seconds,
-            )
+            self._condition.wait_for(lambda: self._stopping, timeout=seconds)
             return self._stopping
 
     def _deliver(self, body: bytes) -> None:
+        detail = ""
         for attempt in range(MAX_ATTEMPTS):
             try:
                 status = self._send(body)
-                retry = is_retryable_status(status)
-                if not retry:
+                if not is_retryable_status(status):
                     if status >= 300:
-                        self._warning(f"telemetry rejected with HTTP {status}")
+                        detail = f"HTTP {status}"
+                        self._warning(f"edge payload rejected with {detail}")
+                        self._result(False, detail)
+                    else:
+                        self._result(True, "")
                     return
                 detail = f"HTTP {status}"
             except (
@@ -141,14 +184,28 @@ class LatestWorker:
                 TimeoutError,
                 OSError,
             ) as error:
-                retry = True
                 detail = str(error)
             if attempt == MAX_ATTEMPTS - 1:
-                self._warning(f"telemetry delivery failed after {MAX_ATTEMPTS} attempts: {detail}")
+                self._warning(f"edge delivery failed after {MAX_ATTEMPTS} attempts: {detail}")
+                self._result(False, detail)
                 return
-            backoff = min(0.1 * (2**attempt), MAX_BACKOFF_SECONDS)
-            if self._wait_for_stop(backoff):
+            if self._wait_for_stop(min(0.1 * (2**attempt), MAX_BACKOFF_SECONDS)):
                 return
+
+    def _run(self) -> None:
+        raise NotImplementedError
+
+
+class LatestWorker(DeliveryWorker):
+    def __init__(self, send, warning, result=None) -> None:
+        self._pending: bytes | None = None
+        super().__init__(send, warning, result)
+
+    def submit(self, body: bytes) -> None:
+        with self._condition:
+            if not self._stopping:
+                self._pending = body
+                self._condition.notify()
 
     def _run(self) -> None:
         while True:
@@ -161,105 +218,214 @@ class LatestWorker:
             self._deliver(body)
 
 
+class QueueWorker(DeliveryWorker):
+    def __init__(self, send, warning, result=None) -> None:
+        self._pending: deque[bytes] = deque()
+        super().__init__(send, warning, result)
+
+    def submit(self, body: bytes) -> None:
+        with self._condition:
+            if not self._stopping:
+                self._pending.append(body)
+                self._condition.notify()
+
+    def _run(self) -> None:
+        while True:
+            with self._condition:
+                self._condition.wait_for(lambda: self._stopping or self._pending)
+                if self._stopping:
+                    return
+                body = self._pending.popleft()
+            self._deliver(body)
+
+
 class TelemetryBridge(Node):
     def __init__(self) -> None:
         super().__init__("telemetry_bridge")
-        self._worker: LatestWorker | None = None
-        self.declare_parameter("robot_id", os.getenv("AMR_ROBOT_ID", "AMR-01"))
+        self.declare_parameter("robots_config", "")
         self.declare_parameter(
             "backend_url", os.getenv("TELEMETRY_BACKEND_URL", "http://localhost:8000")
         )
-        self.declare_parameter("odom_topic", "odom")
-        self.declare_parameter("battery_topic", "battery_state")
-        self.declare_parameter("status_topic", "status")
+        self.declare_parameter("bridge_id", os.getenv("TELEMETRY_BRIDGE_ID", "edge-main"))
+        config = str(self.get_parameter("robots_config").value)
+        if not config:
+            raise RuntimeError("robots_config parameter is required")
+        self._robots = load_robot_snapshots(config)
         secret = os.getenv("EDGE_TELEMETRY_SHARED_SECRET")
         if not secret:
             raise RuntimeError("EDGE_TELEMETRY_SHARED_SECRET environment variable is required")
-        endpoint = telemetry_endpoint(str(self.get_parameter("backend_url").value))
+        backend_url = str(self.get_parameter("backend_url").value)
         opener = urllib.request.build_opener(RejectRedirectHandler())
-        self._odom: Odometry | None = None
-        self._battery = 1.0
-        self._status = "IDLE"
         self._lock = threading.Lock()
+        self._delivered_samples = 0
+        self._failed_deliveries = 0
+        self._robot_errors: dict[str, str] = {}
+
+        def sender(path: str):
+            endpoint = edge_endpoint(backend_url, path)
+
+            def send(body: bytes) -> int:
+                request = urllib.request.Request(
+                    endpoint,
+                    body,
+                    {"Content-Type": "application/json", "Authorization": "Bearer " + secret},
+                )
+                try:
+                    with opener.open(request, timeout=2) as response:
+                        return response.status
+                except urllib.error.HTTPError as error:
+                    return error.code
+
+            return send
+
+        telemetry_send = sender("/internal/v1/telemetry")
+        self._workers = {
+            robot_id: LatestWorker(
+                telemetry_send,
+                self.get_logger().warning,
+                lambda success, detail, key=robot_id: self._record_result(key, success, detail),
+            )
+            for robot_id in self._robots
+        }
+        self._task_worker = QueueWorker(
+            sender("/internal/v1/task-updates"), self.get_logger().warning
+        )
+        self._health_worker = LatestWorker(
+            sender("/internal/v1/bridge-health"), self.get_logger().warning
+        )
         odom_qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
             depth=1,
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.VOLATILE,
         )
-        state_qos = QoSProfile(
-            history=HistoryPolicy.KEEP_LAST,
-            depth=1,
-            reliability=ReliabilityPolicy.RELIABLE,
-            durability=DurabilityPolicy.VOLATILE,
-        )
-        self.create_subscription(
-            Odometry, str(self.get_parameter("odom_topic").value), self._on_odom, odom_qos
-        )
-        self.create_subscription(
-            BatteryState,
-            str(self.get_parameter("battery_topic").value),
-            self._on_battery,
-            state_qos,
-        )
-        self.create_subscription(
-            String, str(self.get_parameter("status_topic").value), self._on_status, state_qos
-        )
-        self.create_timer(0.1, self._queue_latest)
-
-        def send(body: bytes) -> int:
-            request = urllib.request.Request(
-                endpoint,
-                body,
-                {"Content-Type": "application/json", "Authorization": "Bearer " + secret},
+        state_qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE)
+        for robot in self._robots.values():
+            namespace, robot_id = robot.namespace, robot.robot_id
+            self.create_subscription(
+                Odometry,
+                f"/{namespace}/odom",
+                lambda message, key=robot_id: self._set(key, "odom", message),
+                odom_qos,
             )
-            try:
-                with opener.open(request, timeout=2) as response:
-                    return response.status
-            except urllib.error.HTTPError as error:
-                return error.code
+            for topic, field in (
+                ("status", "status"),
+                ("task_id", "task_id"),
+                ("payload_id", "payload_id"),
+            ):
+                self.create_subscription(
+                    String,
+                    f"/{namespace}/{topic}",
+                    lambda message, key=robot_id, name=field: self._set_string(key, name, message),
+                    state_qos,
+                )
+            self.create_subscription(
+                BatteryState,
+                f"/{namespace}/battery_state",
+                lambda message, key=robot_id: self._set_battery(key, message),
+                state_qos,
+            )
+        task_qos = QoSProfile(
+            depth=100,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self.create_subscription(TaskState, "/fleet/task_updates", self._on_task, task_qos)
+        self.create_timer(0.1, self._queue_latest)
+        self.create_timer(1.0, self._queue_health)
 
-        self._worker = LatestWorker(send, self.get_logger().warning)
-
-    def _on_odom(self, message: Odometry) -> None:
+    def _set(self, robot_id: str, field: str, value) -> None:
         with self._lock:
-            self._odom = message
+            setattr(self._robots[robot_id], field, value)
 
-    def _on_battery(self, message: BatteryState) -> None:
+    def _set_string(self, robot_id: str, field: str, message: String) -> None:
+        if field != "status" or message.data in STATUSES:
+            self._set(robot_id, field, message.data)
+
+    def _set_battery(self, robot_id: str, message: BatteryState) -> None:
         if math.isfinite(message.percentage) and 0.0 <= message.percentage <= 1.0:
-            with self._lock:
-                self._battery = message.percentage
+            self._set(robot_id, "battery", message.percentage)
         else:
             self.get_logger().warning("ignoring BatteryState percentage outside [0, 1]")
 
-    def _on_status(self, message: String) -> None:
-        if message.data in STATUSES:
-            with self._lock:
-                self._status = message.data
-
     def _queue_latest(self) -> None:
+        pending = []
         with self._lock:
-            odom, battery, status = self._odom, self._battery, self._status
-            self._odom = None
-        if odom is None or self._worker is None:
-            return
-        try:
-            body = encode_payload(
-                str(self.get_parameter("robot_id").value),
-                odom,
-                battery,
-                status,
-                datetime.now(UTC),
+            for robot in self._robots.values():
+                if robot.odom is not None:
+                    pending.append(
+                        (
+                            robot.robot_id,
+                            robot.odom,
+                            robot.battery,
+                            robot.status,
+                            robot.task_id,
+                            robot.payload_id,
+                        )
+                    )
+                    robot.odom = None
+        for robot_id, odom, battery, status, task_id, payload_id in pending:
+            try:
+                body = encode_payload(
+                    robot_id, odom, battery, status, datetime.now(UTC), task_id, payload_id
+                )
+            except ValueError as error:
+                self.get_logger().warning(f"dropping invalid telemetry: {error}")
+                continue
+            self._workers[robot_id].submit(body)
+
+    def _on_task(self, message: TaskState) -> None:
+        timestamp = datetime.fromtimestamp(
+            message.updated_at.sec + message.updated_at.nanosec / 1_000_000_000, UTC
+        )
+        payload = {
+            "task_id": message.task_id,
+            "payload_id": message.payload_id,
+            "pickup_station_id": message.pickup_station_id,
+            "dropoff_station_id": message.dropoff_station_id,
+            "assigned_robot_id": message.assigned_robot_id or None,
+            "status": message.status,
+            "attempt": message.attempt,
+            "max_retries": message.max_retries,
+            "message": message.message,
+            "updated_at": iso_timestamp(timestamp),
+        }
+        self._task_worker.submit(json.dumps(payload, separators=(",", ":")).encode())
+
+    def _record_result(self, robot_id: str, success: bool, detail: str) -> None:
+        with self._lock:
+            if success:
+                self._delivered_samples += 1
+                self._robot_errors.pop(robot_id, None)
+            else:
+                self._failed_deliveries += 1
+                self._robot_errors[robot_id] = detail
+
+    def _queue_health(self) -> None:
+        with self._lock:
+            last_error = (
+                "; ".join(
+                    f"{robot_id}: {detail}"
+                    for robot_id, detail in sorted(self._robot_errors.items())
+                )
+                or None
             )
-        except ValueError as error:
-            self.get_logger().warning(f"dropping invalid telemetry: {error}")
-            return
-        self._worker.submit(body)
+            payload = {
+                "bridge_id": str(self.get_parameter("bridge_id").value),
+                "status": "DEGRADED" if last_error else "CONNECTED",
+                "robot_ids": sorted(self._robots),
+                "timestamp": iso_timestamp(datetime.now(UTC)),
+                "delivered_samples": self._delivered_samples,
+                "failed_deliveries": self._failed_deliveries,
+                "last_error": last_error,
+            }
+        self._health_worker.submit(json.dumps(payload, separators=(",", ":")).encode())
 
     def destroy_node(self):
-        if self._worker is not None:
-            self._worker.close()
-            self._worker = None
+        for worker in self._workers.values():
+            worker.close()
+        self._task_worker.close()
+        self._health_worker.close()
         return super().destroy_node()
 
 

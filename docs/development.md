@@ -140,17 +140,19 @@ source /opt/ros/jazzy/setup.bash
 source ros2_ws/install/setup.bash
 ros2 launch telemetry_bridge telemetry_bridge.launch.py \
   backend_url:=https://YOUR_RENDER_HOST \
-  robot_id:=AMR-01
+  robots_config:="$PWD/ros2_ws/src/amr_gazebo/config/robots.json"
 ```
 
 The bridge reads its bearer secret from the `EDGE_TELEMETRY_SHARED_SECRET`
 environment variable. It accepts loopback HTTP for local development only;
 remote backend URLs must use HTTPS.
 
-To publish telemetry for the second robot, launch a second namespaced bridge with
-`namespace:=amr_02 robot_id:=AMR-02`. The bridge is outbound-only. Task assignment
-and reset commands must travel through the edge fleet/task manager; the browser
-must never publish ROS messages directly.
+One bridge subscribes to every robot declared in `robots_config`, preserves a
+separate latest-value delivery worker per robot, and forwards the durable
+`/fleet/task_updates` stream in FIFO order. It also emits bridge-health heartbeats.
+The bridge is outbound-only. Task assignment and reset commands must travel
+through the edge fleet/task manager; the browser must never publish ROS messages
+directly.
 
 The Makefile disables unrelated globally installed pytest plugins and enables
 `pytest-asyncio` explicitly. Tests also clear `DATABASE_URL` so a developer's

@@ -115,7 +115,7 @@ occurrence without losing history.
 1. Contract/RBAC baseline (this checkpoint).
 2. Multi-AMR namespace-isolated Gazebo runtime.
 3. Navigation, robot-state, fleet and task managers.
-4. Multi-robot bridge and bidirectional backend command path.
+4. Multi-robot telemetry/task bridge and backend realtime path.
 5. Layout/version persistence and validation.
 6. SimPy/KPI/optimization.
 7. Approval/apply command lifecycle.

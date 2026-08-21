@@ -1312,9 +1312,11 @@ Gazebo `OdometryPublisher` owns `odom -> base_footprint`; `robot_state_publisher
 using simulation time, owns the static `base_footprint -> base_link` transform.
 `VelocityControl` provides planar motion without wheel-contact physics. Dynamic
 wheel transforms are intentionally deferred until Gazebo joint states are bridged.
-The state simulator publishes battery/status/task/payload topics. The telemetry
-bridge does not consume task/payload yet, so those canonical fields remain null
-until the multi-robot bridge checkpoint.
+The state simulator publishes battery/status/task/payload topics. One telemetry
+bridge loads the same validated fleet JSON, subscribes to every namespace and
+normalizes those fields with odometry into `RobotTelemetry`. Each robot owns an
+independent latest-value HTTP worker; fleet task transitions use a FIFO worker
+and bridge health is emitted once per second.
 
 The M2 edge runtime adds one namespaced `amr_navigation` action server per robot.
 It translates typed station goals into bounded planar velocity commands and
@@ -2360,7 +2362,7 @@ flowchart TB
         ROS --> BRIDGE
     end
 
-    BRIDGE -->|Bearer secret over HTTPS| EDGEAPI[POST /internal/v1/telemetry]
+    BRIDGE -->|Bearer secret over HTTPS| EDGEAPI[POST /internal/v1/*]
     EDGEAPI --> API
 ```
 

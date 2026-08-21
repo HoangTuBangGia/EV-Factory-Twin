@@ -219,6 +219,11 @@ async def test_missing_server_auth_configuration_returns_503(client: AsyncClient
 
 
 def test_openapi_declares_bearer_security_for_all_non_health_rest_operations() -> None:
+    edge_paths = {
+        "/internal/v1/telemetry",
+        "/internal/v1/task-updates",
+        "/internal/v1/bridge-health",
+    }
     schema = app.openapi()
     schemes = schema["components"]["securitySchemes"]
     assert schemes["SupabaseAccessToken"]["scheme"] == "bearer"
@@ -230,7 +235,7 @@ def test_openapi_declares_bearer_security_for_all_non_health_rest_operations() -
                 continue
             if path == "/health":
                 assert "security" not in operation
-            elif path == "/internal/v1/telemetry":
+            elif path in edge_paths:
                 assert {"EdgeTelemetrySecret": []} in operation["security"]
             else:
                 assert {"SupabaseAccessToken": []} in operation["security"]

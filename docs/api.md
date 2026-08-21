@@ -24,7 +24,7 @@ Contract nguồn-neutral nằm ở `packages/twin-core`; các schema request/res
 ## Danh sách endpoint
 
 Mọi browser endpoint đều nằm dưới `/api/v1`, **trừ `/health`**. Machine edge
-telemetry dùng `/internal/v1/telemetry`.
+runtime dùng các endpoint `/internal/v1`.
 
 Mọi browser REST endpoint ngoài `/health` yêu cầu Supabase access token trong header:
 
@@ -37,7 +37,7 @@ dịch vụ xác thực/JWKS/profile database chưa sẵn sàng trả `503`. Rol
 `public.profiles`, không lấy từ request frontend hay generic claim
 `role=authenticated` của Supabase.
 
-`POST /internal/v1/telemetry` là machine endpoint riêng cho factory-edge bridge.
+Các `POST /internal/v1/*` là machine endpoint riêng cho factory-edge bridge.
 Nó dùng opaque bearer secret độc lập, không dùng Supabase user token:
 
 ```http
@@ -71,6 +71,8 @@ string/log/frontend và không được tái sử dụng service-role key.
 | POST | `/api/v1/scenarios/{scenario_id}/apply` | [`Scenario`](#scenario) | Áp dụng candidate đã duyệt vào ROS2/fallback runtime |
 | WS | `/ws/factory` | [envelope](#websocket-event-envelope) | Stream realtime |
 | POST | `/internal/v1/telemetry` | `TelemetryIngressResponse` | Edge bridge gửi một canonical robot sample |
+| POST | `/internal/v1/task-updates` | `EdgeUpdateResponse` | Edge bridge gửi một ROS task transition |
+| POST | `/internal/v1/bridge-health` | `EdgeUpdateResponse` | Edge bridge gửi heartbeat và delivery counters |
 
 Ma trận quyền REST hiện tại:
 
@@ -97,8 +99,10 @@ follow-up bảo mật riêng. Mock
 factory phải được dừng trước khi edge gửi dữ liệu để hai source không ghi đè nhau.
 
 The ROS bridge sends `pose` and `velocity` from namespaced odometry, uses the
-edge host UTC timestamp, defaults `battery` to `100` and `status` to `IDLE` until
-real ROS producers are connected, and leaves task/payload IDs null.
+edge host UTC timestamp, and joins battery, status, task and payload state from
+the same robot namespace. One process loads the fleet JSON and maintains a
+separate latest-value worker per robot, so a slow robot delivery cannot overwrite
+another robot's pending sample.
 
 Response `200`:
 
@@ -125,6 +129,17 @@ bị từ chối để không làm hỏng stale ordering; ngưỡng cấu hình 
 | Mock factory đang chạy | `409` |
 | Invalid telemetry body | `422` |
 | Timestamp vượt quá future-skew cho phép | `422` |
+
+`POST /internal/v1/task-updates` maps the durable ROS `/fleet/task_updates`
+stream to the canonical Backend `Task`, rejects equal/older timestamps per
+`task_id`, updates REST snapshots and broadcasts `task.updated`. The bridge uses
+a FIFO delivery worker so lifecycle transitions are not coalesced.
+
+`POST /internal/v1/bridge-health` accepts `bridge_id`, `CONNECTED | DEGRADED`,
+the configured robot IDs, UTC timestamp, cumulative delivery counters and the
+latest per-robot delivery error. Equal/older heartbeats are ignored per
+`bridge_id`. Health is currently process-local diagnostic state; durable health
+and disconnect alerts belong to the alerts/persistence checkpoint.
 
 ## RobotStatus
 

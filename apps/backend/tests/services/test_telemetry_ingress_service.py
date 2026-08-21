@@ -150,3 +150,18 @@ async def test_concurrent_samples_keep_the_newest_timestamp() -> None:
     assert stored is not None
     assert stored.last_seen_at == newer.timestamp
     assert stored.pose.x == 11.0
+
+
+@pytest.mark.asyncio
+async def test_stale_ordering_is_independent_per_robot() -> None:
+    service, state, _, _ = make_service()
+    amr_01 = make_telemetry(state)
+    amr_02 = make_telemetry(state, robot_id="AMR-02")
+
+    await service.ingest(amr_01)
+    stale = await service.ingest(amr_01)
+    accepted = await service.ingest(amr_02)
+
+    assert stale.status == TelemetryIngressStatus.IGNORED_STALE
+    assert accepted.status == TelemetryIngressStatus.ACCEPTED
+    assert state.get_robot("AMR-02").last_seen_at == amr_02.timestamp

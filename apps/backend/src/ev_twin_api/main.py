@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from ev_twin_api import __version__
 from ev_twin_api.api.alerts import router as alerts_router
 from ev_twin_api.api.auth import router as auth_router
+from ev_twin_api.api.edge_runtime import router as edge_runtime_router
 from ev_twin_api.api.factory import router as factory_router
 from ev_twin_api.api.health import router as health_router
 from ev_twin_api.api.metrics import router as metrics_router
@@ -30,6 +31,7 @@ from ev_twin_api.services.audit_service import (
     SqlAlchemyAuditRepository,
 )
 from ev_twin_api.services.auth_service import AuthService, SqlAlchemyProfileRepository
+from ev_twin_api.services.edge_runtime import EdgeRuntimeService
 from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.kpi_snapshot_writer import build_kpi_snapshot_writer
 from ev_twin_api.services.mock_factory import MockFactory
@@ -103,6 +105,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         mock_factory=mock_factory,
         max_future_skew_seconds=settings.edge_telemetry_max_future_skew_seconds,
     )
+    app.state.edge_runtime_service = EdgeRuntimeService(factory_state, websocket_manager)
     audit_repository: AuditRepository
     scenario_repository: ScenarioRepository
     if database.configured:
@@ -166,4 +169,5 @@ app.include_router(alerts_router)
 app.include_router(mock_router)
 app.include_router(scenarios_router)
 app.include_router(telemetry_router)
+app.include_router(edge_runtime_router)
 app.include_router(websocket_router)

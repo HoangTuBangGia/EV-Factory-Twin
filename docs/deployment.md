@@ -62,7 +62,8 @@ Tối thiểu phải kiểm tra:
 make ros-check
 make ros-build
 ros2 launch amr_gazebo sim.launch.py
-ros2 launch telemetry_bridge telemetry_bridge.launch.py
+ros2 launch telemetry_bridge telemetry_bridge.launch.py \
+  robots_config:="$PWD/ros2_ws/src/amr_gazebo/config/robots.json"
 ```
 
 `EDGE_TELEMETRY_SHARED_SECRET` chỉ nằm ở Render và edge secret store. Không đặt

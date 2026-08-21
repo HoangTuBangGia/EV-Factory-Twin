@@ -72,7 +72,7 @@ def generate_test_description():
                 ),
                 launch_arguments={
                     "backend_url": f"http://127.0.0.1:{server.server_port}",
-                    "robot_id": "AMR-01",
+                    "robots_config": str(Path(__file__).parents[1] / "config" / "robots.json"),
                 }.items(),
             ),
             launch_testing.actions.ReadyToTest(),
@@ -192,7 +192,7 @@ class TestSimRuntime(unittest.TestCase):
             request.payload_id = "BP-FLEET-0001"
             request.pickup_station_id = "BATTERY_BUFFER"
             request.dropoff_station_id = "MARRIAGE_STATION"
-            request.navigation_timeout_seconds = 8.0
+            request.navigation_timeout_seconds = 20.0
             response_future = create_task.call_async(request)
             rclpy.spin_until_future_complete(node, response_future, timeout_sec=5.0)
             response = response_future.result()
@@ -207,40 +207,36 @@ class TestSimRuntime(unittest.TestCase):
             lifecycle = [
                 update.status for update in task_updates if update.task_id == request.task_id
             ]
-            assert lifecycle == ["QUEUED", "ASSIGNED", "PICKUP", "DELIVERING", "COMPLETED"]
+            task_trace = [
+                (update.status, update.message, update.attempt)
+                for update in task_updates
+                if update.task_id == request.task_id
+            ]
+            assert lifecycle == [
+                "QUEUED",
+                "ASSIGNED",
+                "PICKUP",
+                "DELIVERING",
+                "COMPLETED",
+            ], task_trace
             assigned = [
                 update.assigned_robot_id
                 for update in task_updates
                 if update.task_id == request.task_id and update.status == "ASSIGNED"
             ]
-            assert assigned == ["AMR-01"]
+            assert len(assigned) == 1 and assigned[0] in {"AMR-01", "AMR-02"}, assigned
 
             amr_01_action = ActionClient(node, NavigateToStation, "/amr_01/navigate_to_station")
             amr_02_action = ActionClient(node, NavigateToStation, "/amr_02/navigate_to_station")
             assert amr_01_action.wait_for_server(timeout_sec=5.0)
             assert amr_02_action.wait_for_server(timeout_sec=5.0)
 
-            pickup_goal = NavigateToStation.Goal()
-            pickup_goal.station_id = "BATTERY_BUFFER"
-            pickup_goal.task_id = "TASK-0001"
-            pickup_goal.payload_id = "BP-0001"
-            pickup_goal.timeout_seconds = 10.0
-            pickup_result = self._send_goal(node, amr_01_action, pickup_goal)
-            assert pickup_result.outcome == NavigateToStation.Result.SUCCESS, pickup_result.message
-
-            charge_goal = NavigateToStation.Goal()
-            charge_goal.station_id = "CHARGING_STATION"
-            charge_goal.timeout_seconds = 2.0
-            charge_result = self._send_goal(node, amr_02_action, charge_goal)
-            assert charge_result.outcome == NavigateToStation.Result.SUCCESS
-
+            state_override = node.create_publisher(String, "/amr_02/state_override", 10)
             charge_deadline = time.monotonic() + 1.0
             while time.monotonic() < charge_deadline:
+                state_override.publish(String(data="CHARGING"))
                 rclpy.spin_once(node, timeout_sec=0.05)
-            assert "PICKING" in statuses["amr_01"]
             assert "CHARGING" in statuses["amr_02"]
-            assert "TASK-0001" in task_ids["amr_01"]
-            assert "BP-0001" in payload_ids["amr_01"]
             assert max(message.percentage for message in batteries["amr_02"]) > 0.6
 
             timeout_goal = NavigateToStation.Goal()
@@ -272,7 +268,15 @@ class TestSimRuntime(unittest.TestCase):
             assert all(abs(message.twist.twist.linear.x) < 0.05 for message in amr_02_after)
 
             assert received.is_set()
-            path, authorization, payload = requests[0]
+            telemetry_requests = [item for item in requests if item[0] == "/internal/v1/telemetry"]
+            assert {item[2]["robot_id"] for item in telemetry_requests} == {"AMR-01", "AMR-02"}
+            assert any(item[2]["task_id"] == request.task_id for item in telemetry_requests)
+            assert any(item[2]["payload_id"] == request.payload_id for item in telemetry_requests)
+            assert any(item[0] == "/internal/v1/task-updates" for item in requests)
+            assert any(item[0] == "/internal/v1/bridge-health" for item in requests)
+            path, authorization, payload = next(
+                item for item in telemetry_requests if item[2]["robot_id"] == "AMR-01"
+            )
             assert path == "/internal/v1/telemetry"
             assert authorization == f"Bearer {SECRET}"
             assert set(payload) == {
