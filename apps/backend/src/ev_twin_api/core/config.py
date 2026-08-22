@@ -103,6 +103,28 @@ class Settings(BaseSettings):
             raise ValueError("JWT verification in-flight limit must cover every worker")
         return self
 
+    @model_validator(mode="after")
+    def validate_production_dependencies(self) -> Self:
+        if self.app_env.lower() != "production":
+            return self
+
+        missing = [
+            name
+            for name, value in (
+                ("DATABASE_URL", self.database_url),
+                ("SUPABASE_URL", self.supabase_url),
+                ("EDGE_TELEMETRY_SHARED_SECRET", self.edge_telemetry_shared_secret),
+            )
+            if value is None
+        ]
+        if missing:
+            raise ValueError(f"production requires {', '.join(missing)}")
+        if self.mock_factory_enabled:
+            raise ValueError("production requires MOCK_FACTORY_ENABLED=false")
+        if not self.cors_origins or "*" in self.cors_origins:
+            raise ValueError("production requires an explicit CORS_ORIGINS allowlist")
+        return self
+
     @field_validator("supabase_jwt_leeway_seconds")
     @classmethod
     def validate_jwt_leeway(cls, value: int) -> int:

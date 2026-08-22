@@ -2561,29 +2561,18 @@ Acceptance:
 
 ---
 
-## M9 — Replay
+## M9 — Deployment and End-to-End Acceptance
 
 Acceptance:
 
-- Historical telemetry.
-- Timeline.
-- Replay speed.
-- Same frontend twin.
+- Backend production container and Render health smoke.
+- Vercel Next.js build against Render HTTPS/WSS.
+- Supabase PostgreSQL/Auth migrations and persistence verified.
+- Two-AMR Gazebo-to-browser telemetry and task lifecycle demonstrated.
+- SimPy/KPI/optimization → Monitor approval → ROS apply/result demonstrated.
+- Alerts, audit, telemetry retention and latency/FPS evidence recorded.
 
----
-
-## M10 — Approval
-
-Acceptance:
-
-```text
-DRAFT
-→ SIMULATED
-→ SUBMITTED
-→ APPROVED / REJECTED
-```
-
-Audit information lưu được.
+Incident replay UI remains outside the Backend/ROS2 MVP acceptance boundary.
 
 ---
 

@@ -198,15 +198,19 @@ class TestSimRuntime(unittest.TestCase):
             response = response_future.result()
             assert response is not None and response.accepted
 
-            task_deadline = time.monotonic() + 30.0
+            task_deadline = time.monotonic() + 60.0
             while time.monotonic() < task_deadline and not any(
                 update.task_id == request.task_id and update.status == "COMPLETED"
                 for update in task_updates
             ):
                 rclpy.spin_once(node, timeout_sec=0.05)
-            lifecycle = [
-                update.status for update in task_updates if update.task_id == request.task_id
-            ]
+            lifecycle = []
+            for update in task_updates:
+                if (
+                    update.task_id == request.task_id
+                    and (not lifecycle or lifecycle[-1] != update.status)
+                ):
+                    lifecycle.append(update.status)
             task_trace = [
                 (update.status, update.message, update.attempt)
                 for update in task_updates

@@ -63,3 +63,38 @@ def test_edge_telemetry_future_skew_is_bounded() -> None:
                 _env_file=None,
                 edge_telemetry_max_future_skew_seconds=invalid_value,
             )
+
+
+def test_production_requires_durable_authenticated_runtime() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="production requires DATABASE_URL, SUPABASE_URL, EDGE_TELEMETRY_SHARED_SECRET",
+    ):
+        Settings(_env_file=None, app_env="production", mock_factory_enabled=False)
+
+    configured = Settings(
+        _env_file=None,
+        app_env="production",
+        cors_origins=["https://ev-factory-twin.vercel.app"],
+        database_url="postgresql+asyncpg://user:password@db.example.com/postgres",
+        supabase_url="https://project.supabase.co",
+        edge_telemetry_shared_secret="0123456789abcdef0123456789abcdef",
+        mock_factory_enabled=False,
+    )
+    assert configured.app_env == "production"
+
+
+def test_production_rejects_mock_runtime_and_wildcard_cors() -> None:
+    required = {
+        "_env_file": None,
+        "app_env": "production",
+        "database_url": "postgresql+asyncpg://user:password@db.example.com/postgres",
+        "supabase_url": "https://project.supabase.co",
+        "edge_telemetry_shared_secret": "0123456789abcdef0123456789abcdef",
+    }
+
+    with pytest.raises(ValidationError, match="MOCK_FACTORY_ENABLED=false"):
+        Settings(**required, mock_factory_enabled=True)
+
+    with pytest.raises(ValidationError, match="explicit CORS_ORIGINS allowlist"):
+        Settings(**required, mock_factory_enabled=False, cors_origins=["*"])

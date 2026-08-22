@@ -8,19 +8,21 @@ Browser
   └── HTTPS ──────> Vercel: Next.js frontend
 ```
 
-Factory edge chạy Gazebo Harmonic, ROS 2 Jazzy, Nav2, fleet/task managers và
-telemetry bridge. Edge chỉ mở kết nối outbound TLS tới Render; browser không truy
-cập DDS. Supabase cung cấp Auth và PostgreSQL cho backend.
+Factory edge chạy Gazebo Harmonic, ROS 2 Jazzy, deterministic navigation
+simulator, fleet/task managers và telemetry bridge. Edge chỉ mở kết nối outbound
+TLS tới Render; browser không truy cập DDS. Supabase cung cấp Auth và PostgreSQL
+cho backend.
 
 Không deploy Gazebo/ROS2 lên Vercel hoặc Render. Hai nền tảng này không cung cấp
 ROS DDS, Gazebo process, network discovery ổn định hoặc GPU/robotics runtime.
 
 ## Current readiness
 
-Vercel + Render + Supabase là topology chính, nhưng repository chưa có production
-Dockerfile, `render.yaml`, hoặc deployment workflow. Các file này sẽ được thêm
-cùng checkpoint backend container đầu tiên; tài liệu này là contract triển khai,
-không phải bằng chứng deployment đã sẵn sàng.
+Repository có production `apps/backend/Dockerfile`, Render Blueprint và container
+CI health smoke. Vercel dùng native Next.js build với Root Directory
+`apps/frontend`, nên không cần `vercel.json`. Đây là deployable configuration,
+không phải bằng chứng hosted acceptance; lần chạy thật phải được ghi theo
+`docs/runbooks/mvp-edge-acceptance.md`.
 
 Không commit `.env`, `.env.local` hoặc secret. Các file này đã được `.gitignore`.
 
@@ -73,8 +75,7 @@ secret trong frontend, Supabase client hoặc Git.
 
 1. Dùng Render **paid Web Service**, một instance và một Uvicorn worker trong
    giai đoạn live state/WebSocket còn process-local.
-2. Khi `render.yaml` đã tồn tại, dùng **New > Blueprint**; trước thời điểm đó
-   không giả định repository đã có file này.
+2. Dùng **New > Blueprint** và chọn `render.yaml` trong repository.
 3. Cấu hình các biến môi trường backend trên Render:
 
    ```env
@@ -93,7 +94,10 @@ secret trong frontend, Supabase client hoặc Git.
    Edge secret phải được cấu hình cùng giá trị ở Render và secret store của bridge;
    không đưa vào Vercel hoặc Supabase client config. Future-skew mặc định 5 giây
    cho phép sai lệch clock nhỏ; giá trị hợp lệ là 0–300 giây.
-4. Chạy migration bằng pre-deploy command, không chạy migration mỗi lần app start.
+4. Trước deploy ứng dụng, link Supabase CLI tới đúng hosted project và chạy
+   `supabase db push` như một thao tác migration riêng có kiểm soát. Không đặt
+   migration trong application startup hoặc Render start command. Xem trước diff,
+   backup và yêu cầu người vận hành duyệt trước khi chạy lên hosted database.
 5. Chọn **Apply** và chờ service healthy.
 6. Ghi lại URL backend, ví dụ:
 
@@ -180,7 +184,7 @@ Mở frontend Vercel và kiểm tra:
 - Mở URL khi chưa login sẽ được chuyển về `/login`.
 - Designer và Monitor login vào đúng landing page/quyền tương ứng.
 - Topbar chuyển từ `CONNECTING` sang `LIVE`.
-- Overview hiển thị 5 AMR từ `/api/v1/robots`.
+- Overview hiển thị tối thiểu hai AMR đã cấu hình từ `/api/v1/robots`.
 - Vị trí, pin và trạng thái robot thay đổi theo WebSocket.
 - DevTools > Network có REST `200` và WebSocket `/ws/factory` trả `101`.
 
@@ -196,8 +200,9 @@ curl -H "Authorization: Bearer <ACCESS_TOKEN>" \
 
 - Vercel tự tạo Preview Deployment cho pull request và production deployment
   khi push/merge vào production branch.
-- Khi `render.yaml` và smoke test đã được thêm, có thể cấu hình Render chỉ deploy
-  sau khi GitHub CI xanh. Hiện automation này chưa tồn tại trong repository.
+- `render.yaml` dùng `autoDeployTrigger: checksPass`, vì vậy Render chỉ auto-deploy
+  commit sau khi GitHub checks liên quan đã xanh. Migration production vẫn là
+  thao tác riêng do con người kiểm soát.
 
 ## 8. Lưu ý vận hành
 
