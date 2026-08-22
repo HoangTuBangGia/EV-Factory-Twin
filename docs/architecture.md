@@ -2908,3 +2908,12 @@ append-only JSON geometry/config snapshots in `layout_versions`. FastAPI validat
 the typed `twin-core` contract before PostgreSQL insert. Browser writes never go
 directly through Supabase Data API; authenticated clients read/write through
 FastAPI and database RLS remains defense in depth.
+
+Every persisted SimPy candidate references an immutable `(layout_id, version)`.
+The simulation derives route distance and congestion from that geometry, models
+individual robot battery/charging and publishes the nine authoritative KPI from
+`twin-core`. Flow optimization is a deterministic Cartesian search capped at 64
+candidates; each evaluated candidate remains auditable through the scenario row.
+Backend `ScenarioService` requires `LayoutService`; there is no layout-free or
+legacy benchmark fallback in the API runtime. The legacy simulation runner is
+kept only for standalone evaluation fixtures.

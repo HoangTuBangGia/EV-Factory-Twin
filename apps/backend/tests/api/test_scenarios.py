@@ -16,6 +16,8 @@ from ev_twin_api.schemas.auth import AppRole
 from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.schemas.scenario import ScenarioRunRequest, ScenarioStatus
 from ev_twin_api.services.factory_state import FactoryState
+from ev_twin_api.services.layout_repository import InMemoryLayoutRepository
+from ev_twin_api.services.layout_service import LayoutService
 from ev_twin_api.services.mock_factory import MockFactory
 from ev_twin_api.services.scenario_service import InvalidScenarioTransitionError, ScenarioService
 from ev_twin_api.services.websocket_manager import WebSocketManager
@@ -41,7 +43,15 @@ def build_scenario_service() -> tuple[ScenarioService, MockFactory, FactoryState
     manager = WebSocketManager()
     state = FactoryState(config)
     mock_factory = MockFactory(state, config, manager)
-    return ScenarioService(mock_factory), mock_factory, state, manager
+    return (
+        ScenarioService(
+            mock_factory,
+            layout_service=LayoutService(InMemoryLayoutRepository(include_default=True)),
+        ),
+        mock_factory,
+        state,
+        manager,
+    )
 
 
 def scenario_request(**updates: object) -> ScenarioRunRequest:
@@ -53,17 +63,15 @@ async def test_run_scenario_returns_deterministic_metrics() -> None:
     service, _, _, _ = build_scenario_service()
 
     scenario = await run_scenario(scenario_request(), service, DESIGNER)
+    repeated = await run_scenario(scenario_request(name="candidate-02"), service, DESIGNER)
 
     assert scenario.id == "SCN-0001"
     assert scenario.name == "candidate-01"
     assert scenario.status == ScenarioStatus.SIMULATED
     assert scenario.config.num_robots == 3
-    assert scenario.metrics.completed_tasks == 10
-    assert scenario.metrics.unfinished_tasks == 0
-    assert scenario.metrics.completion_rate == 1.0
-    assert scenario.metrics.throughput_per_hour == 10.0
-    assert scenario.metrics.average_cycle_time == 74.0
-    assert scenario.metrics.average_waiting_time == 24.0
+    assert scenario.config.layout_id == "LAYOUT-DEFAULT"
+    assert scenario.metrics.completed_tasks + scenario.metrics.unfinished_tasks == 10
+    assert scenario.metrics == repeated.metrics
     assert scenario.duration_ms >= 0.0
     assert scenario.created_by == DESIGNER.id
     assert scenario.created_at is not None
@@ -72,7 +80,11 @@ async def test_run_scenario_returns_deterministic_metrics() -> None:
 
 @pytest.mark.asyncio
 async def test_baseline_uses_repository_scenario() -> None:
-    service, _, _, _ = build_scenario_service()
+    service, factory, _, _ = build_scenario_service()
+    service = ScenarioService(
+        factory,
+        layout_service=LayoutService(InMemoryLayoutRepository(include_default=True)),
+    )
 
     baseline = await get_baseline(service)
 
@@ -82,9 +94,13 @@ async def test_baseline_uses_repository_scenario() -> None:
     assert baseline.config.num_robots == 3
     assert baseline.config.num_tasks == 500
     assert baseline.config.task_arrival_interval == 5.0
-    assert baseline.config.travel_time == 30.0
-    assert baseline.metrics.completed_tasks == 213
-    assert baseline.metrics.unfinished_tasks == 287
+    assert baseline.config.layout_id == "LAYOUT-DEFAULT"
+    assert baseline.config.layout_version == 1
+    assert baseline.config.route_id == "BATTERY_DELIVERY"
+    assert baseline.config.travel_time != 30.0
+    assert baseline.metrics.completed_tasks + baseline.metrics.unfinished_tasks == 500
+    assert baseline.metrics.travel_distance > 0.0
+    assert baseline.metrics.fleet_utilization_percent > 0.0
 
 
 @pytest.mark.asyncio

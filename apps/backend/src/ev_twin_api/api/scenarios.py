@@ -6,6 +6,7 @@ from ev_twin_api.api.dependencies import READ_ROLES, CurrentUserDep, require_rol
 from ev_twin_api.schemas.auth import AppRole
 from ev_twin_api.schemas.scenario import Scenario, ScenarioRunRequest
 from ev_twin_api.services.scenario_service import (
+    InvalidScenarioConfigurationError,
     InvalidScenarioTransitionError,
     ScenarioNotFoundError,
     ScenarioServiceDep,
@@ -21,6 +22,8 @@ async def _scenario_action(action: Callable[[], Awaitable[Scenario]]) -> Scenari
         raise HTTPException(status_code=404, detail=str(error)) from error
     except InvalidScenarioTransitionError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
+    except InvalidScenarioConfigurationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
 
 @router.post(
@@ -33,7 +36,7 @@ async def run_scenario(
     scenario_service: ScenarioServiceDep,
     current_user: CurrentUserDep,
 ) -> Scenario:
-    return await scenario_service.run(request, current_user)
+    return await _scenario_action(lambda: scenario_service.run(request, current_user))
 
 
 @router.get(

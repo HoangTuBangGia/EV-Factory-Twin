@@ -31,6 +31,13 @@ class ScenarioConfig(BaseModel):
     travel_time: float = Field(gt=0.0, le=86_400.0)
     loading_time: float = Field(gt=0.0, le=86_400.0)
     simulation_time: float = Field(gt=0.0, le=86_400.0)
+    layout_id: str = Field(default="LAYOUT-DEFAULT", min_length=1, max_length=80)
+    layout_version: int = Field(default=1, ge=1)
+    route_id: str = Field(default="BATTERY_DELIVERY", min_length=1, max_length=80)
+    robot_speed_mps: float = Field(default=1.0, gt=0.0, le=10.0)
+    charger_count: int = Field(default=1, ge=1, le=20)
+    route_distance_m: float = Field(default=30.0, gt=0.0, le=100_000.0)
+    congestion_multiplier: float = Field(default=1.0, ge=1.0, le=10.0)
 
 
 class ScenarioRunRequest(ScenarioConfig):
@@ -54,6 +61,11 @@ class ScenarioMetrics(BaseModel):
     throughput_per_hour: float = Field(ge=0.0)
     average_cycle_time: float = Field(ge=0.0)
     average_waiting_time: float = Field(ge=0.0)
+    fleet_utilization_percent: float = Field(default=0.0, ge=0.0, le=100.0)
+    starvation_events: int = Field(default=0, ge=0)
+    congestion_percent: float = Field(default=0.0, ge=0.0, le=100.0)
+    travel_distance: float = Field(default=0.0, ge=0.0)
+    average_delivery_delay: float = Field(default=0.0, ge=0.0)
 
 
 class Scenario(BaseModel):

@@ -1,6 +1,6 @@
 import asyncio
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -131,12 +131,89 @@ def _audit(
 
 
 class InMemoryLayoutRepository:
-    def __init__(self, audit_repository: InMemoryAuditRepository | None = None) -> None:
+    def __init__(
+        self,
+        audit_repository: InMemoryAuditRepository | None = None,
+        *,
+        include_default: bool = False,
+    ) -> None:
         self.audit_repository = audit_repository or InMemoryAuditRepository()
         self._layouts: dict[str, LayoutSummary] = {}
         self._versions: dict[tuple[str, int], LayoutVersion] = {}
         self._next_id = 1
         self._lock = asyncio.Lock()
+        if include_default:
+            self._seed_default()
+
+    def _seed_default(self) -> None:
+        created_by = UUID("00000000-0000-0000-0000-000000000001")
+        created_at = datetime(2026, 8, 22, tzinfo=UTC)
+        version = LayoutVersion.model_validate(
+            {
+                "layout_id": "LAYOUT-DEFAULT",
+                "name": "Battery transfer zone",
+                "version": 1,
+                "created_by": created_by,
+                "created_at": created_at,
+                "width": 20,
+                "height": 15,
+                "stations": [
+                    {"id": "BATTERY_BUFFER", "type": "BATTERY_BUFFER", "x": 2, "y": 4},
+                    {"id": "MARRIAGE_STATION", "type": "MARRIAGE_STATION", "x": 16, "y": 8},
+                    {"id": "CHARGING_STATION", "type": "CHARGING_STATION", "x": 2, "y": 12},
+                ],
+                "routes": [
+                    {
+                        "id": "BATTERY_DELIVERY",
+                        "start_station_id": "BATTERY_BUFFER",
+                        "end_station_id": "MARRIAGE_STATION",
+                        "waypoints": [
+                            {"x": 2, "y": 4},
+                            {"x": 8, "y": 4},
+                            {"x": 12, "y": 8},
+                            {"x": 16, "y": 8},
+                        ],
+                    }
+                ],
+                "no_go_zones": [
+                    {
+                        "id": "NO_GO_01",
+                        "points": [
+                            {"x": 8.4, "y": 10.8},
+                            {"x": 12.8, "y": 10.8},
+                            {"x": 12.8, "y": 13.6},
+                            {"x": 8.4, "y": 13.6},
+                        ],
+                    }
+                ],
+                "congestion_zones": [
+                    {
+                        "id": "CONGESTION_01",
+                        "delay_multiplier": 1.25,
+                        "points": [
+                            {"x": 10, "y": 6},
+                            {"x": 13, "y": 6},
+                            {"x": 13, "y": 9},
+                            {"x": 10, "y": 9},
+                        ],
+                    }
+                ],
+                "config": {
+                    "robot_count": 2,
+                    "demand_interval_seconds": 8,
+                    "robot_speed_mps": 1,
+                    "charger_count": 1,
+                },
+            }
+        )
+        self._layouts[version.layout_id] = LayoutSummary(
+            id=version.layout_id,
+            name=version.name,
+            latest_version=version.version,
+            created_by=created_by,
+            created_at=created_at,
+        )
+        self._versions[(version.layout_id, version.version)] = version
 
     async def create(self, *, name, content, actor, request_id, occurred_at) -> LayoutVersion:
         async with self._lock:

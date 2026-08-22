@@ -12,6 +12,8 @@ from ev_twin_api.services.audit_service import (
     InMemoryAuditRepository,
 )
 from ev_twin_api.services.factory_state import FactoryState
+from ev_twin_api.services.layout_repository import InMemoryLayoutRepository
+from ev_twin_api.services.layout_service import LayoutService
 from ev_twin_api.services.mock_factory import MockFactory
 from ev_twin_api.services.scenario_service import ScenarioService
 from ev_twin_api.services.websocket_manager import WebSocketManager
@@ -66,7 +68,10 @@ async def test_config_does_not_mutate_factory_when_intent_audit_fails() -> None:
 @pytest.mark.asyncio
 async def test_manual_reset_waits_for_scenario_apply_control_lock() -> None:
     mock_factory = build_mock_factory()
-    service = ScenarioService(mock_factory)
+    service = ScenarioService(
+        mock_factory,
+        layout_service=LayoutService(InMemoryLayoutRepository(include_default=True)),
+    )
     scenario = await service.run(
         ScenarioRunRequest(
             name="serialized-controls",

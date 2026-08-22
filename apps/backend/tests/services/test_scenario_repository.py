@@ -20,6 +20,8 @@ from ev_twin_api.schemas.scenario import (
 )
 from ev_twin_api.services.audit_service import InMemoryAuditRepository
 from ev_twin_api.services.factory_state import FactoryState
+from ev_twin_api.services.layout_repository import InMemoryLayoutRepository
+from ev_twin_api.services.layout_service import LayoutService
 from ev_twin_api.services.mock_factory import MockFactory
 from ev_twin_api.services.scenario_repository import (
     SCENARIO_APPLY_SQL,
@@ -93,13 +95,16 @@ async def test_scenario_survives_service_reconstruction_over_same_repository() -
         WebSocketManager(),
         enabled=False,
     )
-    first_service = ScenarioService(mock_factory, repository)
+    layouts = LayoutService(InMemoryLayoutRepository(include_default=True))
+    first_service = ScenarioService(mock_factory, layout_service=layouts, repository=repository)
     created = await first_service.run(
         ScenarioRunRequest(name="restart-candidate", **CONFIG.model_dump()),
         DESIGNER,
     )
 
-    reconstructed_service = ScenarioService(mock_factory, repository)
+    reconstructed_service = ScenarioService(
+        mock_factory, layout_service=layouts, repository=repository
+    )
     detail = await reconstructed_service.get(created.id)
     scenarios = await reconstructed_service.list()
 

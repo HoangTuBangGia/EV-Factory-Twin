@@ -1,6 +1,6 @@
 ROS_DISTRO ?= jazzy
 
-.PHONY: sync lint format format-check migration-check test test-cov typecheck check backend supabase-start supabase-status supabase-reset supabase-stop ros-deps ros-build ros-test ros-check
+.PHONY: sync lint format format-check migration-check integration test test-cov typecheck check backend supabase-start supabase-status supabase-reset supabase-stop ros-deps ros-build ros-test ros-check
 
 sync:
 	uv sync --all-packages --dev
@@ -19,6 +19,9 @@ typecheck:
 
 migration-check:
 	PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -p pytest_asyncio.plugin tests/integration/test_supabase_migrations.py
+
+integration:
+	APP_ENV=test DATABASE_URL= PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -p pytest_asyncio.plugin tests/integration
 
 test:
 	APP_ENV=test DATABASE_URL= PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -p pytest_asyncio.plugin

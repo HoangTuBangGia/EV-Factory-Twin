@@ -73,6 +73,7 @@ string/log/frontend và không được tái sử dụng service-role key.
 | GET | `/api/v1/scenarios/baseline` | [`Scenario`](#scenario) | Benchmark baseline chuẩn của repository |
 | GET | `/api/v1/scenarios/{scenario_id}` | [`Scenario`](#scenario) | Chi tiết candidate; id lạ → 404 |
 | POST | `/api/v1/scenarios/run` | [`Scenario`](#scenario) | Chạy benchmark SimPy cho candidate |
+| POST | `/api/v1/optimizations/run` | `OptimizationResult` | Đánh giá và xếp hạng tối đa 64 candidate |
 | POST | `/api/v1/scenarios/{scenario_id}/approve` | [`Scenario`](#scenario) | Phê duyệt candidate đã mô phỏng |
 | POST | `/api/v1/scenarios/{scenario_id}/reject` | [`Scenario`](#scenario) | Từ chối candidate đã mô phỏng |
 | POST | `/api/v1/scenarios/{scenario_id}/apply` | [`Scenario`](#scenario) | Áp dụng candidate đã duyệt vào ROS2/fallback runtime |
@@ -447,7 +448,7 @@ Nhóm endpoint này tạo vòng MVP human-in-the-loop:
 chạy benchmark → xem KPI → approve/reject → apply nếu đã approve
 ```
 
-`POST /api/v1/scenarios/run` chạy benchmark SimPy nhưng **không thay đổi** mock
+`POST /api/v1/scenarios/run` chạy mô phỏng battery logistics SimPy nhưng **không thay đổi** mock
 factory realtime. Chỉ `POST /api/v1/scenarios/{scenario_id}/apply` mới cập nhật
 mock factory và reset trạng thái vận hành hiện tại.
 
@@ -455,19 +456,27 @@ Khi có `DATABASE_URL`, candidate và business audit được lưu trong Postgre
 vẫn còn sau khi backend restart. Chế độ local/test không cấu hình database mới
 dùng repository in-memory và sẽ mất dữ liệu khi process dừng. Baseline được đọc
 từ scenario chuẩn trong repository mã nguồn, có id `baseline`, không nằm trong
-`GET /api/v1/scenarios` và chỉ dùng để so sánh.
+`GET /api/v1/scenarios` và chỉ dùng để so sánh. Baseline resolve
+`LAYOUT-DEFAULT` version 1, route `BATTERY_DELIVERY` và chạy cùng logistics engine
+cùng chín KPI authoritative như candidate; khác biệt chỉ nằm ở input scenario.
 
 ### ScenarioRunRequest
 
-Body của `POST /api/v1/scenarios/run`; tất cả field đều bắt buộc:
+Body của `POST /api/v1/scenarios/run`. Mỗi run bắt buộc tham chiếu đúng một
+`layout_id` + `layout_version` bất biến và một route thuộc version đó:
 
 ```json
 {
   "name": "more-robots",
+  "layout_id": "LAYOUT-DEFAULT",
+  "layout_version": 1,
+  "route_id": "BATTERY_DELIVERY",
   "num_robots": 6,
   "num_tasks": 500,
   "task_arrival_interval": 5.0,
-  "travel_time": 30.0,
+  "travel_time": 1.0,
+  "robot_speed_mps": 1.2,
+  "charger_count": 2,
   "loading_time": 10.0,
   "simulation_time": 3600.0
 }
@@ -479,11 +488,27 @@ Body của `POST /api/v1/scenarios/run`; tất cả field đều bắt buộc:
 | `num_robots` | int | 1–10 | Số robot khả dụng |
 | `num_tasks` | int | 1–10.000 | Tổng task cần tạo trong benchmark |
 | `task_arrival_interval` | float | 1,0–60,0 giây | Khoảng cách giữa hai task mới |
-| `travel_time` | float | `> 0` và `<= 86.400` giây | Thời gian di chuyển của một task |
+| `travel_time` | float | `> 0` và `<= 86.400` giây | Field tương thích; backend tính lại từ route/speed/congestion |
 | `loading_time` | float | `> 0` và `<= 86.400` giây | Thời gian load và unload |
 | `simulation_time` | float | `> 0` và `<= 86.400` giây | Khoảng thời gian ảo được benchmark |
 
 Giá trị ngoài giới hạn hoặc thiếu field → **422**.
+
+Backend lấy khoảng cách và congestion multiplier từ geometry của layout, rồi
+mô phỏng từng robot, battery discharge/charge, charger waiting và route contention.
+Kết quả trả đủ KPI authoritative: throughput, cycle time, waiting time, fleet
+utilization, starvation, congestion, travel distance, delivery delay và
+completion rate.
+
+### Flow optimization
+
+`POST /api/v1/optimizations/run` (DESIGNER) nhận các danh sách layout version,
+route, số robot, speed, charger và demand interval. Backend chạy tích Descartes
+tối đa 64 tổ hợp, lưu từng candidate như một scenario `SIMULATED`, rồi xếp hạng
+deterministic theo completion/throughput trước, tiếp đến delay, starvation,
+congestion, cycle time và chi phí cấu hình. Response gồm `recommendation`, số
+candidate đã đánh giá và toàn bộ `ranking`. Search lớn hơn 64 hoặc route không
+thuộc layout trả **422**.
 
 ### ScenarioStatus
 
@@ -529,7 +554,14 @@ Tất cả endpoint scenario trả về schema này (endpoint list trả về m�
     "task_arrival_interval": 5.0,
     "travel_time": 30.0,
     "loading_time": 10.0,
-    "simulation_time": 3600.0
+    "simulation_time": 3600.0,
+    "layout_id": "LAYOUT-DEFAULT",
+    "layout_version": 1,
+    "route_id": "BATTERY_DELIVERY",
+    "robot_speed_mps": 1.2,
+    "charger_count": 2,
+    "route_distance_m": 19.66,
+    "congestion_multiplier": 1.08
   },
   "metrics": {
     "completed_tasks": 426,
@@ -537,7 +569,12 @@ Tất cả endpoint scenario trả về schema này (endpoint list trả về m�
     "completion_rate": 0.852,
     "throughput_per_hour": 426.0,
     "average_cycle_time": 750.0,
-    "average_waiting_time": 700.0
+    "average_waiting_time": 700.0,
+    "fleet_utilization_percent": 88.2,
+    "starvation_events": 4,
+    "congestion_percent": 12.5,
+    "travel_distance": 8375.16,
+    "average_delivery_delay": 42.1
   },
   "duration_ms": 8.4,
   "created_at": "2026-08-14T03:00:00.000Z",

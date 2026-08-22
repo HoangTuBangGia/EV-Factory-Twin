@@ -94,7 +94,7 @@ async def test_layout_crud_and_immutable_versions(client: AsyncClient) -> None:
     listing = await client.get("/api/v1/layouts")
     conflict = await client.post(f"/api/v1/layouts/{layout_id}/versions", json={"content": content})
     assert archived.status_code == 204
-    assert listing.json() == []
+    assert [layout["id"] for layout in listing.json()] == ["LAYOUT-DEFAULT"]
     assert conflict.status_code == 409
 
 
