@@ -131,7 +131,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         websocket_manager,
         stale_telemetry_seconds=settings.stale_telemetry_seconds,
         bridge_disconnect_seconds=settings.bridge_disconnect_seconds,
-        congestion_distance_meters=settings.congestion_distance_meters,
         low_battery_percent=settings.runtime_low_battery_percent,
         sweep_seconds=settings.runtime_health_sweep_seconds,
     )
@@ -175,6 +174,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         mock_factory,
         layout_service=app.state.layout_service,
         repository=scenario_repository,
+        applied_layout_sink=runtime_health.set_applied_layout,
     )
     app.state.optimization_service = OptimizationService(app.state.scenario_service)
     app.state.command_service = CommandService(
@@ -191,6 +191,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         simulated_elapsed_seconds=lambda: mock_factory.simulated_elapsed_seconds,
     )
     app.state.kpi_snapshot_writer = kpi_snapshot_writer
+
+    runtime_health.set_applied_layout(await app.state.scenario_service.get_applied_layout())
 
     await mock_factory.start()
     await runtime_health.start()

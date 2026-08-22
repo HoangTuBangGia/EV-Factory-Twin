@@ -36,7 +36,6 @@ class Settings(BaseSettings):
     runtime_health_sweep_seconds: float = Field(default=1.0, ge=0.1, le=60)
     stale_telemetry_seconds: float = Field(default=10.0, ge=1, le=3600)
     bridge_disconnect_seconds: float = Field(default=5.0, ge=1, le=3600)
-    congestion_distance_meters: float = Field(default=1.5, gt=0, le=100)
     runtime_low_battery_percent: float = Field(default=20.0, ge=0, le=100)
     mock_factory_enabled: bool = True
     mock_robot_count: int = 5

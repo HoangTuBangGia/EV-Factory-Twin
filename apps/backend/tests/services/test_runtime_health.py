@@ -5,12 +5,14 @@ from ev_twin_api.schemas.edge_runtime import BridgeHealth
 from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.schemas.telemetry import robot_to_telemetry
 from ev_twin_api.services.factory_state import FactoryState
+from ev_twin_api.services.layout_repository import InMemoryLayoutRepository
+from ev_twin_api.services.layout_service import LayoutService
 from ev_twin_api.services.runtime_health import RuntimeHealthService
 from ev_twin_api.services.runtime_history import InMemoryRuntimeHistoryRepository
 from ev_twin_api.services.websocket_manager import WebSocketManager
 
 
-def setup(now: datetime):
+async def setup(now: datetime):
     state = FactoryState(MockFactoryConfig())
     repository = InMemoryRuntimeHistoryRepository()
     service = RuntimeHealthService(
@@ -19,10 +21,12 @@ def setup(now: datetime):
         WebSocketManager(),
         stale_telemetry_seconds=5,
         bridge_disconnect_seconds=5,
-        congestion_distance_meters=1.5,
         low_battery_percent=20,
         sweep_seconds=1,
         clock=lambda: now,
+    )
+    service.set_applied_layout(
+        await LayoutService(InMemoryLayoutRepository(include_default=True)).get("LAYOUT-DEFAULT", 1)
     )
     return service, state, repository
 
@@ -30,7 +34,7 @@ def setup(now: datetime):
 @pytest.mark.asyncio
 async def test_stale_telemetry_deduplicates_clears_and_retriggers() -> None:
     now = datetime.now(UTC)
-    service, state, repository = setup(now)
+    service, state, repository = await setup(now)
     telemetry = robot_to_telemetry(state.get_robot("AMR-01"))
     await service.note_telemetry(telemetry, now - timedelta(seconds=6))
 
@@ -51,7 +55,7 @@ async def test_stale_telemetry_deduplicates_clears_and_retriggers() -> None:
 @pytest.mark.asyncio
 async def test_bridge_degraded_and_disconnect_share_one_condition() -> None:
     now = datetime.now(UTC)
-    service, _, repository = setup(now)
+    service, _, repository = await setup(now)
     degraded = BridgeHealth(
         bridge_id="edge-main",
         status="DEGRADED",
@@ -80,9 +84,9 @@ async def test_bridge_degraded_and_disconnect_share_one_condition() -> None:
 
 
 @pytest.mark.asyncio
-async def test_congestion_clears_when_robots_separate() -> None:
+async def test_congestion_uses_applied_layout_zone_and_clears_on_exit() -> None:
     now = datetime.now(UTC)
-    service, state, repository = setup(now)
+    service, state, repository = await setup(now)
     first = state.get_robot("AMR-01")
     second = state.get_robot("AMR-02")
     first.status = second.status = "MOVING"
@@ -93,9 +97,21 @@ async def test_congestion_clears_when_robots_separate() -> None:
 
     await service.note_telemetry(robot_to_telemetry(first), now)
     await service.note_telemetry(robot_to_telemetry(second), now)
-    assert (await repository.list_alerts())[0].code == "CONGESTION"
+    assert await repository.list_alerts() == []
 
-    second.pose.x = 10
+    first.pose.x = second.pose.x = 11
+    first.pose.y = second.pose.y = 7
+    state.update_robot(first)
+    state.update_robot(second)
+    await service.note_telemetry(robot_to_telemetry(first), now)
+    await service.note_telemetry(robot_to_telemetry(second), now)
+    assert (await repository.list_alerts())[0].code == "CONGESTION"
+    assert (await repository.list_alerts())[0].dedupe_key == (
+        "CONGESTION:LAYOUT-DEFAULT:1:CONGESTION_01"
+    )
+
+    second.pose.x = 1
+    second.pose.y = 1
     state.update_robot(second)
     await service.note_telemetry(robot_to_telemetry(second), now)
     assert (await repository.list_alerts())[0].status == "CLEARED"

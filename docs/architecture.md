@@ -1932,6 +1932,11 @@ Index chính:
 Supabase PostgreSQL 17 dùng native daily range partitions do `pg_partman 5.3.1`
 quản lý. `pg_cron` chạy maintenance mỗi giờ; partition telemetry chỉ giữ 30 ngày.
 
+Runtime congestion lấy polygon từ đúng immutable layout/version của scenario
+`APPLIED` mới nhất. Backend khôi phục projection này khi startup và cập nhật ngay
+sau apply thành công. Một zone phát alert khi có ít nhất hai robot online đã gửi
+telemetry cùng nằm trong polygon; rời zone sẽ clear occurrence hiện tại.
+
 ---
 
 # 44. Replay Architecture (planned CORE capability)

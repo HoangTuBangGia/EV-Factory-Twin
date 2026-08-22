@@ -46,7 +46,6 @@ async def setup() -> tuple[CommandService, ScenarioService, str, InMemoryRuntime
         manager,
         stale_telemetry_seconds=5,
         bridge_disconnect_seconds=5,
-        congestion_distance_meters=1.5,
         low_battery_percent=20,
         sweep_seconds=1,
     )

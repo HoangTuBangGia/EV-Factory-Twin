@@ -16,8 +16,8 @@ robots and command timeouts were not durable or visible through the alert contra
 - Alerts use UUID occurrences and a stable active dedupe key with clear/retrigger.
 - Health sweeps cover stale robot telemetry and stale/degraded bridges.
 - Command retries clear timeout alerts; another timeout retriggers a new occurrence.
-- Congestion uses moving-robot proximity for the MVP. Active-layout zone occupancy
-  is the documented upgrade boundary.
+- Congestion uses polygon occupancy from the immutable layout/version belonging
+  to the latest APPLIED scenario. The projection is restored on Backend startup.
 - Daily telemetry partitions retain 30 days; alert/task/KPI history retains 90 days.
 
 ## Files Changed
@@ -28,6 +28,7 @@ MOCK alert persistence, API schemas, configuration, tests and canonical docs.
 ## Verification
 
 - Targeted M8 tests: 64 passed.
+- APPLIED-layout congestion projection regression: 25 passed.
 - `make check`: Ruff, format-check and Mypy passed; 384 tests passed and the
   database-gated smoke skipped as designed.
 - `make supabase-reset`: all migrations and seed applied successfully.
@@ -43,5 +44,5 @@ pg_cron 1.6.4; the hosted project capability was confirmed before implementation
 
 ## Follow-up
 
-Bind runtime congestion to the APPLIED layout's congestion-zone occupancy when
-the live runtime gains an authoritative active-layout projection.
+Add configurable per-zone capacity if factory validation shows that the MVP
+threshold of two concurrently occupying robots is too sensitive.

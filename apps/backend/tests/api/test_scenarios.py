@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from unittest.mock import AsyncMock
 
 import pytest
@@ -32,6 +33,7 @@ from ev_twin_api.services.scenario_service import InvalidScenarioTransitionError
 from ev_twin_api.services.websocket_manager import WebSocketManager
 from fastapi import HTTPException
 from pydantic import ValidationError
+from twin_core.models.layout import LayoutVersion
 
 SCENARIO_PAYLOAD = {
     "name": "candidate-01",
@@ -47,7 +49,9 @@ DESIGNER = make_test_user(AppRole.DESIGNER)
 MONITOR = make_test_user(AppRole.MONITOR)
 
 
-def build_scenario_service() -> tuple[ScenarioService, MockFactory, FactoryState, WebSocketManager]:
+def build_scenario_service(
+    applied_layout_sink: Callable[[LayoutVersion], None] | None = None,
+) -> tuple[ScenarioService, MockFactory, FactoryState, WebSocketManager]:
     config = MockFactoryConfig()
     manager = WebSocketManager()
     state = FactoryState(config)
@@ -56,6 +60,7 @@ def build_scenario_service() -> tuple[ScenarioService, MockFactory, FactoryState
         ScenarioService(
             mock_factory,
             layout_service=LayoutService(InMemoryLayoutRepository(include_default=True)),
+            applied_layout_sink=applied_layout_sink,
         ),
         mock_factory,
         state,
@@ -155,7 +160,8 @@ async def test_rejected_scenario_cannot_be_approved_or_applied() -> None:
 
 @pytest.mark.asyncio
 async def test_apply_waits_for_positive_command_result() -> None:
-    service, mock_factory, state, manager = build_scenario_service()
+    projected_layouts: list[LayoutVersion] = []
+    service, mock_factory, state, manager = build_scenario_service(projected_layouts.append)
     broadcast = AsyncMock()
     manager.broadcast = broadcast
     scenario = await run_scenario(
@@ -200,6 +206,12 @@ async def test_apply_waits_for_positive_command_result() -> None:
     assert mock_factory.config.robot_count == 4
     assert mock_factory.config.task_interval_seconds == 6.0
     assert len(state.list_robots()) == 4
+    assert [(layout.layout_id, layout.version) for layout in projected_layouts] == [
+        ("LAYOUT-DEFAULT", 1)
+    ]
+    restored_layout = await service.get_applied_layout()
+    assert restored_layout is not None
+    assert (restored_layout.layout_id, restored_layout.version) == ("LAYOUT-DEFAULT", 1)
     assert any(
         call.args[0] == {"type": "factory.reset", "data": None}
         for call in broadcast.await_args_list

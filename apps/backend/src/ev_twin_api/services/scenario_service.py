@@ -1,5 +1,6 @@
 import logging
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, cast
@@ -9,6 +10,7 @@ from ev_sim.layout import route_profile
 from ev_sim.logistics import LogisticsConfig, run_logistics_simulation
 from ev_sim.scenario import load_scenario
 from fastapi import Depends, Request
+from twin_core.models.layout import LayoutVersion
 
 from ev_twin_api.schemas.auth import CurrentUser
 from ev_twin_api.schemas.factory import MockFactoryConfig
@@ -104,10 +106,12 @@ class ScenarioService:
         *,
         layout_service: LayoutService,
         repository: ScenarioRepository | None = None,
+        applied_layout_sink: Callable[[LayoutVersion], None] | None = None,
     ) -> None:
         self._mock_factory = mock_factory
         self._repository = repository or InMemoryScenarioRepository()
         self._layout_service = layout_service
+        self._applied_layout_sink = applied_layout_sink
         self._baseline: Scenario | None = None
 
     async def run(self, request: ScenarioRunRequest, actor: CurrentUser) -> Scenario:
@@ -180,6 +184,17 @@ class ScenarioService:
             raise ScenarioNotFoundError(f"Scenario '{scenario_id}' not found")
         return scenario
 
+    async def get_applied_layout(self) -> LayoutVersion | None:
+        applied = [
+            scenario
+            for scenario in await self._repository.list()
+            if scenario.status == ScenarioStatus.APPLIED
+        ]
+        if not applied:
+            return None
+        latest = max(applied, key=lambda scenario: scenario.applied_at or scenario.created_at)
+        return await self._layout_service.get(latest.config.layout_id, latest.config.layout_version)
+
     async def approve(self, scenario_id: str, actor: CurrentUser) -> Scenario:
         return await self._review(scenario_id, ScenarioStatus.APPROVED, actor)
 
@@ -237,7 +252,7 @@ class ScenarioService:
             await self._mock_factory.reset()
 
         try:
-            return await self._repository.transition(
+            applied = await self._repository.transition(
                 before=scenario,
                 expected_status=ScenarioStatus.APPROVED,
                 new_status=ScenarioStatus.APPLIED,
@@ -246,6 +261,12 @@ class ScenarioService:
                 occurred_at=datetime.now(UTC),
                 before_commit=apply_before_database_commit,
             )
+            if self._applied_layout_sink is not None:
+                layout = await self._layout_service.get(
+                    applied.config.layout_id, applied.config.layout_version
+                )
+                self._applied_layout_sink(layout)
+            return applied
         except Exception as error:
             # PostgreSQL and the realtime in-memory factory cannot share a true
             # distributed transaction. The row is conditionally updated first

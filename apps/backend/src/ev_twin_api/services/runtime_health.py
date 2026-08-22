@@ -1,12 +1,12 @@
 import asyncio
 import contextlib
-import math
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, cast
 from uuid import UUID, uuid4
 
 from fastapi import Depends, Request
+from twin_core.models.layout import LayoutVersion, Point, point_in_polygon
 
 from ev_twin_api.schemas.alert import AlertCode, AlertSeverity, FactoryAlert
 from ev_twin_api.schemas.edge_runtime import BridgeHealth, BridgeStatus
@@ -25,11 +25,6 @@ SEVERITY_BY_CODE = {
     AlertCode.COMMAND_TIMEOUT: AlertSeverity.CRITICAL,
     AlertCode.CONGESTION: AlertSeverity.WARNING,
 }
-MOVING_STATUSES = {
-    RobotStatus.MOVING,
-    RobotStatus.PICKING,
-    RobotStatus.DELIVERING,
-}
 
 
 class RuntimeHealthService:
@@ -41,7 +36,6 @@ class RuntimeHealthService:
         *,
         stale_telemetry_seconds: float,
         bridge_disconnect_seconds: float,
-        congestion_distance_meters: float,
         low_battery_percent: float,
         sweep_seconds: float,
         clock: Callable[[], datetime] | None = None,
@@ -51,12 +45,13 @@ class RuntimeHealthService:
         self._websockets = websockets
         self._stale_after = timedelta(seconds=stale_telemetry_seconds)
         self._bridge_stale_after = timedelta(seconds=bridge_disconnect_seconds)
-        self._congestion_distance = congestion_distance_meters
         self._low_battery = low_battery_percent
         self._sweep_seconds = sweep_seconds
         self._clock = clock or (lambda: datetime.now(UTC))
         self._telemetry_seen: dict[str, datetime] = {}
         self._bridge_seen: dict[str, tuple[BridgeHealth, datetime]] = {}
+        self._applied_layout: LayoutVersion | None = None
+        self._congestion_keys: set[str] = set()
         self._task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
@@ -116,6 +111,10 @@ class RuntimeHealthService:
             operation_id=operation_id,
         )
 
+    def set_applied_layout(self, layout: LayoutVersion | None) -> None:
+        self._applied_layout = layout.model_copy(deep=True) if layout is not None else None
+        self._telemetry_seen.clear()
+
     async def record_existing(self, alert: FactoryAlert) -> None:
         await self._repository.activate_alert(alert)
 
@@ -141,37 +140,39 @@ class RuntimeHealthService:
                 health.last_error
                 or f"{bridge_id} health stale for {(now - received_at).total_seconds():.0f}s",
             )
+        await self._check_congestion()
 
     async def list_alerts(self) -> list[FactoryAlert]:
         return await self._repository.list_alerts()
 
     async def _check_congestion(self) -> None:
-        moving = [
+        robots = [
             robot
             for robot_id in self._telemetry_seen
             if (robot := self._state.get_robot(robot_id)) is not None
-            and robot.status in MOVING_STATUSES
+            and robot.status != RobotStatus.OFFLINE
         ]
-        closest: tuple[str, str, float] | None = None
-        for index, first in enumerate(moving):
-            for second in moving[index + 1 :]:
-                distance = math.hypot(first.pose.x - second.pose.x, first.pose.y - second.pose.y)
-                if distance <= self._congestion_distance and (
-                    closest is None or distance < closest[2]
-                ):
-                    closest = (first.id, second.id, distance)
-        # ponytail: proximity is the MVP ceiling; replace with active-layout zone
-        # occupancy when runtime layout binding is introduced.
-        await self._condition(
-            "CONGESTION:FLEET",
-            closest is not None,
-            AlertCode.CONGESTION,
-            (
-                f"{closest[0]} and {closest[1]} are {closest[2]:.2f}m apart while moving"
-                if closest
-                else "Fleet congestion cleared"
-            ),
-        )
+        current_keys: set[str] = set()
+        layout = self._applied_layout
+        if layout is not None:
+            for zone in layout.congestion_zones:
+                occupants = [
+                    robot.id
+                    for robot in robots
+                    if point_in_polygon(Point(x=robot.pose.x, y=robot.pose.y), zone.points)
+                ]
+                key = f"CONGESTION:{layout.layout_id}:{layout.version}:{zone.id}"
+                if len(occupants) >= 2:
+                    current_keys.add(key)
+                    await self._condition(
+                        key,
+                        True,
+                        AlertCode.CONGESTION,
+                        f"{zone.id} occupied by {len(occupants)} robots: {', '.join(occupants)}",
+                    )
+        for key in self._congestion_keys - current_keys:
+            await self._condition(key, False, AlertCode.CONGESTION, "Congestion cleared")
+        self._congestion_keys = current_keys
 
     async def _condition(
         self,
