@@ -79,6 +79,22 @@ EXPECTED_COLUMNS = {
         "starvation_events",
         "fleet_utilization_percent",
     },
+    "layouts": {
+        "id",
+        "name",
+        "latest_version",
+        "created_by",
+        "created_at",
+        "updated_at",
+        "archived_at",
+    },
+    "layout_versions": {
+        "layout_id",
+        "version",
+        "content",
+        "created_by",
+        "created_at",
+    },
 }
 
 
@@ -293,6 +309,8 @@ def test_authenticated_policies_are_select_only_and_cover_each_public_table() ->
             ("private.is_active_user", "private.current_app_role", "'MONITOR'"),
         ),
         ("kpi_snapshots_select_active_users", ("private.is_active_user",)),
+        ("layouts_select_active_users", ("private.is_active_user",)),
+        ("layout_versions_select_active_users", ("private.is_active_user",)),
     ],
 )
 def test_required_rls_policy_predicates(
@@ -365,6 +383,19 @@ def test_audit_events_remains_append_only() -> None:
     assert "private.reject_audit_event_mutation" in update_delete
     assert "BEFORE TRUNCATE" in truncate
     assert "private.reject_audit_event_mutation" in truncate
+
+
+def test_layout_versions_are_immutable() -> None:
+    triggers = {
+        statement.trigname: RawStream()(statement)
+        for statement in _statements()
+        if isinstance(statement, ast.CreateTrigStmt)
+        and _relation_name(statement.relation) == ("public", "layout_versions")
+    }
+
+    assert "UPDATE" in triggers["layout_versions_reject_update_delete"]
+    assert "DELETE" in triggers["layout_versions_reject_update_delete"]
+    assert "BEFORE TRUNCATE" in triggers["layout_versions_reject_truncate"]
 
 
 def test_migrations_contain_no_destructive_schema_statements() -> None:

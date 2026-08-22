@@ -12,6 +12,7 @@ from ev_twin_api.api.auth import router as auth_router
 from ev_twin_api.api.edge_runtime import router as edge_runtime_router
 from ev_twin_api.api.factory import router as factory_router
 from ev_twin_api.api.health import router as health_router
+from ev_twin_api.api.layouts import router as layouts_router
 from ev_twin_api.api.metrics import router as metrics_router
 from ev_twin_api.api.mock import router as mock_router
 from ev_twin_api.api.robots import router as robots_router
@@ -34,6 +35,12 @@ from ev_twin_api.services.auth_service import AuthService, SqlAlchemyProfileRepo
 from ev_twin_api.services.edge_runtime import EdgeRuntimeService
 from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.kpi_snapshot_writer import build_kpi_snapshot_writer
+from ev_twin_api.services.layout_repository import (
+    InMemoryLayoutRepository,
+    LayoutRepository,
+    SqlAlchemyLayoutRepository,
+)
+from ev_twin_api.services.layout_service import LayoutService
 from ev_twin_api.services.mock_factory import MockFactory
 from ev_twin_api.services.scenario_repository import (
     InMemoryScenarioRepository,
@@ -107,18 +114,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
     app.state.edge_runtime_service = EdgeRuntimeService(factory_state, websocket_manager)
     audit_repository: AuditRepository
+    layout_repository: LayoutRepository
     scenario_repository: ScenarioRepository
     if database.configured:
         audit_repository = SqlAlchemyAuditRepository(database)
+        layout_repository = SqlAlchemyLayoutRepository(database)
         scenario_repository = SqlAlchemyScenarioRepository(database)
     else:
         in_memory_audit_repository = InMemoryAuditRepository()
         audit_repository = in_memory_audit_repository
+        layout_repository = InMemoryLayoutRepository(in_memory_audit_repository)
         scenario_repository = InMemoryScenarioRepository(in_memory_audit_repository)
         logger.warning(
             "DATABASE_URL is not configured; scenarios and audit events are in-memory only"
         )
     app.state.audit_service = AuditService(audit_repository)
+    app.state.layout_service = LayoutService(layout_repository)
     app.state.scenario_service = ScenarioService(mock_factory, scenario_repository)
     app.state.websocket_manager = websocket_manager
     kpi_snapshot_writer = build_kpi_snapshot_writer(
@@ -162,6 +173,7 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(factory_router)
+app.include_router(layouts_router)
 app.include_router(robots_router)
 app.include_router(tasks_router)
 app.include_router(metrics_router)

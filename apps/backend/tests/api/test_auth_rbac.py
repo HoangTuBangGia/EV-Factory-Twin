@@ -38,6 +38,8 @@ READ_ENDPOINTS = [
     ("/api/v1/tasks/TASK-9999", 404),
     ("/api/v1/metrics", 200),
     ("/api/v1/alerts", 200),
+    ("/api/v1/layouts", 200),
+    ("/api/v1/layouts/LAYOUT-9999", 404),
     ("/api/v1/scenarios", 200),
     ("/api/v1/scenarios/baseline", 200),
     ("/api/v1/scenarios/SCN-9999", 404),

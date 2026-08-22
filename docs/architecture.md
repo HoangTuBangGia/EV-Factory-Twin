@@ -2902,3 +2902,9 @@ latency/FPS cơ bản. Mock factory chỉ dùng cho test/local fallback.
 Incident replay UI đầy đủ, retention dài hạn ngoài policy, battery genealogy,
 AI/ML và MES/ERP nằm ngoài boundary MVP. Telemetry history cần thiết, bounded
 deterministic flow optimization và partition/retention policy thuộc MVP.
+
+Layout persistence separates mutable identity metadata in `layouts` from
+append-only JSON geometry/config snapshots in `layout_versions`. FastAPI validates
+the typed `twin-core` contract before PostgreSQL insert. Browser writes never go
+directly through Supabase Data API; authenticated clients read/write through
+FastAPI and database RLS remains defense in depth.

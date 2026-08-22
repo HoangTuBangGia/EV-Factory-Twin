@@ -165,7 +165,7 @@ nguồn sự thật cho đến thời điểm đó.
 
 ```ts
 type FactoryLayout = {
-  id: string;
+  layout_id: string;
   name: string;
   version: number;
   width: number;
@@ -178,12 +178,25 @@ type FactoryLayout = {
   }>;
   routes: Array<{
     id: string;
+    start_station_id: string;
+    end_station_id: string;
     waypoints: Array<{ x: number; y: number }>;
   }>;
   no_go_zones: Array<{
     id: string;
     points: Array<{ x: number; y: number }>;
   }>;
+  congestion_zones: Array<{
+    id: string;
+    delay_multiplier: number;
+    points: Array<{ x: number; y: number }>;
+  }>;
+  config: {
+    robot_count: number;
+    demand_interval_seconds: number;
+    robot_speed_mps: number;
+    charger_count: number;
+  };
 };
 ```
 
@@ -249,6 +262,10 @@ Cần thêm trong checkpoint layout:
 GET  /api/v1/layouts
 GET  /api/v1/layouts/{id}
 POST /api/v1/layouts
+PATCH /api/v1/layouts/{id}
+DELETE /api/v1/layouts/{id}
+POST /api/v1/layouts/{id}/versions
+GET  /api/v1/layouts/{id}/versions/{version}
 ```
 
 ## Definition of Done

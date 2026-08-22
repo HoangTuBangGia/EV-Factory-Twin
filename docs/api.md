@@ -58,6 +58,13 @@ string/log/frontend và không được tái sử dụng service-role key.
 | GET | `/api/v1/tasks/{task_id}` | [`Task`](#task) | 1 task; id lạ → 404 |
 | GET | `/api/v1/metrics` | [`FactoryMetrics`](#factorymetrics) | Số liệu vận hành |
 | GET | `/api/v1/alerts` | [`FactoryAlert[]`](#alertseverity--alertcode--factoryalert) | Alert đã phát |
+| GET | `/api/v1/layouts` | [`LayoutSummary[]`](#versioned-layout) | Layout chưa archive |
+| POST | `/api/v1/layouts` | [`LayoutVersion`](#versioned-layout) | Tạo layout và version 1 |
+| GET | `/api/v1/layouts/{layout_id}` | [`LayoutVersion`](#versioned-layout) | Version mới nhất |
+| PATCH | `/api/v1/layouts/{layout_id}` | [`LayoutVersion`](#versioned-layout) | Đổi tên metadata |
+| DELETE | `/api/v1/layouts/{layout_id}` | `204` | Soft archive layout |
+| POST | `/api/v1/layouts/{layout_id}/versions` | [`LayoutVersion`](#versioned-layout) | Tạo version immutable kế tiếp |
+| GET | `/api/v1/layouts/{layout_id}/versions/{version}` | [`LayoutVersion`](#versioned-layout) | Đọc version cụ thể |
 | POST | `/api/v1/mock/start` | [`MockControlResponse`](#mockcontrolresponse) | Chạy engine mock local/test |
 | POST | `/api/v1/mock/stop` | [`MockControlResponse`](#mockcontrolresponse) | Dừng engine mock |
 | POST | `/api/v1/mock/reset` | [`MockControlResponse`](#mockcontrolresponse) | Reset state về ban đầu |
@@ -78,7 +85,8 @@ Ma trận quyền REST hiện tại:
 
 | Nhóm endpoint | DESIGNER | MONITOR |
 |---|---:|---:|
-| GET auth/factory/robot/task/KPI/alert/scenario | Có | Có |
+| GET auth/factory/robot/task/KPI/alert/scenario/layout | Có | Có |
+| Create/version/rename/archive layout | Có | Không |
 | `POST /scenarios/run` | Có | Không |
 | Approve/Reject/Apply scenario | Không | Có |
 | Start/Stop/Reset/Config MockFactory | Không | Có |
@@ -89,6 +97,56 @@ không đặt token trên query string.
 
 `/ws/factory` không xuất hiện trong `/docs` (OpenAPI không mô tả WebSocket) —
 hợp đồng của nó nằm ở mục [WebSocket event envelope](#websocket-event-envelope).
+
+## Versioned layout
+
+`layouts` giữ identity và tên mutable; `layout_versions` giữ geometry/config
+append-only. `DELETE` chỉ đặt `archived_at`: layout biến mất khỏi list nhưng các
+version vẫn đọc được theo ID để scenario/audit có thể tham chiếu ổn định.
+
+```json
+{
+  "layout_id": "LAYOUT-0001",
+  "name": "Battery transfer zone",
+  "version": 1,
+  "width": 20.0,
+  "height": 15.0,
+  "stations": [
+    {"id": "BATTERY_BUFFER", "type": "BATTERY_BUFFER", "x": 2.0, "y": 4.0},
+    {"id": "MARRIAGE_STATION", "type": "MARRIAGE_STATION", "x": 16.0, "y": 8.0},
+    {"id": "CHARGING_STATION", "type": "CHARGING_STATION", "x": 2.0, "y": 12.0}
+  ],
+  "routes": [{
+    "id": "BATTERY_DELIVERY",
+    "start_station_id": "BATTERY_BUFFER",
+    "end_station_id": "MARRIAGE_STATION",
+    "waypoints": [{"x": 2.0, "y": 4.0}, {"x": 16.0, "y": 8.0}]
+  }],
+  "no_go_zones": [],
+  "congestion_zones": [{
+    "id": "CONGESTION_01",
+    "delay_multiplier": 1.25,
+    "points": [{"x": 10.0, "y": 6.0}, {"x": 13.0, "y": 6.0}, {"x": 13.0, "y": 9.0}]
+  }],
+  "config": {
+    "robot_count": 2,
+    "demand_interval_seconds": 8.0,
+    "robot_speed_mps": 1.0,
+    "charger_count": 1
+  },
+  "created_by": "00000000-0000-0000-0000-000000000001",
+  "created_at": "2026-08-22T02:00:00Z",
+  "archived_at": null
+}
+```
+
+Create body là `{ "name": string, "content": <geometry/config> }`; create-version
+body là `{ "content": <geometry/config> }`. `layout_id`, `version`, actor và
+timestamps luôn do Backend/PostgreSQL tạo. Validation từ chối coordinate không
+hữu hạn/out-of-bounds, ID trùng, thiếu station type bắt buộc, polygon suy biến/tự
+cắt, route tham chiếu station lạ, endpoint không khớp station và route/station
+đi vào no-go zone. Congestion zone không cấm route và dùng
+`delay_multiplier` trong `[1, 10]`.
 
 ## Edge telemetry ingress
 

@@ -91,6 +91,9 @@ A scenario references immutable `layout_id` and `layout_version`. Layout version
 contain stations, routes, chargers, no-go zones and congestion zones in metres.
 Validation rejects non-finite geometry, out-of-bounds objects, invalid routes,
 unknown station references and routes crossing no-go zones.
+Layout identity metadata may be renamed or soft-archived by DESIGNER, while
+every geometry/config version remains immutable and addressable by
+`(layout_id, layout_version)`.
 
 Authoritative KPI formulas live in `twin-core`: throughput, cycle time, waiting
 time, fleet utilization, starvation, congestion, travel distance, delivery delay
