@@ -7,6 +7,7 @@ from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.schemas.telemetry import RobotTelemetry, TelemetryIngressStatus
 from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.mock_factory import MockFactory
+from ev_twin_api.services.runtime_history import InMemoryRuntimeHistoryRepository
 from ev_twin_api.services.telemetry_ingress import (
     FutureTimestampError,
     MockSourceActiveError,
@@ -85,6 +86,26 @@ async def test_stale_or_duplicate_sample_is_idempotent_and_not_broadcast() -> No
 
 
 @pytest.mark.asyncio
+async def test_stale_sample_is_kept_as_late_history_without_overwriting_snapshot() -> None:
+    config = MockFactoryConfig()
+    state = FactoryState(config)
+    manager = WebSocketManager()
+    mock_factory = MockFactory(state, config, manager, enabled=False)
+    history = InMemoryRuntimeHistoryRepository()
+    service = TelemetryIngressService(state, manager, mock_factory, 5, history)
+    telemetry = make_telemetry(state)
+    late = telemetry.model_copy(update={"timestamp": telemetry.timestamp - timedelta(seconds=1)})
+
+    await service.ingest(telemetry)
+    result = await service.ingest(late)
+
+    assert result.status == TelemetryIngressStatus.IGNORED_STALE
+    assert len(history.telemetry) == 2
+    assert history.telemetry[0][2] == TelemetryIngressStatus.ACCEPTED
+    assert history.telemetry[1][2] == TelemetryIngressStatus.IGNORED_STALE
+
+
+@pytest.mark.asyncio
 async def test_future_sample_is_rejected_without_poisoning_state_or_broadcasting() -> None:
     service, state, manager, _ = make_service()
     manager.broadcast = AsyncMock()  # type: ignore[method-assign]
@@ -150,3 +171,18 @@ async def test_concurrent_samples_keep_the_newest_timestamp() -> None:
     assert stored is not None
     assert stored.last_seen_at == newer.timestamp
     assert stored.pose.x == 11.0
+
+
+@pytest.mark.asyncio
+async def test_stale_ordering_is_independent_per_robot() -> None:
+    service, state, _, _ = make_service()
+    amr_01 = make_telemetry(state)
+    amr_02 = make_telemetry(state, robot_id="AMR-02")
+
+    await service.ingest(amr_01)
+    stale = await service.ingest(amr_01)
+    accepted = await service.ingest(amr_02)
+
+    assert stale.status == TelemetryIngressStatus.IGNORED_STALE
+    assert accepted.status == TelemetryIngressStatus.ACCEPTED
+    assert state.get_robot("AMR-02").last_seen_at == amr_02.timestamp

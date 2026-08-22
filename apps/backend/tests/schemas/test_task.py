@@ -5,12 +5,14 @@ from ev_twin_api.schemas.task import Task, TaskStatus
 from pydantic import ValidationError
 
 
-def test_task_status_has_seven_values() -> None:
-    assert len(TaskStatus) == 7
+def test_task_status_has_canonical_and_compatibility_values() -> None:
+    assert len(TaskStatus) == 9
     assert {status.value for status in TaskStatus} == {
         "QUEUED",
         "ASSIGNED",
         "PICKUP",
+        "DELIVERING",
+        "TIMED_OUT",
         "IN_PROGRESS",
         "DELIVERED",
         "COMPLETED",

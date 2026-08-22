@@ -42,30 +42,4 @@ describe("frontend auth middleware", () => {
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
   });
 
-  it("redirects an authenticated non-admin away from /admin", async () => {
-    mocks.refresh.mockResolvedValue({
-      response: NextResponse.next(),
-      user: { id: "monitor-id" },
-      role: "MONITOR",
-    });
-
-    const response = await middleware(new NextRequest("http://localhost:3000/admin"));
-
-    expect(mocks.refresh).toHaveBeenCalledWith(expect.any(NextRequest), true);
-    expect(response.status).toBe(307);
-    expect(new URL(response.headers.get("location")!).pathname).toBe("/forbidden");
-  });
-
-  it("allows an active ADMIN profile to open /admin", async () => {
-    mocks.refresh.mockResolvedValue({
-      response: NextResponse.next(),
-      user: { id: "admin-id" },
-      role: "ADMIN",
-    });
-
-    const response = await middleware(new NextRequest("http://localhost:3000/admin"));
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get("location")).toBeNull();
-  });
 });

@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
       id: string;
       email: string;
       display_name: string;
-      role: "DESIGNER" | "MONITOR" | "ADMIN";
+      role: "DESIGNER" | "MONITOR";
       is_active: boolean;
     },
     isLoading: false,

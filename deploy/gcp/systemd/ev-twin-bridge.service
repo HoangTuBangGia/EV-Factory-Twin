@@ -1,0 +1,22 @@
+[Unit]
+Description=EV Factory Twin authenticated telemetry and command bridge
+After=network-online.target ev-twin-simulation.service
+Wants=network-online.target ev-twin-simulation.service
+
+[Service]
+Type=simple
+User=ev-twin
+Group=ev-twin
+WorkingDirectory=/opt/ev-factory-twin
+EnvironmentFile=/etc/ev-factory-twin/bridge.env
+ExecStart=/usr/bin/bash /opt/ev-factory-twin/scripts/edge/run-bridge.sh
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=30
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
+

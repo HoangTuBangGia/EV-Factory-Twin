@@ -1,0 +1,23 @@
+[Unit]
+Description=EV Factory Twin ROS 2 and Gazebo simulation
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ev-twin
+Group=ev-twin
+WorkingDirectory=/opt/ev-factory-twin
+Environment=EV_TWIN_ROOT=/opt/ev-factory-twin
+Environment=ROS_DOMAIN_ID=42
+Environment="GZ_SIM_ARGS=-s -r"
+ExecStart=/usr/bin/bash /opt/ev-factory-twin/scripts/edge/run-simulation.sh
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=45
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

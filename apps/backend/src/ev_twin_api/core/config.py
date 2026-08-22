@@ -21,7 +21,6 @@ class Settings(BaseSettings):
     database_url: SecretStr | None = None
     database_ssl_mode: Literal["disable", "prefer", "require"] = "require"
     supabase_url: str | None = None
-    supabase_service_role_key: SecretStr | None = None
     supabase_jwt_issuer: str | None = None
     supabase_jwks_url: str | None = None
     supabase_jwt_audience: str = "authenticated"
@@ -34,6 +33,10 @@ class Settings(BaseSettings):
     websocket_auth_timeout_seconds: float = 5.0
     edge_telemetry_shared_secret: SecretStr | None = None
     edge_telemetry_max_future_skew_seconds: float = Field(default=5.0, ge=0, le=300)
+    runtime_health_sweep_seconds: float = Field(default=1.0, ge=0.1, le=60)
+    stale_telemetry_seconds: float = Field(default=10.0, ge=1, le=3600)
+    bridge_disconnect_seconds: float = Field(default=5.0, ge=1, le=3600)
+    runtime_low_battery_percent: float = Field(default=20.0, ge=0, le=100)
     mock_factory_enabled: bool = True
     mock_robot_count: int = 5
     mock_task_interval_seconds: float = 8
@@ -52,7 +55,6 @@ class Settings(BaseSettings):
         "supabase_jwt_issuer",
         "supabase_jwks_url",
         "database_url",
-        "supabase_service_role_key",
         "edge_telemetry_shared_secret",
         mode="before",
     )
@@ -99,6 +101,28 @@ class Settings(BaseSettings):
             self.supabase_jwt_verification_max_workers
         ):
             raise ValueError("JWT verification in-flight limit must cover every worker")
+        return self
+
+    @model_validator(mode="after")
+    def validate_production_dependencies(self) -> Self:
+        if self.app_env.lower() != "production":
+            return self
+
+        missing = [
+            name
+            for name, value in (
+                ("DATABASE_URL", self.database_url),
+                ("SUPABASE_URL", self.supabase_url),
+                ("EDGE_TELEMETRY_SHARED_SECRET", self.edge_telemetry_shared_secret),
+            )
+            if value is None
+        ]
+        if missing:
+            raise ValueError(f"production requires {', '.join(missing)}")
+        if self.mock_factory_enabled:
+            raise ValueError("production requires MOCK_FACTORY_ENABLED=false")
+        if not self.cors_origins or "*" in self.cors_origins:
+            raise ValueError("production requires an explicit CORS_ORIGINS allowlist")
         return self
 
     @field_validator("supabase_jwt_leeway_seconds")

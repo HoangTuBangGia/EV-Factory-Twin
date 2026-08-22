@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for the authentication MVP.
+Superseded in part by the two-role MVP decision recorded on 2026-08-22.
 
 ## Context
 
@@ -19,17 +19,17 @@ The application stores the authoritative business role in
 
 The role and permission model is:
 
-| Capability | DESIGNER | MONITOR | ADMIN |
-|---|---:|---:|---:|
-| Read factory, robot, task, KPI, alert, and scenario data | Yes | Yes | Yes |
-| Run a scenario or edit a future layout | Yes | No | No |
-| Approve, reject, or apply a scenario | No | Yes | No |
-| Start, stop, reset, or configure MockFactory | No | Yes | No |
-| Manage users/roles and read business audit records | No | No | Yes |
+| Capability | DESIGNER | MONITOR |
+|---|---:|---:|
+| Read factory, robot, task, KPI, alert, and scenario data | Yes | Yes |
+| Run a scenario or edit a layout | Yes | No |
+| Submit a simulated scenario | Yes | No |
+| Approve, reject, or apply a scenario | No | Yes |
+| Control the simulation runtime | No | Yes |
+| Read operational audit data when an API is provided | No | Yes |
 
-`ADMIN` is a technical role, not a third operational persona. It does not
-inherit Designer or Monitor mutations. Public sign-up is disabled for the MVP;
-accounts are invited or created by an administrator.
+The MVP has exactly two application roles. User provisioning and role recovery
+are operational tasks in Supabase Dashboard, not product features.
 
 FastAPI is the authoritative authorization boundary and returns:
 
@@ -63,21 +63,19 @@ otherwise remain active until logout.
 
 The Shared Session Pooler connection string is a backend-only secret. The
 frontend receives only the Supabase Project URL and publishable/anon key.
-`SUPABASE_SERVICE_ROLE_KEY`, when the Admin API is implemented, also remains
-server-only.
+No Supabase service-role key is required by the application runtime.
 
-The MVP persists profiles, scenarios, review/apply actors, business audit
-events, and coarse KPI snapshots. It does not persist raw 10 Hz robot telemetry
-and does not enable TimescaleDB. KPI snapshots use a ten-second cadence until
-measurement justifies a dedicated time-series database.
+The target MVP persists profiles, layout versions, scenarios, simulation runs,
+commands, alerts, audit events, KPI snapshots, and the telemetry history needed
+for monitoring. Telemetry cadence and retention are bounded by the data-retention
+policy; the browser never writes these tables directly.
 
 ## Consequences
 
 - Designer and Monitor must use separate accounts, which makes the safety gate
   demonstrable and auditable.
 - A database connection alone cannot run browser login; deployment also needs
-  the public Project URL/key. Programmatic Auth user creation needs a server-only
-  service-role key or must be done in the Supabase Dashboard.
+  the public Project URL/key. MVP user creation is performed in Supabase Dashboard.
 - PostgreSQL transactions can make a scenario transition and its audit record
   atomic, but cannot be atomic with an in-memory MockFactory reset. The MVP uses
   a guarded transition, an in-process control lock, durable intent audit for

@@ -30,7 +30,7 @@ docs và CI.
 | Va chạm mô phỏng | Chưa có | Chỉ cần route conflict/no-go validation mức MVP, không cần physics nâng cao |
 | Benchmark render và độ trễ realtime | Chưa có | Cần FPS, ROS-to-backend, backend-to-browser latency và dropped updates |
 | Bảo mật telemetry/cấu hình | Đạt ở code | REST dùng Bearer JWT + profile DB; WebSocket xác thực token trước khi đăng ký broadcast; chỉ Monitor được đổi/reset factory |
-| Lưu scenario, KPI và lịch sử duyệt | Một phần | Scenario/audit/KPI có persistence; raw telemetry replay nằm ngoài MVP |
+| Persistence và telemetry history | Một phần | Scenario/audit/KPI đã có; còn layout, run, command, alert và telemetry partition/retention |
 
 ## Ranh giới triển khai hiện tại
 
@@ -57,5 +57,6 @@ CORE chỉ hoàn thành khi người dùng có thể:
 6. Chứng minh RBAC, persistence cần thiết, ROS integration, frontend, container và deploy
    đều qua CI/build gate tương ứng.
 
-Mock chỉ là chế độ phát triển/test, không thay thế acceptance criteria ROS2. MVP chỉ
-cần hai role Designer/Monitor; Admin, replay và raw telemetry history nằm ngoài phạm vi.
+Mock chỉ là chế độ phát triển/test, không thay thế acceptance criteria ROS2. MVP có
+đúng hai role Designer/Monitor. Telemetry history cần thiết và retention thuộc MVP;
+incident replay UI đầy đủ không phải acceptance bắt buộc.

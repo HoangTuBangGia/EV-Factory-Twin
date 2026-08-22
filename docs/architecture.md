@@ -742,16 +742,21 @@ GO_CHARGE
 REPOSITION
 ```
 
-Task state:
+Canonical MVP task state:
 
 ```text
-PENDING
+QUEUED
 ASSIGNED
-IN_PROGRESS
+PICKUP
+DELIVERING
 COMPLETED
-CANCELLED
 FAILED
+TIMED_OUT
 ```
+
+Failed and timed-out attempts may return to `QUEUED` while their bounded retry
+budget remains. Backend accepts legacy `IN_PROGRESS` and `DELIVERED` snapshots
+for compatibility but does not emit them for new tasks.
 
 ---
 
@@ -1300,12 +1305,23 @@ Topics:
 /amr_01/task
 ```
 
-The first ROS slice also bridges `/clock` and `/${namespace}/tf` from Gazebo.
-DiffDrive owns `odom -> base_footprint`; `robot_state_publisher`, using simulation
-time, owns the static `base_footprint -> base_link` transform. Dynamic wheel
-transforms are intentionally deferred until Gazebo joint states are bridged.
-Battery/status/task producers are not simulated yet, so the telemetry bridge uses
-documented defaults until those producers exist.
+The Gazebo launch reads a validated fleet JSON and spawns at least two robots with
+unique public IDs, ROS namespaces, entity names and poses. `/clock` is bridged once;
+each robot independently bridges `cmd_vel`, `odom` and `tf` in its namespace.
+Gazebo `OdometryPublisher` owns `odom -> base_footprint`; `robot_state_publisher`,
+using simulation time, owns the static `base_footprint -> base_link` transform.
+`VelocityControl` provides planar motion without wheel-contact physics. Dynamic
+wheel transforms are intentionally deferred until Gazebo joint states are bridged.
+The state simulator publishes battery/status/task/payload topics. One telemetry
+bridge loads the same validated fleet JSON, subscribes to every namespace and
+normalizes those fields with odometry into `RobotTelemetry`. Each robot owns an
+independent latest-value HTTP worker; fleet task transitions use a FIFO worker
+and bridge health is emitted once per second.
+
+The M2 edge runtime adds one namespaced `amr_navigation` action server per robot.
+It translates typed station goals into bounded planar velocity commands and
+publishes battery/status/task/payload state. The zero-gravity world deliberately
+keeps M2 deterministic; advanced physics, obstacle avoidance and Nav2 are outside M2.
 
 Fleet:
 
@@ -1322,16 +1338,19 @@ Fleet:
 ```mermaid
 sequenceDiagram
 
+    participant TM as Task Manager
     participant FM as Fleet Manager
-    participant NAV as Nav2
+    participant NAV as Navigation Simulator
     participant AMR as AMR
     participant ODOM as Odometry
 
-    FM->>NAV: Navigation Goal
+    TM->>FM: ExecuteTransportTask
+    FM->>NAV: NavigateToStation
     NAV->>AMR: cmd_vel
     AMR->>ODOM: Pose
     ODOM->>NAV: Current Pose
     NAV->>FM: Goal Result
+    FM->>TM: Task feedback/result
 ```
 
 Fleet Manager quyết định:
@@ -1340,11 +1359,15 @@ Fleet Manager quyết định:
 WHERE TO GO
 ```
 
-Nav2 quyết định:
+Navigation simulator quyết định:
 
 ```text
 HOW TO GET THERE
 ```
+
+For M3, Task Manager owns queue/retry/lifecycle while Fleet Manager owns the
+robot registry, eligibility selection and pickup/delivery execution. Nav2 and
+advanced path planning remain outside the MVP.
 
 ---
 
@@ -1880,40 +1903,39 @@ erDiagram
 
 ---
 
-# 43. Telemetry Storage (planned CORE capability)
+# 43. Telemetry Storage
 
-`robot_telemetry` is a planned sampled-history table. The current MVP does not
-persist the realtime stream; see `docs/data-retention.md`.
+`robot_telemetry_history` lưu normalized ROS samples. Sample đến trễ được giữ với
+`ordering_status=LATE` nhưng không thay runtime snapshot; xem `docs/data-retention.md`.
 
 Columns:
 
 ```text
-timestamp
 robot_id
-
-x
-y
-yaw
-
-linear_velocity
-angular_velocity
-
+source_timestamp
+ingested_at
+pose
+velocity
 battery
 status
-
 task_id
 payload_id
+ordering_status
 ```
 
 Index chính:
 
 ```text
-(timestamp, robot_id)
+(robot_id, source_timestamp)
 ```
 
-Use ordinary PostgreSQL indexes first. Native partitioning or another storage
-engine is considered only after measured volume and query latency justify it;
-Supabase PostgreSQL 17 is the current baseline and TimescaleDB is not assumed.
+Supabase PostgreSQL 17 dùng native daily range partitions do `pg_partman 5.3.1`
+quản lý. `pg_cron` chạy maintenance mỗi giờ; partition telemetry chỉ giữ 30 ngày.
+
+Runtime congestion lấy polygon từ đúng immutable layout/version của scenario
+`APPLIED` mới nhất. Backend khôi phục projection này khi startup và cập nhật ngay
+sau apply thành công. Một zone phát alert khi có ít nhất hai robot online đã gửi
+telemetry cùng nằm trong polygon; rời zone sẽ clear occurrence hiện tại.
 
 ---
 
@@ -2339,7 +2361,7 @@ flowchart TB
         ROS --> BRIDGE
     end
 
-    BRIDGE -->|Bearer secret over HTTPS| EDGEAPI[POST /internal/v1/telemetry]
+    BRIDGE -->|Bearer secret over HTTPS| EDGEAPI[POST /internal/v1/*]
     EDGEAPI --> API
 ```
 
@@ -2539,29 +2561,18 @@ Acceptance:
 
 ---
 
-## M9 — Replay
+## M9 — Deployment and End-to-End Acceptance
 
 Acceptance:
 
-- Historical telemetry.
-- Timeline.
-- Replay speed.
-- Same frontend twin.
+- Backend production container and Render health smoke.
+- Vercel Next.js build against Render HTTPS/WSS.
+- Supabase PostgreSQL/Auth migrations and persistence verified.
+- Two-AMR Gazebo-to-browser telemetry and task lifecycle demonstrated.
+- SimPy/KPI/optimization → Monitor approval → ROS apply/result demonstrated.
+- Alerts, audit, telemetry retention and latency/FPS evidence recorded.
 
----
-
-## M10 — Approval
-
-Acceptance:
-
-```text
-DRAFT
-→ SIMULATED
-→ SUBMITTED
-→ APPROVED / REJECTED
-```
-
-Audit information lưu được.
+Incident replay UI remains outside the Backend/ROS2 MVP acceptance boundary.
 
 ---
 
@@ -2876,5 +2887,29 @@ MVP bắt buộc có layout làm input chung cho SimPy và route/configuration c
 ít nhất hai AMR, command/task path hai chiều, cảnh báo bất thường và benchmark
 latency/FPS cơ bản. Mock factory chỉ dùng cho test/local fallback.
 
-Replay raw telemetry, time-series retention dài hạn, admin portal, battery genealogy,
-AI/ML, MES/ERP và tự động tối ưu layout nằm ngoài boundary MVP này.
+Incident replay UI đầy đủ, retention dài hạn ngoài policy, battery genealogy,
+AI/ML và MES/ERP nằm ngoài boundary MVP. Telemetry history cần thiết, bounded
+deterministic flow optimization và partition/retention policy thuộc MVP.
+
+Layout persistence separates mutable identity metadata in `layouts` from
+append-only JSON geometry/config snapshots in `layout_versions`. FastAPI validates
+the typed `twin-core` contract before PostgreSQL insert. Browser writes never go
+directly through Supabase Data API; authenticated clients read/write through
+FastAPI and database RLS remains defense in depth.
+
+Every persisted SimPy candidate references an immutable `(layout_id, version)`.
+The simulation derives route distance and congestion from that geometry, models
+individual robot battery/charging and publishes the nine authoritative KPI from
+`twin-core`. Flow optimization is a deterministic Cartesian search capped at 64
+candidates; each evaluated candidate remains auditable through the scenario row.
+Backend `ScenarioService` requires `LayoutService`; there is no layout-free or
+legacy benchmark fallback in the API runtime. The legacy simulation runner is
+kept only for standalone evaluation fixtures.
+
+Scenario application uses a durable outbound-only command path. Render stores a
+PENDING command; the edge bridge leases it over authenticated HTTPS, records ACK,
+executes the typed `/fleet/apply_scenario` ROS service and posts the terminal
+result. One operation has multiple immutable attempts. A scenario remains
+APPROVED through PENDING/ACKNOWLEDGED/FAILED/TIMED_OUT and becomes APPLIED only
+after a positive result. Unsupported topology changes fail explicitly and require
+a Gazebo relaunch.
