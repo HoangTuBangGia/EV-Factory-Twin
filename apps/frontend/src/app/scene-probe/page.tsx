@@ -21,8 +21,11 @@ const robots: Robot[] = [
 
 export default function SceneProbe() {
   useEffect(() => { document.title = "scene-probe"; }, []);
-  return <div style={{ width: 1440, height: 900 }}>
-    <div className="factory-map" style={{ height: 900 }}>
+  return <div
+    data-testid="scene-probe" data-robot-count={robots.length}
+    style={{ width: "100vw", height: "100vh" }}
+  >
+    <div className="factory-map" style={{ width: "100%", height: "100%" }}>
       <FactoryScene
         robots={robots} selectedRobotId="AMR-03" onSelect={() => undefined}
         bufferStock={4} resetSignal={0} layout={defaultFactoryLayout}

@@ -108,6 +108,31 @@ local `.env` cannot accidentally turn unit/API tests into a live PostgreSQL
 dependency. Database/RLS behavior belongs in the hosted or local Supabase E2E
 workflow.
 
+## Frontend browser smoke
+
+The frontend-only Playwright smoke suite starts Next.js in mock mode and verifies
+the fixture-backed Three.js scene in desktop and mobile Chromium. It does not need
+FastAPI, Supabase credentials, or external services.
+
+Install Chromium once, then run:
+
+```bash
+cd apps/frontend
+npx playwright install chromium
+npm run test:smoke
+```
+
+To test an already-running frontend instead:
+
+```bash
+SMOKE_EXTERNAL_SERVER=true \
+SMOKE_BASE_URL=http://127.0.0.1:3000 \
+npm run test:smoke
+```
+
+The smoke route is `/scene-probe`; it validates a live WebGL context, responsive
+canvas bounds, the five-robot fixture input, and absence of browser console/page errors.
+
 ## Browser E2E với Supabase staging
 
 Playwright chạy trình duyệt với frontend Next.js và backend FastAPI ở local,
