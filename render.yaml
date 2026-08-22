@@ -2,6 +2,7 @@ services:
   - type: web
     name: ev-factory-twin-api
     runtime: docker
+    plan: free
     dockerContext: .
     dockerfilePath: ./apps/backend/Dockerfile
     healthCheckPath: /health
@@ -22,4 +23,3 @@ services:
         sync: false
       - key: EDGE_TELEMETRY_SHARED_SECRET
         sync: false
-
