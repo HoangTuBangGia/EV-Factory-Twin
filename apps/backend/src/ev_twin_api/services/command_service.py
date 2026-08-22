@@ -21,6 +21,7 @@ from ev_twin_api.schemas.command import (
 from ev_twin_api.schemas.scenario import ScenarioStatus
 from ev_twin_api.schemas.websocket import command_updated_event
 from ev_twin_api.services.audit_service import AuditRepository, PendingAuditEvent
+from ev_twin_api.services.runtime_health import RuntimeHealthService
 from ev_twin_api.services.scenario_service import (
     InvalidScenarioTransitionError,
     ScenarioService,
@@ -417,11 +418,13 @@ class CommandService:
         scenarios: ScenarioService,
         websocket_manager: WebSocketManager,
         audit_repository: AuditRepository,
+        runtime_health: RuntimeHealthService | None = None,
     ) -> None:
         self._repository = repository
         self._scenarios = scenarios
         self._websockets = websocket_manager
         self._audit_repository = audit_repository
+        self._runtime_health = runtime_health
 
     async def apply(
         self, scenario_id: str, request: ApplyScenarioRequest, actor: CurrentUser
@@ -513,6 +516,8 @@ class CommandService:
     async def retry(self, operation_id: UUID) -> Command:
         await self._expire_commands()
         command = await self._repository.retry(operation_id, datetime.now(UTC))
+        if self._runtime_health is not None:
+            await self._runtime_health.note_command_timeout(operation_id, False)
         await self._audit(command, AuditAction.COMMAND_RETRIED)
         await self._broadcast(command)
         return command
@@ -522,6 +527,8 @@ class CommandService:
 
     async def _expire_commands(self) -> None:
         for command in await self._repository.expire(datetime.now(UTC)):
+            if self._runtime_health is not None:
+                await self._runtime_health.note_command_timeout(command.operation_id, True)
             await self._audit(command, AuditAction.COMMAND_TIMED_OUT)
             await self._broadcast(command)
 

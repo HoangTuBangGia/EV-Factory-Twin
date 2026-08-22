@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -24,6 +25,8 @@ from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.layout_repository import InMemoryLayoutRepository
 from ev_twin_api.services.layout_service import LayoutService
 from ev_twin_api.services.mock_factory import MockFactory
+from ev_twin_api.services.runtime_health import RuntimeHealthService
+from ev_twin_api.services.runtime_history import InMemoryRuntimeHistoryRepository
 from ev_twin_api.services.scenario_service import ScenarioService
 from ev_twin_api.services.websocket_manager import WebSocketManager
 
@@ -31,10 +34,22 @@ DESIGNER = make_test_user(AppRole.DESIGNER)
 MONITOR = make_test_user(AppRole.MONITOR)
 
 
-async def setup() -> tuple[CommandService, ScenarioService, str]:
+async def setup() -> tuple[CommandService, ScenarioService, str, InMemoryRuntimeHistoryRepository]:
     manager = WebSocketManager()
     config = MockFactoryConfig()
-    factory = MockFactory(FactoryState(config), config, manager, enabled=False)
+    state = FactoryState(config)
+    factory = MockFactory(state, config, manager, enabled=False)
+    runtime_repository = InMemoryRuntimeHistoryRepository()
+    runtime_health = RuntimeHealthService(
+        state,
+        runtime_repository,
+        manager,
+        stale_telemetry_seconds=5,
+        bridge_disconnect_seconds=5,
+        congestion_distance_meters=1.5,
+        low_battery_percent=20,
+        sweep_seconds=1,
+    )
     scenarios = ScenarioService(
         factory,
         layout_service=LayoutService(InMemoryLayoutRepository(include_default=True)),
@@ -54,15 +69,22 @@ async def setup() -> tuple[CommandService, ScenarioService, str]:
     await scenarios.submit(scenario.id, DESIGNER)
     await scenarios.approve(scenario.id, MONITOR)
     return (
-        CommandService(InMemoryCommandRepository(), scenarios, manager, InMemoryAuditRepository()),
+        CommandService(
+            InMemoryCommandRepository(),
+            scenarios,
+            manager,
+            InMemoryAuditRepository(),
+            runtime_health,
+        ),
         scenarios,
         scenario.id,
+        runtime_repository,
     )
 
 
 @pytest.mark.asyncio
 async def test_positive_result_is_required_before_scenario_is_applied() -> None:
-    commands, scenarios, scenario_id = await setup()
+    commands, scenarios, scenario_id, _ = await setup()
     command = await commands.apply(scenario_id, ApplyScenarioRequest(), MONITOR)
     leased = await commands.lease("edge-main")
     assert leased is not None
@@ -88,7 +110,7 @@ async def test_positive_result_is_required_before_scenario_is_applied() -> None:
 
 @pytest.mark.asyncio
 async def test_failed_result_keeps_scenario_approved_and_retry_reuses_operation() -> None:
-    commands, scenarios, scenario_id = await setup()
+    commands, scenarios, scenario_id, _ = await setup()
     command = await commands.apply(scenario_id, ApplyScenarioRequest(max_retries=1), MONITOR)
     await commands.lease("edge-main")
     await commands.acknowledge(
@@ -116,7 +138,7 @@ async def test_failed_result_keeps_scenario_approved_and_retry_reuses_operation(
 @pytest.mark.asyncio
 async def test_expired_attempt_can_retry_within_budget() -> None:
     repository = InMemoryCommandRepository()
-    commands, _, scenario_id = await setup()
+    commands, _, scenario_id, _ = await setup()
     del commands
     now = datetime.now(UTC)
     command = Command(
@@ -148,7 +170,25 @@ async def test_expired_attempt_can_retry_within_budget() -> None:
 
 @pytest.mark.asyncio
 async def test_cannot_create_two_active_commands_for_one_scenario() -> None:
-    commands, _, scenario_id = await setup()
+    commands, _, scenario_id, _ = await setup()
     await commands.apply(scenario_id, ApplyScenarioRequest(), MONITOR)
     with pytest.raises(CommandConflictError, match="active"):
         await commands.apply(scenario_id, ApplyScenarioRequest(), MONITOR)
+
+
+@pytest.mark.asyncio
+async def test_timeout_alert_clears_on_retry() -> None:
+    commands, _, scenario_id, runtime_repository = await setup()
+    command = await commands.apply(
+        scenario_id,
+        ApplyScenarioRequest(timeout_seconds=0.01, max_retries=1),
+        MONITOR,
+    )
+    await commands.lease("edge-main")
+    await asyncio.sleep(0.02)
+
+    assert (await commands.get(command.operation_id)).status == CommandStatus.TIMED_OUT
+    assert (await runtime_repository.list_alerts())[0].code == "COMMAND_TIMEOUT"
+
+    await commands.retry(command.operation_id)
+    assert (await runtime_repository.list_alerts())[0].status == "CLEARED"

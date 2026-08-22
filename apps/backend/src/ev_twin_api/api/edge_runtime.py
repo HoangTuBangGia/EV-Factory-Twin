@@ -42,7 +42,7 @@ async def ingest_task_update(
 async def ingest_bridge_health(
     health: BridgeHealth, service: EdgeRuntimeServiceDep
 ) -> EdgeUpdateResponse:
-    return service.ingest_health(health)
+    return await service.ingest_health(health)
 
 
 @router.get("/commands/next", response_model=EdgeCommand | None)

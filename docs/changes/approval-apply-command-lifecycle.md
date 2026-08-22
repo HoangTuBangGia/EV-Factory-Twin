@@ -40,5 +40,4 @@ The ROS developer command must run after sourcing `/opt/ros/jazzy/setup.bash`.
 
 ## Follow-up
 
-M8 will turn command timeout and bridge health into deduplicated alerts and apply
-telemetry retention/partition policy.
+Runtime health and telemetry retention are implemented by the M8 checkpoint.

@@ -61,7 +61,8 @@ async def test_stale_task_update_is_ignored() -> None:
     manager.broadcast.assert_not_awaited()
 
 
-def test_bridge_health_keeps_latest_timestamp() -> None:
+@pytest.mark.asyncio
+async def test_bridge_health_keeps_latest_timestamp() -> None:
     service, _, _ = make_service()
     now = datetime.now(UTC)
     health = BridgeHealth(
@@ -72,8 +73,10 @@ def test_bridge_health_keeps_latest_timestamp() -> None:
         delivered_samples=2,
         failed_deliveries=0,
     )
-    assert service.ingest_health(health).accepted
-    assert not service.ingest_health(
-        health.model_copy(update={"timestamp": now - timedelta(seconds=1)})
+    assert (await service.ingest_health(health)).accepted
+    assert not (
+        await service.ingest_health(
+            health.model_copy(update={"timestamp": now - timedelta(seconds=1)})
+        )
     ).accepted
     assert service.get_health("edge-main") == health

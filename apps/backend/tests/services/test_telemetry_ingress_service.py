@@ -7,6 +7,7 @@ from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.schemas.telemetry import RobotTelemetry, TelemetryIngressStatus
 from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.mock_factory import MockFactory
+from ev_twin_api.services.runtime_history import InMemoryRuntimeHistoryRepository
 from ev_twin_api.services.telemetry_ingress import (
     FutureTimestampError,
     MockSourceActiveError,
@@ -82,6 +83,26 @@ async def test_stale_or_duplicate_sample_is_idempotent_and_not_broadcast() -> No
 
     assert result.status == TelemetryIngressStatus.IGNORED_STALE
     manager.broadcast.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stale_sample_is_kept_as_late_history_without_overwriting_snapshot() -> None:
+    config = MockFactoryConfig()
+    state = FactoryState(config)
+    manager = WebSocketManager()
+    mock_factory = MockFactory(state, config, manager, enabled=False)
+    history = InMemoryRuntimeHistoryRepository()
+    service = TelemetryIngressService(state, manager, mock_factory, 5, history)
+    telemetry = make_telemetry(state)
+    late = telemetry.model_copy(update={"timestamp": telemetry.timestamp - timedelta(seconds=1)})
+
+    await service.ingest(telemetry)
+    result = await service.ingest(late)
+
+    assert result.status == TelemetryIngressStatus.IGNORED_STALE
+    assert len(history.telemetry) == 2
+    assert history.telemetry[0][2] == TelemetryIngressStatus.ACCEPTED
+    assert history.telemetry[1][2] == TelemetryIngressStatus.IGNORED_STALE
 
 
 @pytest.mark.asyncio

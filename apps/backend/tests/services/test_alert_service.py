@@ -90,7 +90,7 @@ def test_alert_ids_are_sequential() -> None:
 
     alerts = service.check(low_battery_threshold=20.0, task_interval_seconds=8.0)
 
-    assert {alert.id for alert in alerts} == {"ALERT-0001", "ALERT-0002"}
+    assert len({alert.id for alert in alerts}) == 2
 
 
 def test_task_backlog_fires_when_queued_exceeds_robot_count() -> None:
@@ -209,7 +209,7 @@ def test_robot_waiting_clears_and_can_retrigger_after_leaving_idle() -> None:
     assert len([alert for alert in second if alert.code == ROBOT_WAITING]) == 1
 
 
-def test_reset_clears_dedup_state_and_alert_number_sequence() -> None:
+def test_reset_clears_dedup_state() -> None:
     state = _new_state()
     service = AlertService(state)
     _set_battery(state, "AMR-01", 10.0)
@@ -219,4 +219,4 @@ def test_reset_clears_dedup_state_and_alert_number_sequence() -> None:
     alerts = service.check(low_battery_threshold=20.0, task_interval_seconds=8.0)
 
     assert len(alerts) == 1
-    assert alerts[0].id == "ALERT-0001"
+    assert alerts[0].dedupe_key == "LOW_BATTERY:AMR-01"

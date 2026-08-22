@@ -127,6 +127,53 @@ EXPECTED_COLUMNS = {
         "detail",
         "created_at",
     },
+    "robot_telemetry_history": {
+        "robot_id",
+        "source_timestamp",
+        "ingested_at",
+        "pose",
+        "velocity",
+        "battery",
+        "status",
+        "task_id",
+        "payload_id",
+        "ordering_status",
+    },
+    "bridge_health_history": {
+        "id",
+        "bridge_id",
+        "status",
+        "robot_ids",
+        "source_timestamp",
+        "ingested_at",
+        "delivered_samples",
+        "failed_deliveries",
+        "last_error",
+    },
+    "task_state_history": {
+        "id",
+        "task_id",
+        "status",
+        "assigned_robot_id",
+        "attempt",
+        "message",
+        "source_timestamp",
+        "ingested_at",
+    },
+    "alerts": {
+        "id",
+        "dedupe_key",
+        "severity",
+        "code",
+        "status",
+        "message",
+        "robot_id",
+        "task_id",
+        "operation_id",
+        "triggered_at",
+        "last_seen_at",
+        "cleared_at",
+    },
 }
 
 
@@ -229,6 +276,22 @@ def test_application_enums_match_the_api_contract() -> None:
         "FAILED",
         "TIMED_OUT",
     )
+    assert enums["public.alert_severity"] == ("INFO", "WARNING", "CRITICAL")
+    assert enums["public.alert_status"] == ("ACTIVE", "CLEARED")
+
+
+def test_runtime_history_uses_partman_and_bounded_retention() -> None:
+    migration = (
+        MIGRATION_DIRECTORY / "20260822000500_create_runtime_health_history.sql"
+    ).read_text()
+    normalized = migration.lower()
+
+    assert "partition by range (source_timestamp)" in normalized
+    assert "partman.create_parent" in normalized
+    assert "retention = '30 days'" in normalized
+    assert "retention_keep_table = false" in normalized
+    assert "partman.run_maintenance_proc()" in normalized
+    assert "private.prune_runtime_history()" in normalized
 
 
 def test_every_public_table_enables_rls_and_never_disables_it() -> None:

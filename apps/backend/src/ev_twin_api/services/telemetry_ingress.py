@@ -9,6 +9,11 @@ from ev_twin_api.schemas.telemetry import (
 from ev_twin_api.schemas.websocket import robot_telemetry_event
 from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.mock_factory import MockFactory
+from ev_twin_api.services.runtime_health import RuntimeHealthService
+from ev_twin_api.services.runtime_history import (
+    InMemoryRuntimeHistoryRepository,
+    RuntimeHistoryRepository,
+)
 from ev_twin_api.services.websocket_manager import WebSocketManager
 
 
@@ -31,11 +36,15 @@ class TelemetryIngressService:
         websocket_manager: WebSocketManager,
         mock_factory: MockFactory,
         max_future_skew_seconds: float,
+        history_repository: RuntimeHistoryRepository | None = None,
+        runtime_health: RuntimeHealthService | None = None,
     ) -> None:
         self._factory_state = factory_state
         self._websocket_manager = websocket_manager
         self._mock_factory = mock_factory
         self._max_future_skew = timedelta(seconds=max_future_skew_seconds)
+        self._history = history_repository or InMemoryRuntimeHistoryRepository()
+        self._runtime_health = runtime_health
 
     async def ingest(self, telemetry: RobotTelemetry) -> TelemetryIngressResponse:
         async with self._mock_factory.exclusive_control():
@@ -47,16 +56,18 @@ class TelemetryIngressService:
                 raise UnknownRobotError(telemetry.robot_id)
 
             ingested_at = datetime.now(UTC)
+            if telemetry.timestamp > ingested_at + self._max_future_skew:
+                raise FutureTimestampError
             if telemetry.timestamp <= current.last_seen_at:
+                await self._history.record_telemetry(
+                    telemetry, ingested_at, TelemetryIngressStatus.IGNORED_STALE
+                )
                 return TelemetryIngressResponse(
                     status=TelemetryIngressStatus.IGNORED_STALE,
                     robot_id=telemetry.robot_id,
                     source_timestamp=telemetry.timestamp,
                     ingested_at=ingested_at,
                 )
-            if telemetry.timestamp > ingested_at + self._max_future_skew:
-                raise FutureTimestampError
-
             self._factory_state.update_robot(
                 Robot(
                     id=current.id,
@@ -70,6 +81,11 @@ class TelemetryIngressService:
                     last_seen_at=telemetry.timestamp,
                 )
             )
+            await self._history.record_telemetry(
+                telemetry, ingested_at, TelemetryIngressStatus.ACCEPTED
+            )
+            if self._runtime_health is not None:
+                await self._runtime_health.note_telemetry(telemetry, ingested_at)
             await self._websocket_manager.broadcast(robot_telemetry_event(telemetry))
             return TelemetryIngressResponse(
                 status=TelemetryIngressStatus.ACCEPTED,

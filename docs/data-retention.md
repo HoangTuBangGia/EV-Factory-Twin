@@ -24,20 +24,20 @@ runtime snapshot.
 | Detailed robot telemetry | 30 days |
 | KPI snapshots | 90 days |
 
-These values are contract defaults, not yet implemented retention jobs. A later
-checkpoint must measure row size, write rate and the dashboard's p95 time-range
-query latency before finalizing the telemetry sampling cadence.
+M8 implements these defaults: pg_partman drops telemetry partitions older than
+30 days, while a daily retention function prunes alerts, task transitions and KPI
+snapshots older than 90 days. Capacity measurements remain a deployment gate for
+finalizing the telemetry sampling cadence.
 
-## pg_partman gate
+## pg_partman decision
 
-The requested implementation uses time-based PostgreSQL partitions managed by
-`pg_partman` for robot telemetry. Before writing that migration against the hosted
-project, verify all of the following on Supabase PostgreSQL 17.6.1.155:
+The hosted Supabase PostgreSQL 17.6 project was verified to provide pg_partman
+5.3.1 and pg_cron 1.6.4. M8 uses time-based PostgreSQL partitions managed by
+pg_partman for robot telemetry. Deployment must still verify:
 
-1. the extension and compatible version are available;
-2. the migration role can create/configure it;
-3. Supabase can schedule partition maintenance and retention;
-4. backup/restore includes partitioned data and configuration.
+1. the migration role can create/configure both extensions;
+2. scheduled maintenance succeeds and remains observable;
+3. backup/restore includes partitioned data and configuration.
 
 If any condition fails, stop and request approval for native declarative
 partitioning plus a scheduled retention function. Do not silently create a

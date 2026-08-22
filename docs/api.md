@@ -718,35 +718,48 @@ Tất cả field không nullable.
 
 ```text
 AlertSeverity: INFO, WARNING, CRITICAL
-AlertCode (khởi điểm): LOW_BATTERY, ROBOT_WAITING, TASK_BACKLOG, STARVATION, ROBOT_ERROR
+AlertStatus: ACTIVE, CLEARED
+AlertCode: LOW_BATTERY, ROBOT_WAITING, TASK_BACKLOG, STARVATION, ROBOT_ERROR,
+STALE_TELEMETRY, BRIDGE_DISCONNECTED, COMMAND_TIMEOUT, CONGESTION
 ```
 
 `GET /api/v1/alerts`. Payload của WebSocket event `alert.created`.
 
 ```json
 {
-  "id": "ALERT-0001",
+  "id": "4e52ddcb-99cb-4bb7-a256-adac65a32cf2",
+  "dedupe_key": "LOW_BATTERY:AMR-01",
   "severity": "WARNING",
   "code": "LOW_BATTERY",
+  "status": "ACTIVE",
   "message": "AMR-01 battery below threshold (18%)",
   "robot_id": "AMR-01",
   "task_id": null,
-  "timestamp": "2026-08-11T04:00:00.000Z"
+  "operation_id": null,
+  "timestamp": "2026-08-11T04:00:00.000Z",
+  "last_seen_at": "2026-08-11T04:00:00.000Z",
+  "cleared_at": null
 }
 ```
 
 | Field | Type | Nullable | Ghi chú |
 |---|---|---|---|
-| `id` | string | không | |
+| `id` | UUID | không | một occurrence; retrigger tạo UUID mới |
+| `dedupe_key` | string | không | duy nhất trong các alert `ACTIVE` |
 | `severity` | `AlertSeverity` | không | |
-| `code` | string | không | một trong `AlertCode`, hoặc code mới về sau |
+| `code` | `AlertCode` | không | |
+| `status` | `AlertStatus` | không | `ACTIVE` hoặc `CLEARED` |
 | `message` | string | không | mô tả cho người xem |
 | `robot_id` | string | có (mặc định `null`) | |
 | `task_id` | string | có (mặc định `null`) | |
+| `operation_id` | UUID | có (mặc định `null`) | command liên quan nếu có |
 | `timestamp` | datetime | không | |
+| `last_seen_at` | datetime | không | lần cuối điều kiện còn được quan sát |
+| `cleared_at` | datetime | có | bắt buộc khi `CLEARED` |
 
 Alert có state (ví dụ `LOW_BATTERY:AMR-01`) được backend dedupe — chỉ phát khi
-robot **vào** điều kiện, không lặp mỗi tick trong khi vẫn ở điều kiện đó.
+robot **vào** điều kiện, không lặp mỗi tick trong khi vẫn ở điều kiện đó. Khi
+điều kiện hết, occurrence chuyển `CLEARED`; lần xuất hiện sau tạo occurrence mới.
 
 ## WebSocket event envelope
 

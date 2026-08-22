@@ -2,13 +2,14 @@ import asyncio
 import contextlib
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Annotated, cast
 
 from fastapi import Depends, Request
 
 from ev_twin_api.core.routes import CHARGER_ROUTE_KEY, ROUTES
+from ev_twin_api.schemas.alert import FactoryAlert
 from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.schemas.robot import RobotStatus
 from ev_twin_api.schemas.telemetry import robot_to_telemetry
@@ -72,8 +73,18 @@ class MockFactory:
         self._battery_service = BatteryService(state)
         self._metrics_service = MetricsService(state)
         self._alert_service = AlertService(state)
+        self._alert_sink: Callable[[FactoryAlert], Awaitable[None]] | None = None
+        self._alert_clear_sink: Callable[[str], Awaitable[None]] | None = None
         self._time_since_last_task = 0.0
         self._wall_time_since_last_metrics_broadcast = 0.0
+
+    def set_alert_sink(
+        self,
+        sink: Callable[[FactoryAlert], Awaitable[None]],
+        clear_sink: Callable[[str], Awaitable[None]],
+    ) -> None:
+        self._alert_sink = sink
+        self._alert_clear_sink = clear_sink
 
     @contextlib.asynccontextmanager
     async def exclusive_control(self) -> AsyncIterator[None]:
@@ -128,6 +139,9 @@ class MockFactory:
         self._state.reset()
         self._active_movements.clear()
         self._metrics_service.reset()
+        if self._alert_clear_sink is not None:
+            for dedupe_key in self._alert_service.active_condition_keys():
+                await self._alert_clear_sink(dedupe_key)
         self._alert_service.reset()
         self.tick_count = 0
         self.simulated_elapsed_seconds = 0.0
@@ -265,7 +279,12 @@ class MockFactory:
             task_interval_seconds=self.config.task_interval_seconds,
         )
         for alert in new_alerts:
+            if self._alert_sink is not None:
+                await self._alert_sink(alert)
             await self._websocket_manager.broadcast(alert_created_event(alert))
+        if self._alert_clear_sink is not None:
+            for dedupe_key in self._alert_service.drain_cleared_condition_keys():
+                await self._alert_clear_sink(dedupe_key)
 
 
 def get_mock_factory(request: Request) -> MockFactory:

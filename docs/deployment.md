@@ -233,11 +233,11 @@ curl -H "Authorization: Bearer <ACCESS_TOKEN>" \
 
 ## 10. Supabase và pg_partman
 
-Target database là Supabase PostgreSQL 17.6.1.155. Telemetry history cần thiết
-thuộc MVP và dự kiến dùng time partition do `pg_partman` quản lý. Trước migration,
-phải xác minh extension/version, quyền tạo, maintenance scheduling và backup/restore
-trên hosted project. Nếu không đáp ứng, dừng để duyệt phương án native PostgreSQL
-partitioning; không tự động hạ xuống bảng telemetry không partition.
+Target database là Supabase PostgreSQL 17.6.1.155. Hosted project đã xác nhận có
+`pg_partman 5.3.1` và `pg_cron 1.6.4`. Migration M8 enable hai extension, tạo daily
+native partitions, premake 7 ngày và retention telemetry 30 ngày. Cron gọi partman
+maintenance mỗi giờ; alerts, task history và KPI snapshots được prune sau 90 ngày.
+Theo dõi `cron.job_run_details` và `partman.part_config.maintenance_last_run` sau deploy.
 
 ## 11. Alternative deployment
 

@@ -115,4 +115,4 @@ The evaluation is incomplete unless it demonstrates:
 - Does not model production-grade robot dynamics or fleet optimization
 - Travel and loading times are deterministic
 - SimPy is used only for quick KPI and layout benchmark evaluation
-- Raw telemetry history/replay and long-term retention are outside MVP
+- Incident replay UI đầy đủ và retention vượt policy 30/90 ngày nằm ngoài MVP

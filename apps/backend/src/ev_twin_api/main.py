@@ -51,6 +51,12 @@ from ev_twin_api.services.layout_repository import (
 from ev_twin_api.services.layout_service import LayoutService
 from ev_twin_api.services.mock_factory import MockFactory
 from ev_twin_api.services.optimization_service import OptimizationService
+from ev_twin_api.services.runtime_health import RuntimeHealthService
+from ev_twin_api.services.runtime_history import (
+    InMemoryRuntimeHistoryRepository,
+    RuntimeHistoryRepository,
+    SqlAlchemyRuntimeHistoryRepository,
+)
 from ev_twin_api.services.scenario_repository import (
     InMemoryScenarioRepository,
     ScenarioRepository,
@@ -72,6 +78,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     database_url = settings.database_url.get_secret_value() if settings.database_url else None
     database = Database(database_url, ssl_mode=settings.database_ssl_mode)
+    runtime_repository: RuntimeHistoryRepository = (
+        SqlAlchemyRuntimeHistoryRepository(database)
+        if database.configured
+        else InMemoryRuntimeHistoryRepository()
+    )
     issuer = settings.effective_supabase_jwt_issuer
     jwks_url = settings.effective_supabase_jwks_url
     jwt_verifier = (
@@ -114,14 +125,30 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         enabled=settings.mock_factory_enabled,
     )
     app.state.factory_state = factory_state
+    runtime_health = RuntimeHealthService(
+        factory_state,
+        runtime_repository,
+        websocket_manager,
+        stale_telemetry_seconds=settings.stale_telemetry_seconds,
+        bridge_disconnect_seconds=settings.bridge_disconnect_seconds,
+        congestion_distance_meters=settings.congestion_distance_meters,
+        low_battery_percent=settings.runtime_low_battery_percent,
+        sweep_seconds=settings.runtime_health_sweep_seconds,
+    )
+    mock_factory.set_alert_sink(runtime_health.record_existing, runtime_health.clear_existing)
+    app.state.runtime_health_service = runtime_health
     app.state.mock_factory = mock_factory
     app.state.telemetry_ingress_service = TelemetryIngressService(
         factory_state=factory_state,
         websocket_manager=websocket_manager,
         mock_factory=mock_factory,
         max_future_skew_seconds=settings.edge_telemetry_max_future_skew_seconds,
+        history_repository=runtime_repository,
+        runtime_health=runtime_health,
     )
-    app.state.edge_runtime_service = EdgeRuntimeService(factory_state, websocket_manager)
+    app.state.edge_runtime_service = EdgeRuntimeService(
+        factory_state, websocket_manager, runtime_repository, runtime_health
+    )
     audit_repository: AuditRepository
     layout_repository: LayoutRepository
     scenario_repository: ScenarioRepository
@@ -155,6 +182,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.scenario_service,
         websocket_manager,
         audit_repository,
+        runtime_health,
     )
     app.state.websocket_manager = websocket_manager
     kpi_snapshot_writer = build_kpi_snapshot_writer(
@@ -165,6 +193,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.kpi_snapshot_writer = kpi_snapshot_writer
 
     await mock_factory.start()
+    await runtime_health.start()
     if kpi_snapshot_writer is not None:
         await kpi_snapshot_writer.start()
     logger.info("backend started")
@@ -174,6 +203,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if kpi_snapshot_writer is not None:
             await kpi_snapshot_writer.stop()
         await mock_factory.stop()
+        await runtime_health.stop()
         if jwt_verifier is not None:
             jwt_verifier.close()
         await database.dispose()

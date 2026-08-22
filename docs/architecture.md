@@ -1903,40 +1903,34 @@ erDiagram
 
 ---
 
-# 43. Telemetry Storage (planned CORE capability)
+# 43. Telemetry Storage
 
-`robot_telemetry` is a planned sampled-history table. The current MVP does not
-persist the realtime stream; see `docs/data-retention.md`.
+`robot_telemetry_history` lưu normalized ROS samples. Sample đến trễ được giữ với
+`ordering_status=LATE` nhưng không thay runtime snapshot; xem `docs/data-retention.md`.
 
 Columns:
 
 ```text
-timestamp
 robot_id
-
-x
-y
-yaw
-
-linear_velocity
-angular_velocity
-
+source_timestamp
+ingested_at
+pose
+velocity
 battery
 status
-
 task_id
 payload_id
+ordering_status
 ```
 
 Index chính:
 
 ```text
-(timestamp, robot_id)
+(robot_id, source_timestamp)
 ```
 
-Use ordinary PostgreSQL indexes first. Native partitioning or another storage
-engine is considered only after measured volume and query latency justify it;
-Supabase PostgreSQL 17 is the current baseline and TimescaleDB is not assumed.
+Supabase PostgreSQL 17 dùng native daily range partitions do `pg_partman 5.3.1`
+quản lý. `pg_cron` chạy maintenance mỗi giờ; partition telemetry chỉ giữ 30 ngày.
 
 ---
 
