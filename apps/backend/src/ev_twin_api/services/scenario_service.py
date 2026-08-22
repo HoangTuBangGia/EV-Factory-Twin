@@ -183,10 +183,29 @@ class ScenarioService:
     async def approve(self, scenario_id: str, actor: CurrentUser) -> Scenario:
         return await self._review(scenario_id, ScenarioStatus.APPROVED, actor)
 
+    async def submit(self, scenario_id: str, actor: CurrentUser) -> Scenario:
+        scenario = await self.get(scenario_id)
+        if scenario.status != ScenarioStatus.SIMULATED:
+            raise InvalidScenarioTransitionError(
+                f"Scenario '{scenario_id}' cannot transition from {scenario.status} to SUBMITTED"
+            )
+        try:
+            return await self._repository.transition(
+                before=scenario,
+                expected_status=ScenarioStatus.SIMULATED,
+                new_status=ScenarioStatus.SUBMITTED,
+                actor=actor,
+                request_id=uuid4(),
+                occurred_at=datetime.now(UTC),
+            )
+        except Exception as error:
+            self._raise_domain_repository_error(error)
+            raise
+
     async def reject(self, scenario_id: str, actor: CurrentUser) -> Scenario:
         return await self._review(scenario_id, ScenarioStatus.REJECTED, actor)
 
-    async def apply(self, scenario_id: str, actor: CurrentUser) -> Scenario:
+    async def complete_apply(self, scenario_id: str, actor: CurrentUser) -> Scenario:
         scenario = await self.get(scenario_id)
         if scenario.status != ScenarioStatus.APPROVED:
             raise InvalidScenarioTransitionError(
@@ -251,7 +270,7 @@ class ScenarioService:
         actor: CurrentUser,
     ) -> Scenario:
         scenario = await self.get(scenario_id)
-        if scenario.status != ScenarioStatus.SIMULATED:
+        if scenario.status != ScenarioStatus.SUBMITTED:
             raise InvalidScenarioTransitionError(
                 f"Scenario '{scenario_id}' cannot transition from {scenario.status} to {status}"
             )
@@ -259,7 +278,7 @@ class ScenarioService:
         try:
             return await self._repository.transition(
                 before=scenario,
-                expected_status=ScenarioStatus.SIMULATED,
+                expected_status=ScenarioStatus.SUBMITTED,
                 new_status=status,
                 actor=actor,
                 request_id=uuid4(),

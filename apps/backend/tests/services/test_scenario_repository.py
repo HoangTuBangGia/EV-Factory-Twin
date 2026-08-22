@@ -26,6 +26,7 @@ from ev_twin_api.services.mock_factory import MockFactory
 from ev_twin_api.services.scenario_repository import (
     SCENARIO_APPLY_SQL,
     SCENARIO_REVIEW_SQL,
+    SCENARIO_SUBMIT_SQL,
     InMemoryScenarioRepository,
     ScenarioRepositoryConflictError,
     ScenarioRepositoryNotFoundError,
@@ -64,6 +65,18 @@ async def create_scenario(repository: InMemoryScenarioRepository) -> Scenario:
         actor=DESIGNER,
         request_id=uuid4(),
         created_at=NOW,
+    )
+
+
+async def submit(repository: InMemoryScenarioRepository) -> Scenario:
+    scenario = await create_scenario(repository)
+    return await repository.transition(
+        before=scenario,
+        expected_status=ScenarioStatus.SIMULATED,
+        new_status=ScenarioStatus.SUBMITTED,
+        actor=DESIGNER,
+        request_id=uuid4(),
+        occurred_at=NOW,
     )
 
 
@@ -116,12 +129,12 @@ async def test_scenario_survives_service_reconstruction_over_same_repository() -
 async def test_creator_cannot_review_own_scenario() -> None:
     audit = InMemoryAuditRepository()
     repository = InMemoryScenarioRepository(audit)
-    scenario = await create_scenario(repository)
+    scenario = await submit(repository)
 
     with pytest.raises(ScenarioRepositoryConflictError, match="creator cannot"):
         await repository.transition(
             before=scenario,
-            expected_status=ScenarioStatus.SIMULATED,
+            expected_status=ScenarioStatus.SUBMITTED,
             new_status=ScenarioStatus.APPROVED,
             actor=DESIGNER,
             request_id=uuid4(),
@@ -131,20 +144,23 @@ async def test_creator_cannot_review_own_scenario() -> None:
     stored = await repository.get(scenario.id)
     events = await audit.list(limit=10)
     assert stored is not None
-    assert stored.status == ScenarioStatus.SIMULATED
-    assert [event.action for event in events] == [AuditAction.SCENARIO_RUN]
+    assert stored.status == ScenarioStatus.SUBMITTED
+    assert [event.action for event in events] == [
+        AuditAction.SCENARIO_SUBMITTED,
+        AuditAction.SCENARIO_RUN,
+    ]
 
 
 @pytest.mark.asyncio
 async def test_only_one_concurrent_review_transition_wins() -> None:
     audit = InMemoryAuditRepository()
     repository = InMemoryScenarioRepository(audit)
-    scenario = await create_scenario(repository)
+    scenario = await submit(repository)
 
     async def transition(new_status: ScenarioStatus) -> Scenario:
         return await repository.transition(
             before=scenario,
-            expected_status=ScenarioStatus.SIMULATED,
+            expected_status=ScenarioStatus.SUBMITTED,
             new_status=new_status,
             actor=MONITOR,
             request_id=uuid4(),
@@ -161,19 +177,19 @@ async def test_only_one_concurrent_review_transition_wins() -> None:
     assert sum(isinstance(result, ScenarioRepositoryConflictError) for result in results) == 1
     stored = await repository.get(scenario.id)
     assert stored is not None
-    assert stored.version == 2
+    assert stored.version == 3
     events = await audit.list(limit=10)
-    assert len(events) == 2
+    assert len(events) == 3
 
 
 @pytest.mark.asyncio
 async def test_apply_records_scenario_and_factory_reset_with_same_request_id() -> None:
     audit = InMemoryAuditRepository()
     repository = InMemoryScenarioRepository(audit)
-    scenario = await create_scenario(repository)
+    scenario = await submit(repository)
     approved = await repository.transition(
         before=scenario,
-        expected_status=ScenarioStatus.SIMULATED,
+        expected_status=ScenarioStatus.SUBMITTED,
         new_status=ScenarioStatus.APPROVED,
         actor=MONITOR,
         request_id=uuid4(),
@@ -193,7 +209,7 @@ async def test_apply_records_scenario_and_factory_reset_with_same_request_id() -
     events = await audit.list(limit=10)
     apply_events = [event for event in events if event.request_id == apply_request_id]
     assert applied.applied_by == MONITOR.id
-    assert applied.version == 3
+    assert applied.version == 4
     assert {event.action for event in apply_events} == {
         AuditAction.SCENARIO_APPLIED,
         AuditAction.FACTORY_RESET,
@@ -204,10 +220,10 @@ async def test_apply_records_scenario_and_factory_reset_with_same_request_id() -
 async def test_failed_before_commit_hook_does_not_change_state_or_write_audit() -> None:
     audit = InMemoryAuditRepository()
     repository = InMemoryScenarioRepository(audit)
-    scenario = await create_scenario(repository)
+    scenario = await submit(repository)
     approved = await repository.transition(
         before=scenario,
-        expected_status=ScenarioStatus.SIMULATED,
+        expected_status=ScenarioStatus.SUBMITTED,
         new_status=ScenarioStatus.APPROVED,
         actor=MONITOR,
         request_id=uuid4(),
@@ -234,6 +250,7 @@ async def test_failed_before_commit_hook_does_not_change_state_or_write_audit() 
     assert stored.status == ScenarioStatus.APPROVED
     assert [event.action for event in events] == [
         AuditAction.SCENARIO_APPROVED,
+        AuditAction.SCENARIO_SUBMITTED,
         AuditAction.SCENARIO_RUN,
     ]
 
@@ -348,12 +365,14 @@ async def test_sql_create_and_audit_share_one_transaction() -> None:
 
 
 def test_transition_sql_has_optimistic_lock_and_separation_guards() -> None:
-    for statement in (SCENARIO_REVIEW_SQL, SCENARIO_APPLY_SQL):
+    for statement in (SCENARIO_SUBMIT_SQL, SCENARIO_REVIEW_SQL, SCENARIO_APPLY_SQL):
         assert "version = :expected_version" in statement
-        assert "created_by <> :actor_id" in statement
         assert "version = version + 1" in statement
         assert "RETURNING" in statement
-    assert "status = 'SIMULATED'" in SCENARIO_REVIEW_SQL
+    assert "created_by = :actor_id" in SCENARIO_SUBMIT_SQL
+    assert "created_by <> :actor_id" in SCENARIO_REVIEW_SQL
+    assert "created_by <> :actor_id" in SCENARIO_APPLY_SQL
+    assert "status = 'SUBMITTED'" in SCENARIO_REVIEW_SQL
     assert "status = 'APPROVED'" in SCENARIO_APPLY_SQL
 
 
@@ -362,7 +381,7 @@ async def test_sql_transition_distinguishes_not_found_and_rolls_back() -> None:
     before = Scenario(
         id="SCN-0042",
         name="candidate",
-        status=ScenarioStatus.SIMULATED,
+        status=ScenarioStatus.SUBMITTED,
         config=CONFIG,
         metrics=METRICS,
         duration_ms=12.5,
@@ -376,7 +395,7 @@ async def test_sql_transition_distinguishes_not_found_and_rolls_back() -> None:
     with pytest.raises(ScenarioRepositoryNotFoundError):
         await repository.transition(
             before=before,
-            expected_status=ScenarioStatus.SIMULATED,
+            expected_status=ScenarioStatus.SUBMITTED,
             new_status=ScenarioStatus.APPROVED,
             actor=MONITOR,
             request_id=UUID("00000000-0000-0000-0000-000000000099"),
@@ -384,5 +403,5 @@ async def test_sql_transition_distinguishes_not_found_and_rolls_back() -> None:
         )
 
     assert session.transaction_commits == [False]
-    assert "status = 'SIMULATED'" in session.executions[0][0]
+    assert "status = 'SUBMITTED'" in session.executions[0][0]
     assert "SELECT status::text AS status, version, created_by" in session.executions[1][0]

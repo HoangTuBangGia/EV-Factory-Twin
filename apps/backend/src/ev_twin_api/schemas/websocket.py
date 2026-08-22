@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ev_twin_api.schemas.alert import FactoryAlert
 from ev_twin_api.schemas.auth import AppRole
+from ev_twin_api.schemas.command import Command
 from ev_twin_api.schemas.metrics import FactoryMetrics
 from ev_twin_api.schemas.task import Task
 from ev_twin_api.schemas.telemetry import RobotTelemetry
@@ -18,6 +19,7 @@ class WebSocketEventType(StrEnum):
     METRICS_UPDATED = "metrics.updated"
     ALERT_CREATED = "alert.created"
     FACTORY_RESET = "factory.reset"
+    COMMAND_UPDATED = "command.updated"
 
 
 class WebSocketEvent(BaseModel):
@@ -65,3 +67,7 @@ def alert_created_event(alert: FactoryAlert) -> dict[str, Any]:
 
 def factory_reset_event() -> dict[str, Any]:
     return {"type": WebSocketEventType.FACTORY_RESET, "data": None}
+
+
+def command_updated_event(command: Command) -> dict[str, Any]:
+    return {"type": WebSocketEventType.COMMAND_UPDATED, "data": command.model_dump(mode="json")}

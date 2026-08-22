@@ -6,6 +6,7 @@ from pathlib import Path
 
 import rclpy
 from amr_interfaces.action import ExecuteTransportTask, NavigateToStation
+from amr_interfaces.srv import ApplyScenario
 from amr_navigation.node import load_stations as load_station_positions
 from nav_msgs.msg import Odometry
 from rclpy.action import ActionClient, ActionServer, CancelResponse, GoalResponse
@@ -70,12 +71,29 @@ def select_robot(
     )
 
 
+def runtime_config_error(request, *, robot_count: int, speed: float, chargers: int, demand: float):
+    if request.robot_count != robot_count:
+        return f"robot_count={request.robot_count} requires Gazebo relaunch"
+    if not math.isclose(request.robot_speed_mps, speed, rel_tol=0.0, abs_tol=1e-6):
+        return f"robot_speed_mps={request.robot_speed_mps} requires Gazebo relaunch"
+    if request.charger_count != chargers:
+        return f"charger_count={request.charger_count} requires Gazebo relaunch"
+    if not math.isclose(request.demand_interval_seconds, demand, rel_tol=0.0, abs_tol=1e-6):
+        return f"demand_interval_seconds={request.demand_interval_seconds} requires relaunch"
+    if not request.layout_id or not request.route_id:
+        return "invalid runtime scenario configuration"
+    return None
+
+
 class FleetManager(Node):
     def __init__(self) -> None:
         super().__init__("fleet_manager")
         self.declare_parameter("robots_config", "")
         self.declare_parameter("stations_config", "")
         self.declare_parameter("minimum_battery", 0.2)
+        self.declare_parameter("runtime_robot_speed_mps", 1.0)
+        self.declare_parameter("runtime_charger_count", 1)
+        self.declare_parameter("runtime_demand_interval_seconds", 8.0)
         robots_config = str(self.get_parameter("robots_config").value)
         stations_config = str(self.get_parameter("stations_config").value)
         if not robots_config or not stations_config:
@@ -83,8 +101,13 @@ class FleetManager(Node):
         self._robots = load_robot_records(robots_config)
         self._stations = load_station_positions(stations_config)
         self._minimum_battery = float(self.get_parameter("minimum_battery").value)
+        self._runtime_speed = float(self.get_parameter("runtime_robot_speed_mps").value)
+        self._runtime_chargers = int(self.get_parameter("runtime_charger_count").value)
+        self._runtime_demand = float(self.get_parameter("runtime_demand_interval_seconds").value)
         self._lock = threading.Lock()
         self._active = False
+        self._apply_results: dict[tuple[str, int], tuple[int, str]] = {}
+        self._active_scenario_id = ""
         self._callback_group = ReentrantCallbackGroup()
         self._navigation_clients: dict[str, ActionClient] = {}
 
@@ -127,6 +150,38 @@ class FleetManager(Node):
             cancel_callback=lambda _: CancelResponse.REJECT,
             callback_group=self._callback_group,
         )
+        self._apply_service = self.create_service(
+            ApplyScenario,
+            "/fleet/apply_scenario",
+            self._apply_scenario,
+            callback_group=self._callback_group,
+        )
+
+    def _apply_scenario(self, request, response):
+        key = (request.operation_id, request.attempt_number)
+        with self._lock:
+            cached = self._apply_results.get(key)
+            if cached is not None:
+                response.outcome, response.detail = cached
+                return response
+            error = runtime_config_error(
+                request,
+                robot_count=len(self._robots),
+                speed=self._runtime_speed,
+                chargers=self._runtime_chargers,
+                demand=self._runtime_demand,
+            )
+            if error:
+                outcome = ApplyScenario.Response.FAILED
+                detail = error
+            else:
+                self._active_scenario_id = request.scenario_id
+                outcome = ApplyScenario.Response.COMPLETED
+                detail = "scenario configuration accepted by fleet simulation"
+            self._apply_results[key] = (outcome, detail)
+        response.outcome = outcome
+        response.detail = detail
+        return response
 
     def _update_status(self, robot_id: str, message: String) -> None:
         with self._lock:
@@ -252,6 +307,7 @@ class FleetManager(Node):
 
     def destroy_node(self):
         self._action_server.destroy()
+        self.destroy_service(self._apply_service)
         return super().destroy_node()
 
 

@@ -10,6 +10,7 @@ from ev_twin_api.schemas.base import UtcDatetime
 class ScenarioStatus(StrEnum):
     DRAFT = "DRAFT"
     SIMULATED = "SIMULATED"
+    SUBMITTED = "SUBMITTED"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
     APPLIED = "APPLIED"

@@ -10,10 +10,11 @@ from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 import rclpy
 from amr_interfaces.msg import TaskState
+from amr_interfaces.srv import ApplyScenario
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
@@ -260,6 +261,11 @@ class TelemetryBridge(Node):
         self._delivered_samples = 0
         self._failed_deliveries = 0
         self._robot_errors: dict[str, str] = {}
+        self._backend_url = backend_url
+        self._secret = secret
+        self._opener = opener
+        self._bridge_id = str(self.get_parameter("bridge_id").value)
+        self._command_active = False
 
         def sender(path: str):
             endpoint = edge_endpoint(backend_url, path)
@@ -331,8 +337,89 @@ class TelemetryBridge(Node):
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
         )
         self.create_subscription(TaskState, "/fleet/task_updates", self._on_task, task_qos)
+        self._apply_client = self.create_client(ApplyScenario, "/fleet/apply_scenario")
         self.create_timer(0.1, self._queue_latest)
         self.create_timer(1.0, self._queue_health)
+        self.create_timer(1.0, self._poll_command)
+
+    def _poll_command(self) -> None:
+        if self._command_active:
+            return
+        endpoint = edge_endpoint(
+            self._backend_url,
+            "/internal/v1/commands/next?bridge_id=" + quote(self._bridge_id, safe=""),
+        )
+        request = urllib.request.Request(
+            endpoint, headers={"Authorization": "Bearer " + self._secret}
+        )
+        try:
+            with self._opener.open(request, timeout=2) as response:
+                payload = json.loads(response.read())
+        except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError):
+            return
+        if payload is None:
+            return
+        operation_id = str(payload.get("operation_id", ""))
+        attempt = payload.get("attempt_number")
+        scenario = payload.get("payload")
+        if not operation_id or not isinstance(attempt, int) or not isinstance(scenario, dict):
+            self.get_logger().warning("ignoring malformed edge command")
+            return
+        acknowledgement = {
+            "operation_id": operation_id,
+            "attempt_number": attempt,
+            "bridge_id": self._bridge_id,
+        }
+        if not self._post_command("/internal/v1/commands/ack", acknowledgement):
+            return
+        if not self._apply_client.service_is_ready():
+            self._post_result(acknowledgement, "FAILED", "fleet apply service unavailable")
+            return
+        goal = ApplyScenario.Request()
+        goal.operation_id = operation_id
+        goal.attempt_number = attempt
+        goal.scenario_id = str(payload.get("scenario_id", ""))
+        goal.layout_id = str(scenario.get("layout_id", ""))
+        goal.layout_version = int(scenario.get("layout_version", 0))
+        goal.route_id = str(scenario.get("route_id", ""))
+        goal.robot_count = int(scenario.get("num_robots", 0))
+        goal.robot_speed_mps = float(scenario.get("robot_speed_mps", 0.0))
+        goal.charger_count = int(scenario.get("charger_count", 0))
+        goal.demand_interval_seconds = float(scenario.get("task_arrival_interval", 0.0))
+        self._command_active = True
+        future = self._apply_client.call_async(goal)
+        future.add_done_callback(
+            lambda completed, ack=acknowledgement: self._on_apply_result(completed, ack)
+        )
+
+    def _on_apply_result(self, future, acknowledgement: dict) -> None:
+        try:
+            result = future.result()
+            status = "COMPLETED" if result.outcome == ApplyScenario.Response.COMPLETED else "FAILED"
+            detail = result.detail
+        except Exception as error:
+            status, detail = "FAILED", str(error)
+        finally:
+            self._command_active = False
+        self._post_result(acknowledgement, status, detail)
+
+    def _post_result(self, acknowledgement: dict, status: str, detail: str) -> None:
+        self._post_command(
+            "/internal/v1/commands/result",
+            {**acknowledgement, "status": status, "detail": detail},
+        )
+
+    def _post_command(self, path: str, payload: dict) -> bool:
+        request = urllib.request.Request(
+            edge_endpoint(self._backend_url, path),
+            json.dumps(payload, separators=(",", ":")).encode(),
+            {"Content-Type": "application/json", "Authorization": "Bearer " + self._secret},
+        )
+        try:
+            with self._opener.open(request, timeout=2) as response:
+                return response.status < 300
+        except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError):
+            return False
 
     def _set(self, robot_id: str, field: str, value) -> None:
         with self._lock:

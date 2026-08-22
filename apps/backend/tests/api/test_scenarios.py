@@ -10,11 +10,20 @@ from ev_twin_api.api.scenarios import (
     list_scenarios,
     reject_scenario,
     run_scenario,
+    submit_scenario,
 )
 from ev_twin_api.main import app
 from ev_twin_api.schemas.auth import AppRole
+from ev_twin_api.schemas.command import (
+    ApplyScenarioRequest,
+    CommandAcknowledgementRequest,
+    CommandResultRequest,
+    CommandStatus,
+)
 from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.schemas.scenario import ScenarioRunRequest, ScenarioStatus
+from ev_twin_api.services.audit_service import InMemoryAuditRepository
+from ev_twin_api.services.command_service import CommandService, InMemoryCommandRepository
 from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.layout_repository import InMemoryLayoutRepository
 from ev_twin_api.services.layout_service import LayoutService
@@ -117,11 +126,14 @@ async def test_list_and_detail_return_in_memory_scenario() -> None:
 
 @pytest.mark.asyncio
 async def test_apply_requires_approved_status() -> None:
-    service, _, _, _ = build_scenario_service()
+    service, _, _, manager = build_scenario_service()
+    commands = CommandService(
+        InMemoryCommandRepository(), service, manager, InMemoryAuditRepository()
+    )
     scenario = await run_scenario(scenario_request(), service, DESIGNER)
 
     with pytest.raises(HTTPException) as error:
-        await apply_scenario(scenario.id, service, MONITOR)
+        await apply_scenario(scenario.id, ApplyScenarioRequest(), commands, MONITOR)
 
     assert error.value.status_code == 409
     assert "must be APPROVED" in str(error.value.detail)
@@ -131,19 +143,18 @@ async def test_apply_requires_approved_status() -> None:
 async def test_rejected_scenario_cannot_be_approved_or_applied() -> None:
     service, _, _, _ = build_scenario_service()
     scenario = await run_scenario(scenario_request(), service, DESIGNER)
-
+    await submit_scenario(scenario.id, service, DESIGNER)
     rejected = await reject_scenario(scenario.id, service, MONITOR)
 
     assert rejected.status == ScenarioStatus.REJECTED
     assert rejected.reviewed_at is not None
-    for action in (approve_scenario, apply_scenario):
-        with pytest.raises(HTTPException) as error:
-            await action(scenario.id, service, MONITOR)
-        assert error.value.status_code == 409
+    with pytest.raises(HTTPException) as error:
+        await approve_scenario(scenario.id, service, MONITOR)
+    assert error.value.status_code == 409
 
 
 @pytest.mark.asyncio
-async def test_approve_then_apply_resets_realtime_factory() -> None:
+async def test_apply_waits_for_positive_command_result() -> None:
     service, mock_factory, state, manager = build_scenario_service()
     broadcast = AsyncMock()
     manager.broadcast = broadcast
@@ -152,18 +163,40 @@ async def test_approve_then_apply_resets_realtime_factory() -> None:
         service,
         DESIGNER,
     )
-
+    submitted = await submit_scenario(scenario.id, service, DESIGNER)
     approved = await approve_scenario(scenario.id, service, MONITOR)
-    applied = await apply_scenario(scenario.id, service, MONITOR)
+    commands = CommandService(
+        InMemoryCommandRepository(), service, manager, InMemoryAuditRepository()
+    )
+    command = await apply_scenario(scenario.id, ApplyScenarioRequest(), commands, MONITOR)
+    leased = await commands.lease("edge-test")
+    assert leased is not None
+    await commands.acknowledge(
+        CommandAcknowledgementRequest(
+            operation_id=command.operation_id, attempt_number=1, bridge_id="edge-test"
+        )
+    )
+    assert (await service.get(scenario.id)).status == ScenarioStatus.APPROVED
+    applied_command = await commands.result(
+        CommandResultRequest(
+            operation_id=command.operation_id,
+            attempt_number=1,
+            bridge_id="edge-test",
+            status=CommandStatus.COMPLETED,
+        )
+    )
+    applied = await service.get(scenario.id)
 
+    assert submitted.status == ScenarioStatus.SUBMITTED
     assert approved.status == ScenarioStatus.APPROVED
     assert approved.reviewed_at is not None
     assert approved.reviewed_by == MONITOR.id
-    assert approved.version == 2
+    assert approved.version == 3
+    assert applied_command.status == CommandStatus.COMPLETED
     assert applied.status == ScenarioStatus.APPLIED
     assert applied.applied_at is not None
     assert applied.applied_by == MONITOR.id
-    assert applied.version == 3
+    assert applied.version == 4
     assert mock_factory.config.robot_count == 4
     assert mock_factory.config.task_interval_seconds == 6.0
     assert len(state.list_robots()) == 4
@@ -177,7 +210,7 @@ async def test_approve_then_apply_resets_realtime_factory() -> None:
 async def test_service_rejects_creator_review_even_if_route_guard_is_bypassed() -> None:
     service, _, _, _ = build_scenario_service()
     scenario = await service.run(scenario_request(), DESIGNER)
-
+    await service.submit(scenario.id, DESIGNER)
     with pytest.raises(InvalidScenarioTransitionError, match="creator cannot"):
         await service.approve(scenario.id, DESIGNER)
 
@@ -190,12 +223,13 @@ async def test_failed_apply_restores_factory_config_and_keeps_scenario_approved(
         scenario_request(num_robots=4, task_arrival_interval=6.0),
         DESIGNER,
     )
+    await service.submit(scenario.id, DESIGNER)
     approved = await service.approve(scenario.id, MONITOR)
     reset = AsyncMock(side_effect=[RuntimeError("reset failed"), None])
     mock_factory.reset = reset
 
     with pytest.raises(RuntimeError, match="reset failed"):
-        await service.apply(approved.id, MONITOR)
+        await service.complete_apply(approved.id, MONITOR)
 
     stored = await service.get(approved.id)
     assert stored.status == ScenarioStatus.APPROVED
@@ -238,6 +272,7 @@ def test_openapi_exposes_scenario_workflow() -> None:
 
     assert "/api/v1/scenarios/run" in paths
     assert "/api/v1/scenarios/baseline" in paths
+    assert "/api/v1/scenarios/{scenario_id}/submit" in paths
     assert "/api/v1/scenarios/{scenario_id}/approve" in paths
     assert "/api/v1/scenarios/{scenario_id}/reject" in paths
     assert "/api/v1/scenarios/{scenario_id}/apply" in paths

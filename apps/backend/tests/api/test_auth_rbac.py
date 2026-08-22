@@ -43,11 +43,13 @@ READ_ENDPOINTS = [
     ("/api/v1/scenarios", 200),
     ("/api/v1/scenarios/baseline", 200),
     ("/api/v1/scenarios/SCN-9999", 404),
+    ("/api/v1/commands", 200),
 ]
 
 PROTECTED_REQUESTS: list[tuple[str, str, dict[str, object] | None]] = [
     *(("GET", path, None) for path, _ in READ_ENDPOINTS),
     ("POST", "/api/v1/scenarios/run", SCENARIO_PAYLOAD),
+    ("POST", "/api/v1/scenarios/SCN-9999/submit", None),
     ("POST", "/api/v1/scenarios/SCN-9999/approve", None),
     ("POST", "/api/v1/scenarios/SCN-9999/reject", None),
     ("POST", "/api/v1/scenarios/SCN-9999/apply", None),
@@ -115,13 +117,16 @@ async def test_designer_run_then_monitor_review_and_apply(client: AsyncClient) -
     assert run_response.status_code == 200
     scenario_id = run_response.json()["id"]
 
+    submit_response = await client.post(f"/api/v1/scenarios/{scenario_id}/submit")
+
     use_role(AppRole.MONITOR)
     approve_response = await client.post(f"/api/v1/scenarios/{scenario_id}/approve")
-    apply_response = await client.post(f"/api/v1/scenarios/{scenario_id}/apply")
+    apply_response = await client.post(f"/api/v1/scenarios/{scenario_id}/apply", json={})
 
+    assert submit_response.status_code == 200
     assert approve_response.status_code == 200
     assert apply_response.status_code == 200
-    assert apply_response.json()["status"] == "APPLIED"
+    assert apply_response.json()["status"] == "PENDING"
 
 
 @pytest.mark.asyncio
@@ -130,6 +135,13 @@ async def test_only_designer_can_run_scenario(client: AsyncClient) -> None:
 
     response = await client.post("/api/v1/scenarios/run", json=SCENARIO_PAYLOAD)
 
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_only_designer_can_submit_scenario(client: AsyncClient) -> None:
+    use_role(AppRole.MONITOR)
+    response = await client.post("/api/v1/scenarios/SCN-9999/submit")
     assert response.status_code == 403
 
 
@@ -225,6 +237,9 @@ def test_openapi_declares_bearer_security_for_all_non_health_rest_operations() -
         "/internal/v1/telemetry",
         "/internal/v1/task-updates",
         "/internal/v1/bridge-health",
+        "/internal/v1/commands/next",
+        "/internal/v1/commands/ack",
+        "/internal/v1/commands/result",
     }
     schema = app.openapi()
     schemes = schema["components"]["securitySchemes"]

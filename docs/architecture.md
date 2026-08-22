@@ -2917,3 +2917,11 @@ candidates; each evaluated candidate remains auditable through the scenario row.
 Backend `ScenarioService` requires `LayoutService`; there is no layout-free or
 legacy benchmark fallback in the API runtime. The legacy simulation runner is
 kept only for standalone evaluation fixtures.
+
+Scenario application uses a durable outbound-only command path. Render stores a
+PENDING command; the edge bridge leases it over authenticated HTTPS, records ACK,
+executes the typed `/fleet/apply_scenario` ROS service and posts the terminal
+result. One operation has multiple immutable attempts. A scenario remains
+APPROVED through PENDING/ACKNOWLEDGED/FAILED/TIMED_OUT and becomes APPLIED only
+after a positive result. Unsupported topology changes fail explicitly and require
+a Gazebo relaunch.

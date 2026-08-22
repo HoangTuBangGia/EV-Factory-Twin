@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from ev_twin_api import __version__
 from ev_twin_api.api.alerts import router as alerts_router
 from ev_twin_api.api.auth import router as auth_router
+from ev_twin_api.api.commands import router as commands_router
 from ev_twin_api.api.edge_runtime import router as edge_runtime_router
 from ev_twin_api.api.factory import router as factory_router
 from ev_twin_api.api.health import router as health_router
@@ -33,6 +34,12 @@ from ev_twin_api.services.audit_service import (
     SqlAlchemyAuditRepository,
 )
 from ev_twin_api.services.auth_service import AuthService, SqlAlchemyProfileRepository
+from ev_twin_api.services.command_service import (
+    CommandRepository,
+    CommandService,
+    InMemoryCommandRepository,
+    SqlAlchemyCommandRepository,
+)
 from ev_twin_api.services.edge_runtime import EdgeRuntimeService
 from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.kpi_snapshot_writer import build_kpi_snapshot_writer
@@ -118,10 +125,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     audit_repository: AuditRepository
     layout_repository: LayoutRepository
     scenario_repository: ScenarioRepository
+    command_repository: CommandRepository
     if database.configured:
         audit_repository = SqlAlchemyAuditRepository(database)
         layout_repository = SqlAlchemyLayoutRepository(database)
         scenario_repository = SqlAlchemyScenarioRepository(database)
+        command_repository = SqlAlchemyCommandRepository(database)
     else:
         in_memory_audit_repository = InMemoryAuditRepository()
         audit_repository = in_memory_audit_repository
@@ -129,6 +138,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             in_memory_audit_repository, include_default=True
         )
         scenario_repository = InMemoryScenarioRepository(in_memory_audit_repository)
+        command_repository = InMemoryCommandRepository()
         logger.warning(
             "DATABASE_URL is not configured; scenarios and audit events are in-memory only"
         )
@@ -140,6 +150,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         repository=scenario_repository,
     )
     app.state.optimization_service = OptimizationService(app.state.scenario_service)
+    app.state.command_service = CommandService(
+        command_repository,
+        app.state.scenario_service,
+        websocket_manager,
+        audit_repository,
+    )
     app.state.websocket_manager = websocket_manager
     kpi_snapshot_writer = build_kpi_snapshot_writer(
         database=database,
@@ -181,6 +197,7 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(auth_router)
+app.include_router(commands_router)
 app.include_router(factory_router)
 app.include_router(layouts_router)
 app.include_router(robots_router)

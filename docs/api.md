@@ -73,10 +73,14 @@ string/log/frontend và không được tái sử dụng service-role key.
 | GET | `/api/v1/scenarios/baseline` | [`Scenario`](#scenario) | Benchmark baseline chuẩn của repository |
 | GET | `/api/v1/scenarios/{scenario_id}` | [`Scenario`](#scenario) | Chi tiết candidate; id lạ → 404 |
 | POST | `/api/v1/scenarios/run` | [`Scenario`](#scenario) | Chạy benchmark SimPy cho candidate |
+| POST | `/api/v1/scenarios/{scenario_id}/submit` | [`Scenario`](#scenario) | DESIGNER submit candidate đã mô phỏng |
 | POST | `/api/v1/optimizations/run` | `OptimizationResult` | Đánh giá và xếp hạng tối đa 64 candidate |
 | POST | `/api/v1/scenarios/{scenario_id}/approve` | [`Scenario`](#scenario) | Phê duyệt candidate đã mô phỏng |
 | POST | `/api/v1/scenarios/{scenario_id}/reject` | [`Scenario`](#scenario) | Từ chối candidate đã mô phỏng |
-| POST | `/api/v1/scenarios/{scenario_id}/apply` | [`Scenario`](#scenario) | Áp dụng candidate đã duyệt vào ROS2/fallback runtime |
+| POST | `/api/v1/scenarios/{scenario_id}/apply` | `Command` | Tạo durable apply command PENDING |
+| GET | `/api/v1/commands` | `Command[]` | Danh sách command/attempt |
+| GET | `/api/v1/commands/{operation_id}` | `Command` | Chi tiết command |
+| POST | `/api/v1/commands/{operation_id}/retry` | `Command` | MONITOR retry failed/timeout command |
 | WS | `/ws/factory` | [envelope](#websocket-event-envelope) | Stream realtime |
 | POST | `/internal/v1/telemetry` | `TelemetryIngressResponse` | Edge bridge gửi một canonical robot sample |
 | POST | `/internal/v1/task-updates` | `EdgeUpdateResponse` | Edge bridge gửi một ROS task transition |
@@ -515,6 +519,7 @@ thuộc layout trả **422**.
 ```text
 DRAFT
 SIMULATED
+SUBMITTED
 APPROVED
 REJECTED
 APPLIED
@@ -529,15 +534,28 @@ Các chuyển trạng thái hợp lệ:
 POST /run
     │
     ▼
-SIMULATED ── approve ──▶ APPROVED ── apply ──▶ APPLIED
-    │
-    └──────── reject ──▶ REJECTED
+SIMULATED ── submit ──▶ SUBMITTED ── approve ──▶ APPROVED
+                              │                       │
+                              └──── reject ──▶ REJECTED
+                                                      │ apply command COMPLETED
+                                                      ▼
+                                                   APPLIED
 ```
 
-- `approve` và `reject` chỉ hợp lệ khi status hiện tại là `SIMULATED`.
+- `submit` chỉ creator DESIGNER thực hiện từ `SIMULATED`.
+- `approve` và `reject` chỉ hợp lệ khi status hiện tại là `SUBMITTED`.
 - `apply` chỉ hợp lệ khi status hiện tại là `APPROVED`.
 - `REJECTED` và `APPLIED` là trạng thái kết thúc trong MVP.
 - Chuyển trạng thái không hợp lệ → **409**; id candidate không tồn tại → **404**.
+
+### Apply command
+
+`POST /api/v1/scenarios/{id}/apply` không đổi scenario ngay. Nó trả command với
+`operation_id`, status `PENDING`, timeout/retry budget và attempt 1. Edge bridge
+chủ động lease command bằng shared secret, POST ACK, gọi typed ROS service rồi
+POST `COMPLETED` hoặc `FAILED`. Scenario chỉ chuyển `APPROVED → APPLIED` sau
+`COMPLETED`. Retry giữ nguyên `operation_id` và tạo attempt number mới; topology
+không thể hot-apply phải trả `FAILED` với lý do cần relaunch Gazebo.
 
 ### Scenario
 

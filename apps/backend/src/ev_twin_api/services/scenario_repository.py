@@ -133,9 +133,19 @@ SET
     reviewed_at = :occurred_at,
     version = version + 1
 WHERE id = :scenario_id
-  AND status = 'SIMULATED'::public.scenario_status
+  AND status = 'SUBMITTED'::public.scenario_status
   AND version = :expected_version
   AND created_by <> :actor_id
+RETURNING {SCENARIO_COLUMNS_SQL}
+"""
+
+SCENARIO_SUBMIT_SQL = f"""
+UPDATE public.scenarios
+SET status = 'SUBMITTED'::public.scenario_status, version = version + 1
+WHERE id = :scenario_id
+  AND status = 'SIMULATED'::public.scenario_status
+  AND version = :expected_version
+  AND created_by = :actor_id
 RETURNING {SCENARIO_COLUMNS_SQL}
 """
 
@@ -206,6 +216,7 @@ def scenario_to_audit_data(scenario: Scenario) -> dict[str, Any]:
 
 def _audit_action_for_status(status: ScenarioStatus) -> AuditAction:
     actions = {
+        ScenarioStatus.SUBMITTED: AuditAction.SCENARIO_SUBMITTED,
         ScenarioStatus.APPROVED: AuditAction.SCENARIO_APPROVED,
         ScenarioStatus.REJECTED: AuditAction.SCENARIO_REJECTED,
         ScenarioStatus.APPLIED: AuditAction.SCENARIO_APPLIED,
@@ -367,12 +378,18 @@ class InMemoryScenarioRepository:
                     f"Scenario '{before.id}' changed concurrently or cannot transition from "
                     f"{current.status} to {new_status}"
                 )
-            if current.created_by == actor.id:
+            if new_status == ScenarioStatus.SUBMITTED and current.created_by != actor.id:
+                raise ScenarioRepositoryConflictError(
+                    f"Scenario '{before.id}' can only be submitted by its creator"
+                )
+            if new_status != ScenarioStatus.SUBMITTED and current.created_by == actor.id:
                 raise ScenarioRepositoryConflictError(
                     f"Scenario '{before.id}' creator cannot review or apply their own scenario"
                 )
 
-            if new_status in {ScenarioStatus.APPROVED, ScenarioStatus.REJECTED}:
+            if new_status == ScenarioStatus.SUBMITTED:
+                after = current.with_status(new_status)
+            elif new_status in {ScenarioStatus.APPROVED, ScenarioStatus.REJECTED}:
                 after = current.with_status(
                     new_status,
                     reviewed_at=occurred_at,
@@ -484,7 +501,9 @@ class SqlAlchemyScenarioRepository:
         occurred_at: datetime,
         before_commit: TransitionHook | None = None,
     ) -> Scenario:
-        if expected_status == ScenarioStatus.SIMULATED and new_status in {
+        if expected_status == ScenarioStatus.SIMULATED and new_status == ScenarioStatus.SUBMITTED:
+            statement = SCENARIO_SUBMIT_SQL
+        elif expected_status == ScenarioStatus.SUBMITTED and new_status in {
             ScenarioStatus.APPROVED,
             ScenarioStatus.REJECTED,
         }:

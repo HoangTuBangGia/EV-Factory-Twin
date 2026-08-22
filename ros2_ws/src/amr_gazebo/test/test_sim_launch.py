@@ -240,7 +240,7 @@ class TestSimRuntime(unittest.TestCase):
             assert max(message.percentage for message in batteries["amr_02"]) > 0.6
 
             timeout_goal = NavigateToStation.Goal()
-            timeout_goal.station_id = "MARRIAGE_STATION"
+            timeout_goal.station_id = "CHARGING_STATION"
             timeout_goal.task_id = "TASK-0001"
             timeout_goal.payload_id = "BP-0001"
             timeout_goal.timeout_seconds = 0.2

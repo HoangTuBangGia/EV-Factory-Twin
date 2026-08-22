@@ -134,6 +134,7 @@ def _robot_actions(context):
                             "robot_id": str(robot["robot_id"]),
                             "stations_config": stations_config,
                             "initial_battery": robot["initial_battery"],
+                            "linear_speed": LaunchConfiguration("runtime_robot_speed_mps"),
                             "use_sim_time": True,
                         }
                     ],
@@ -150,6 +151,11 @@ def _robot_actions(context):
                     {
                         "robots_config": config_path,
                         "stations_config": stations_config,
+                        "runtime_robot_speed_mps": LaunchConfiguration("runtime_robot_speed_mps"),
+                        "runtime_charger_count": LaunchConfiguration("runtime_charger_count"),
+                        "runtime_demand_interval_seconds": LaunchConfiguration(
+                            "runtime_demand_interval_seconds"
+                        ),
                         "use_sim_time": True,
                     }
                 ],
@@ -177,6 +183,9 @@ def generate_launch_description():
             DeclareLaunchArgument("gz_args", default_value="-r"),
             DeclareLaunchArgument("robots_config", default_value=default_config),
             DeclareLaunchArgument("stations_config", default_value=default_stations),
+            DeclareLaunchArgument("runtime_robot_speed_mps", default_value="1.0"),
+            DeclareLaunchArgument("runtime_charger_count", default_value="1"),
+            DeclareLaunchArgument("runtime_demand_interval_seconds", default_value="8.0"),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     PathJoinSubstitution(

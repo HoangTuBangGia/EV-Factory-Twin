@@ -95,6 +95,38 @@ EXPECTED_COLUMNS = {
         "created_by",
         "created_at",
     },
+    "scenario_reviews": {"id", "scenario_id", "decision", "actor_id", "created_at"},
+    "commands": {
+        "operation_id",
+        "scenario_id",
+        "status",
+        "payload",
+        "timeout_seconds",
+        "max_retries",
+        "requested_by",
+        "created_at",
+        "updated_at",
+    },
+    "command_attempts": {
+        "operation_id",
+        "attempt_number",
+        "status",
+        "leased_by",
+        "leased_at",
+        "lease_expires_at",
+        "acknowledged_at",
+        "completed_at",
+        "detail",
+    },
+    "command_acknowledgements": {
+        "id",
+        "operation_id",
+        "attempt_number",
+        "status",
+        "bridge_id",
+        "detail",
+        "created_at",
+    },
 }
 
 
@@ -185,6 +217,17 @@ def test_application_enums_match_the_api_contract() -> None:
         "APPROVED",
         "REJECTED",
         "APPLIED",
+    )
+    lifecycle_migration = (
+        MIGRATION_DIRECTORY / "20260822000350_add_submitted_scenario_status.sql"
+    ).read_text()
+    assert "add value if not exists 'submitted'" in lifecycle_migration.lower()
+    assert enums["public.command_status"] == (
+        "PENDING",
+        "ACKNOWLEDGED",
+        "COMPLETED",
+        "FAILED",
+        "TIMED_OUT",
     )
 
 

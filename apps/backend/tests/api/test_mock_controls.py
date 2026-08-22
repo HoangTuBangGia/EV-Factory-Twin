@@ -84,6 +84,7 @@ async def test_manual_reset_waits_for_scenario_apply_control_lock() -> None:
         ),
         DESIGNER,
     )
+    await service.submit(scenario.id, DESIGNER)
     approved = await service.approve(scenario.id, MONITOR)
 
     first_reset_started = asyncio.Event()
@@ -103,7 +104,7 @@ async def test_manual_reset_waits_for_scenario_apply_control_lock() -> None:
     audit_repository = InMemoryAuditRepository()
     audit_service = AuditService(audit_repository)
 
-    apply_task = asyncio.create_task(service.apply(approved.id, MONITOR))
+    apply_task = asyncio.create_task(service.complete_apply(approved.id, MONITOR))
     await first_reset_started.wait()
     manual_reset_task = asyncio.create_task(reset_mock(mock_factory, audit_service, MONITOR))
     await asyncio.sleep(0)
