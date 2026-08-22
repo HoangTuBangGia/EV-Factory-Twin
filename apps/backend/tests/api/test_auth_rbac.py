@@ -38,14 +38,18 @@ READ_ENDPOINTS = [
     ("/api/v1/tasks/TASK-9999", 404),
     ("/api/v1/metrics", 200),
     ("/api/v1/alerts", 200),
+    ("/api/v1/layouts", 200),
+    ("/api/v1/layouts/LAYOUT-9999", 404),
     ("/api/v1/scenarios", 200),
     ("/api/v1/scenarios/baseline", 200),
     ("/api/v1/scenarios/SCN-9999", 404),
+    ("/api/v1/commands", 200),
 ]
 
 PROTECTED_REQUESTS: list[tuple[str, str, dict[str, object] | None]] = [
     *(("GET", path, None) for path, _ in READ_ENDPOINTS),
     ("POST", "/api/v1/scenarios/run", SCENARIO_PAYLOAD),
+    ("POST", "/api/v1/scenarios/SCN-9999/submit", None),
     ("POST", "/api/v1/scenarios/SCN-9999/approve", None),
     ("POST", "/api/v1/scenarios/SCN-9999/reject", None),
     ("POST", "/api/v1/scenarios/SCN-9999/apply", None),
@@ -53,22 +57,6 @@ PROTECTED_REQUESTS: list[tuple[str, str, dict[str, object] | None]] = [
     ("POST", "/api/v1/mock/stop", None),
     ("POST", "/api/v1/mock/reset", None),
     ("POST", "/api/v1/mock/config", MOCK_CONFIG),
-    ("GET", "/api/v1/admin/audit", None),
-    ("GET", "/api/v1/admin/users", None),
-    (
-        "PATCH",
-        "/api/v1/admin/users/00000000-0000-0000-0000-000000000008",
-        {"is_active": False},
-    ),
-    (
-        "POST",
-        "/api/v1/admin/users/invite",
-        {
-            "email": "new@example.com",
-            "display_name": "New User",
-            "role": "DESIGNER",
-        },
-    ),
 ]
 
 
@@ -129,19 +117,21 @@ async def test_designer_run_then_monitor_review_and_apply(client: AsyncClient) -
     assert run_response.status_code == 200
     scenario_id = run_response.json()["id"]
 
+    submit_response = await client.post(f"/api/v1/scenarios/{scenario_id}/submit")
+
     use_role(AppRole.MONITOR)
     approve_response = await client.post(f"/api/v1/scenarios/{scenario_id}/approve")
-    apply_response = await client.post(f"/api/v1/scenarios/{scenario_id}/apply")
+    apply_response = await client.post(f"/api/v1/scenarios/{scenario_id}/apply", json={})
 
+    assert submit_response.status_code == 200
     assert approve_response.status_code == 200
     assert apply_response.status_code == 200
-    assert apply_response.json()["status"] == "APPLIED"
+    assert apply_response.json()["status"] == "PENDING"
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("role", [AppRole.MONITOR, AppRole.ADMIN])
-async def test_only_designer_can_run_scenario(client: AsyncClient, role: AppRole) -> None:
-    use_role(role)
+async def test_only_designer_can_run_scenario(client: AsyncClient) -> None:
+    use_role(AppRole.MONITOR)
 
     response = await client.post("/api/v1/scenarios/run", json=SCENARIO_PAYLOAD)
 
@@ -149,7 +139,13 @@ async def test_only_designer_can_run_scenario(client: AsyncClient, role: AppRole
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("role", [AppRole.DESIGNER, AppRole.ADMIN])
+async def test_only_designer_can_submit_scenario(client: AsyncClient) -> None:
+    use_role(AppRole.MONITOR)
+    response = await client.post("/api/v1/scenarios/SCN-9999/submit")
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     [
@@ -164,95 +160,14 @@ async def test_only_designer_can_run_scenario(client: AsyncClient, role: AppRole
 )
 async def test_only_monitor_can_mutate_review_or_factory(
     client: AsyncClient,
-    role: AppRole,
     path: str,
 ) -> None:
-    use_role(role)
+    use_role(AppRole.DESIGNER)
     payload = MOCK_CONFIG if path.endswith("/config") else None
 
     response = await request(client, "POST", path, payload)
 
     assert response.status_code == 403
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("role", [AppRole.DESIGNER, AppRole.MONITOR])
-async def test_only_admin_can_read_audit_events(client: AsyncClient, role: AppRole) -> None:
-    use_role(role)
-
-    response = await client.get("/api/v1/admin/audit")
-
-    assert response.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_admin_reads_scenario_audit_with_actor_and_time(client: AsyncClient) -> None:
-    designer = make_test_user(AppRole.DESIGNER)
-    use_role(AppRole.DESIGNER)
-    run_response = await client.post("/api/v1/scenarios/run", json=SCENARIO_PAYLOAD)
-    assert run_response.status_code == 200
-    scenario_id = run_response.json()["id"]
-
-    use_role(AppRole.ADMIN)
-    response = await client.get(
-        "/api/v1/admin/audit",
-        params={"resource_type": "scenario", "resource_id": scenario_id},
-    )
-
-    assert response.status_code == 200
-    events = response.json()
-    assert len(events) == 1
-    assert events[0]["action"] == "SCENARIO_RUN"
-    assert events[0]["actor_id"] == str(designer.id)
-    assert events[0]["created_at"].endswith("Z")
-
-
-@pytest.mark.asyncio
-async def test_manual_factory_reset_is_audited(client: AsyncClient) -> None:
-    monitor = make_test_user(AppRole.MONITOR)
-    use_role(AppRole.MONITOR)
-    reset_response = await client.post("/api/v1/mock/reset")
-    assert reset_response.status_code == 200
-
-    use_role(AppRole.ADMIN)
-    response = await client.get(
-        "/api/v1/admin/audit",
-        params={"resource_type": "factory", "resource_id": "mock-factory"},
-    )
-
-    assert response.status_code == 200
-    events = response.json()
-    assert [event["action"] for event in events[:2]] == [
-        "FACTORY_RESET",
-        "FACTORY_RESET_REQUESTED",
-    ]
-    assert {event["request_id"] for event in events[:2]} == {events[0]["request_id"]}
-    assert events[0]["actor_id"] == str(monitor.id)
-    assert events[0]["after_data"]["reason"] == "manual"
-
-
-@pytest.mark.asyncio
-async def test_manual_factory_config_records_before_after_and_intent(client: AsyncClient) -> None:
-    monitor = make_test_user(AppRole.MONITOR)
-    use_role(AppRole.MONITOR)
-    config_response = await client.post("/api/v1/mock/config", json=MOCK_CONFIG)
-    assert config_response.status_code == 200
-
-    use_role(AppRole.ADMIN)
-    response = await client.get(
-        "/api/v1/admin/audit",
-        params={"resource_type": "factory", "resource_id": "mock-factory"},
-    )
-
-    assert response.status_code == 200
-    events = response.json()
-    assert [event["action"] for event in events[:2]] == [
-        "FACTORY_CONFIG_CHANGED",
-        "FACTORY_CONFIG_CHANGE_REQUESTED",
-    ]
-    assert {event["request_id"] for event in events[:2]} == {events[0]["request_id"]}
-    assert events[0]["actor_id"] == str(monitor.id)
-    assert events[0]["after_data"] == MOCK_CONFIG
 
 
 @pytest.mark.asyncio
@@ -318,6 +233,14 @@ async def test_missing_server_auth_configuration_returns_503(client: AsyncClient
 
 
 def test_openapi_declares_bearer_security_for_all_non_health_rest_operations() -> None:
+    edge_paths = {
+        "/internal/v1/telemetry",
+        "/internal/v1/task-updates",
+        "/internal/v1/bridge-health",
+        "/internal/v1/commands/next",
+        "/internal/v1/commands/ack",
+        "/internal/v1/commands/result",
+    }
     schema = app.openapi()
     schemes = schema["components"]["securitySchemes"]
     assert schemes["SupabaseAccessToken"]["scheme"] == "bearer"
@@ -329,5 +252,7 @@ def test_openapi_declares_bearer_security_for_all_non_health_rest_operations() -
                 continue
             if path == "/health":
                 assert "security" not in operation
+            elif path in edge_paths:
+                assert {"EdgeTelemetrySecret": []} in operation["security"]
             else:
                 assert {"SupabaseAccessToken": []} in operation["security"]

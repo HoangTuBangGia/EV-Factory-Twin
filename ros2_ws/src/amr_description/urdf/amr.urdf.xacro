@@ -1,0 +1,60 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="amr">
+  <xacro:arg name="prefix" default=""/>
+  <xacro:arg name="namespace" default="amr_01"/>
+  <xacro:property name="p" value="$(arg prefix)"/>
+  <xacro:property name="ns" value="$(arg namespace)"/>
+
+  <material name="blue"><color rgba="0.05 0.25 0.65 1"/></material>
+  <material name="black"><color rgba="0.03 0.03 0.03 1"/></material>
+
+  <link name="${p}base_footprint"/>
+  <link name="${p}base_link">
+    <visual><origin xyz="0 0 0.16"/><geometry><box size="0.65 0.48 0.22"/></geometry><material name="blue"/></visual>
+    <collision><origin xyz="0 0 0.16"/><geometry><box size="0.65 0.48 0.22"/></geometry></collision>
+    <inertial><origin xyz="0 0 0.16"/><mass value="35"/><inertia ixx="1.0" ixy="0" ixz="0" iyy="1.0" iyz="0" izz="1.0"/></inertial>
+  </link>
+  <joint name="${p}base_footprint_joint" type="fixed"><parent link="${p}base_footprint"/><child link="${p}base_link"/></joint>
+
+  <xacro:macro name="wheel" params="side y">
+    <link name="${p}${side}_wheel">
+      <visual><origin rpy="${pi/2} 0 0"/><geometry><cylinder radius="0.10" length="0.06"/></geometry><material name="black"/></visual>
+      <collision><origin rpy="${pi/2} 0 0"/><geometry><cylinder radius="0.10" length="0.06"/></geometry></collision>
+      <inertial><mass value="1"/><inertia ixx="0.01" iyy="0.01" izz="0.01" ixy="0" ixz="0" iyz="0"/></inertial>
+    </link>
+    <joint name="${p}${side}_wheel_joint" type="continuous"><parent link="${p}base_link"/><child link="${p}${side}_wheel"/><origin xyz="0 ${y} 0.10"/><axis xyz="0 1 0"/></joint>
+  </xacro:macro>
+  <xacro:wheel side="left" y="0.27"/>
+  <xacro:wheel side="right" y="-0.27"/>
+
+  <xacro:macro name="caster" params="end x">
+    <link name="${p}${end}_caster">
+      <visual><geometry><sphere radius="0.04"/></geometry><material name="black"/></visual>
+      <collision><geometry><sphere radius="0.04"/></geometry></collision>
+      <inertial><mass value="0.1"/><inertia ixx="0.000064" ixy="0" ixz="0" iyy="0.000064" iyz="0" izz="0.000064"/></inertial>
+    </link>
+    <joint name="${p}${end}_caster_joint" type="fixed"><parent link="${p}base_link"/><child link="${p}${end}_caster"/><origin xyz="${x} 0 0.04"/></joint>
+    <gazebo reference="${p}${end}_caster"><mu1>0.01</mu1><mu2>0.01</mu2></gazebo>
+  </xacro:macro>
+  <xacro:caster end="front" x="0.25"/>
+  <xacro:caster end="rear" x="-0.25"/>
+
+  <gazebo reference="${p}base_link"><mu1>0.8</mu1><mu2>0.8</mu2></gazebo>
+  <gazebo reference="${p}left_wheel"><mu1>1.0</mu1><mu2>1.0</mu2></gazebo>
+  <gazebo reference="${p}right_wheel"><mu1>1.0</mu1><mu2>1.0</mu2></gazebo>
+  <gazebo>
+    <plugin filename="gz-sim-velocity-control-system" name="gz::sim::systems::VelocityControl">
+      <topic>/${ns}/cmd_vel</topic>
+      <initial_linear>0 0 0</initial_linear>
+      <initial_angular>0 0 0</initial_angular>
+    </plugin>
+    <plugin filename="gz-sim-odometry-publisher-system" name="gz::sim::systems::OdometryPublisher">
+      <dimensions>2</dimensions>
+      <odom_topic>/${ns}/odom</odom_topic>
+      <tf_topic>/${ns}/tf</tf_topic>
+      <odom_frame>${ns}/odom</odom_frame>
+      <robot_base_frame>${ns}/base_footprint</robot_base_frame>
+      <odom_publish_frequency>30</odom_publish_frequency>
+    </plugin>
+  </gazebo>
+</robot>

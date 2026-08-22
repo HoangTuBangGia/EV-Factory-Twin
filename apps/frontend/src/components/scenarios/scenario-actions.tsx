@@ -26,10 +26,6 @@ export function ScenarioActions({
     );
   }
 
-  if (role === "ADMIN") {
-    return <div className="review-note">Administrator access is read-only for factory operations.</div>;
-  }
-
   if (status === "SIMULATED") {
     return (
       <div className="button-row scenario-actions">

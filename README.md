@@ -6,16 +6,17 @@ Dự án **P-078** được phát triển bởi nhóm **Super Extraordinary X** 
 
 ## Tổng quan
 
-Hệ thống hiện cung cấp:
+Phạm vi MVP nâng cao của hệ thống:
 
-- dashboard theo dõi đội AMR, task, KPI và cảnh báo;
-- bản đồ nhà máy và telemetry realtime;
-- REST API và WebSocket với mock factory engine tích hợp sẵn;
-- mô phỏng sự kiện rời rạc cho các kịch bản vận hành;
-- công cụ chạy batch và xếp hạng kịch bản theo throughput, cycle time và waiting time;
-- các domain model và phép đo dùng chung trong `twin-core`.
+- Gazebo/ROS 2 mô phỏng nhiều AMR và telemetry realtime;
+- telemetry bridge qua FastAPI/WebSocket tới giao diện 3D;
+- task/fleet lifecycle, cảnh báo bất thường và KPI vận hành;
+- chỉnh layout/configuration, chạy SimPy what-if và so sánh phương án;
+- workflow Designer/Monitor: submit, approve/reject và apply;
+- benchmark cơ bản cho telemetry latency và 3D rendering.
 
-> Trạng thái hiện tại: backend đang dùng mock factory engine. Kiến trúc giữ ổn định contract REST/WebSocket để có thể thay nguồn dữ liệu bằng ROS 2 trong giai đoạn tiếp theo.
+> Mock factory chỉ là fallback cho test/local development. Acceptance path của MVP
+> là Gazebo/ROS 2 → telemetry bridge → FastAPI → WebSocket → frontend 3D.
 
 ## Công nghệ
 
@@ -50,7 +51,13 @@ Hệ thống hiện cung cấp:
 - Node.js `22`
 - npm
 
-ROS 2 Jazzy và Gazebo Harmonic chỉ cần cho phần tích hợp robot/mô phỏng vật lý trong tương lai, không bắt buộc để chạy dashboard và mock backend hiện tại.
+ROS 2 Jazzy, Gazebo Harmonic và Nav2 chạy trên Ubuntu 24.04 tại factory edge hoặc
+VM/container host có quyền truy cập đồ họa/robotics. Chúng không chạy trên Vercel
+hoặc Render. Browser không truy cập trực tiếp ROS DDS.
+
+The first ROS slice is available with `make ros-check`; see
+[`docs/changes/ros-single-amr-telemetry.md`](docs/changes/ros-single-amr-telemetry.md)
+and [`docs/development.md`](docs/development.md) for the edge run.
 
 ## Bắt đầu nhanh
 
@@ -66,7 +73,7 @@ cd apps/frontend && npm ci && cd ../..
 
 ### 2. Chọn chế độ chạy
 
-#### Chỉ chạy frontend với dữ liệu mock
+#### Local mock development
 
 Đây là cách nhanh nhất để xem giao diện, không cần khởi động backend:
 
@@ -78,7 +85,25 @@ npm run dev
 
 Giữ `NEXT_PUBLIC_DATA_SOURCE=mock` trong `.env.local`, sau đó mở <http://localhost:3000>.
 
-#### Chạy full-stack với backend realtime
+#### Full stack với ROS 2/Gazebo
+
+Khởi động backend và frontend theo phần full-stack, sau đó chạy tại edge:
+
+```bash
+make ros-check
+make ros-build
+ros2 launch amr_gazebo sim.launch.py
+ros2 launch telemetry_bridge telemetry_bridge.launch.py \
+  robots_config:="$PWD/ros2_ws/src/amr_gazebo/config/robots.json"
+```
+
+`sim.launch.py` đọc `amr_gazebo/config/robots.json` và mặc định spawn AMR-01,
+AMR-02 với namespace/pose riêng. Có thể copy file JSON, thêm robot rồi truyền
+`robots_config:=/absolute/path/robots.json`. Một bridge đọc toàn bộ fleet config,
+gửi telemetry, task update và bridge health tới các machine endpoint `/internal/v1`.
+Không expose ROS graph hoặc DDS ra Internet.
+
+#### Full stack với backend realtime
 
 Tại terminal thứ nhất, từ thư mục gốc repository:
 
@@ -130,12 +155,15 @@ Backend đọc file `.env` tại thư mục đang chạy lệnh. Các biến ch�
 | `MOCK_TASK_INTERVAL_SECONDS` | `8` | Khoảng thời gian sinh task |
 | `MOCK_ROBOT_SPEED_MPS` | `1.2` | Tốc độ robot (m/s) |
 | `MOCK_SIMULATION_SPEED` | `1` | Hệ số tốc độ mô phỏng |
+| `EDGE_TELEMETRY_SHARED_SECRET` | trống | Bearer secret backend/edge cho internal telemetry ingress |
+| `EDGE_TELEMETRY_MAX_FUTURE_SKEW_SECONDS` | `5` | Độ lệch UTC tương lai tối đa cho telemetry (`0`–`300` giây) |
 
 Frontend dùng các biến `NEXT_PUBLIC_*` trong `apps/frontend/.env.local`. Xem mẫu đầy đủ tại `apps/frontend/.env.example`.
 
 ## API chính
 
-Mọi REST endpoint nghiệp vụ nằm dưới `/api/v1`, ngoại trừ `/health`.
+Mọi browser REST endpoint nghiệp vụ nằm dưới `/api/v1`, ngoại trừ `/health`.
+Factory-edge telemetry dùng machine endpoint riêng tại `/internal/v1/telemetry`.
 
 | Method | Endpoint | Mô tả |
 |---|---|---|
@@ -149,6 +177,7 @@ Mọi REST endpoint nghiệp vụ nằm dưới `/api/v1`, ngoại trừ `/healt
 | `POST` | `/api/v1/mock/stop` | Dừng mock engine |
 | `POST` | `/api/v1/mock/reset` | Reset trạng thái mô phỏng |
 | `POST` | `/api/v1/mock/config` | Cập nhật tham số mô phỏng |
+| `POST` | `/internal/v1/telemetry` | Edge bridge gửi canonical robot telemetry |
 | `WS` | `/ws/factory` | Stream sự kiện realtime |
 
 Schema và contract chi tiết nằm trong [docs/api.md](docs/api.md).

@@ -2,7 +2,6 @@ import type { AppRole } from "@/schemas/auth";
 
 export function defaultRouteForRole(role: AppRole) {
   if (role === "DESIGNER") return "/scenarios";
-  if (role === "ADMIN") return "/admin";
   return "/";
 }
 

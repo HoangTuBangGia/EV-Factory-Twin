@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>amr_gazebo</name>
+  <version>0.1.0</version>
+  <description>Deterministic Gazebo Harmonic AMR launch and world.</description>
+  <maintainer email="dev@example.com">EV Factory Twin</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>amr_description</exec_depend>
+  <exec_depend>amr_navigation</exec_depend>
+  <exec_depend>fleet_manager</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>ros_gz_sim</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>rosgraph_msgs</exec_depend>
+  <exec_depend>tf2_msgs</exec_depend>
+  <exec_depend>task_manager</exec_depend>
+  <exec_depend>xacro</exec_depend>
+  <test_depend>launch_testing_ament_cmake</test_depend>
+  <test_depend>ament_cmake_pytest</test_depend>
+  <test_depend>amr_interfaces</test_depend>
+  <test_depend>python3-pytest</test_depend>
+  <test_depend>rclpy</test_depend>
+  <test_depend>telemetry_bridge</test_depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

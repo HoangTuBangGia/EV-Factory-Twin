@@ -2,15 +2,16 @@
 
 ## Purpose
 
+The MVP evaluation covers both the ROS2/Gazebo live path and the SimPy what-if path.
 The SimPy simulation module provides a discrete-event benchmark for EV factory
 logistics KPIs such as throughput, cycle time, waiting time, backlog, and
 completion rate. It is intended for fast multi-scenario comparison under AR-01,
 including changes in robot count, route time, and demand pressure.
 
-This SimPy benchmark does not replace Gazebo or ROS2. The main physical
-simulation architecture remains Gazebo -> ROS2 -> FastAPI -> WebSocket -> React.
-SimPy is used here only as a lightweight KPI benchmark layer, while Gazebo/ROS2
-remain the primary physical simulation and telemetry source for the product.
+This SimPy benchmark does not replace Gazebo or ROS2. The main physical path is
+Gazebo -> ROS2 -> fleet/task manager -> telemetry bridge -> FastAPI -> WebSocket ->
+Three.js. SimPy is the lightweight what-if and layout comparison layer, while
+Gazebo/ROS2 remain the primary live simulation and telemetry source.
 
 ## Prerequisites
 
@@ -96,9 +97,26 @@ Run the full test suite with:
 uv run pytest
 ```
 
+## MVP ROS2 acceptance
+
+The evaluation is incomplete unless it demonstrates:
+
+- at least two AMRs running in Gazebo/Nav2;
+- telemetry received by FastAPI and rendered in the same 3D scene as mock data;
+- a backend task/command reaching the ROS2 fleet/task manager;
+- an abnormal condition producing a visible alert;
+- a layout candidate changing at least travel time, congestion or throughput;
+- Designer/Monitor approval before applying the candidate;
+- measured ROS-to-backend and backend-to-browser latency plus basic FPS.
+
+Run and record this hosted path with `docs/runbooks/mvp-edge-acceptance.md`.
+Backend/DB, frontend, ROS and container CI are necessary gates but do not replace
+the networked acceptance run against Render, Vercel and Supabase.
+
 ## Limitations
 
 - Does not model physical robot dynamics
-- Does not consume ROS2/Gazebo telemetry yet
+- Does not model production-grade robot dynamics or fleet optimization
 - Travel and loading times are deterministic
-- SimPy is used only for quick KPI and benchmark evaluation
+- SimPy is used only for quick KPI and layout benchmark evaluation
+- Incident replay UI đầy đủ và retention vượt policy 30/90 ngày nằm ngoài MVP

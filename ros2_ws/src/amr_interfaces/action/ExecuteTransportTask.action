@@ -1,0 +1,18 @@
+string task_id
+string payload_id
+string pickup_station_id
+string dropoff_station_id
+float32 navigation_timeout_seconds
+---
+uint8 SUCCESS=0
+uint8 FAILED=1
+uint8 TIMED_OUT=2
+uint8 NO_ROBOT_AVAILABLE=3
+
+uint8 outcome
+string assigned_robot_id
+string message
+---
+string status
+string assigned_robot_id
+string message

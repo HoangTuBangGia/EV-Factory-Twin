@@ -21,9 +21,17 @@ supabase db push
 connection URL in a command, migration, committed config file, screenshot, or
 CI log. Migration history makes these one-time files run in timestamp order.
 
-For a fully local Supabase stack, run `supabase start` and then
-`supabase db reset`. The reset command is destructive to the local database but
-replays the complete migration chain.
+For a fully local Supabase stack, use:
+
+```bash
+make supabase-start
+make supabase-status
+make supabase-reset
+```
+
+`make supabase-reset` is destructive to the local database but replays the
+complete migration chain. Use `make supabase-stop` when finished. Never run a
+linked reset against staging or production.
 
 ## Offline CI checks
 
@@ -40,7 +48,7 @@ gate explicitly before typechecking and the full test suite.
 
 This static gate cannot prove runtime RLS behavior for real JWT claims. Before a
 release, also replay the migrations against local/hosted Supabase and test the
-policies with access tokens for Designer, Monitor, Admin, an inactive user, and
+policies with access tokens for Designer, Monitor, an inactive user, and
 an anonymous request.
 
 ## Disable public sign-up
@@ -49,15 +57,15 @@ In the Supabase Dashboard, open **Authentication > Providers > Email** and turn
 off the option that allows new users to sign up. Keep email/password sign-in
 enabled. Factory Twin accounts are created by an administrator only.
 
-## Bootstrap the three demo accounts
+## Bootstrap the two demo accounts
 
 1. Open **Authentication > Users** in the Supabase Dashboard.
 2. Choose **Add user > Create new user**.
-3. Create one Designer, one Monitor, and one Admin email/password account. Use
+3. Create one Designer and one Monitor email/password account. Use
    **Auto Confirm User** for demo accounts if email confirmation is not part of
    the demo.
 4. Do not reuse the database password as a user password, and do not commit the
-   three passwords anywhere.
+   two passwords anywhere.
 5. Users created in the Dashboard have no trusted `app_role` metadata, so the
    safety trigger creates them as inactive Designers. Open **SQL Editor** and
    assign the intended roles explicitly, replacing the example emails:
@@ -75,11 +83,6 @@ from auth.users as users
 where profiles.id = users.id
   and lower(users.email) = lower('monitor@example.com');
 
-update public.profiles as profiles
-set display_name = 'Demo Admin', role = 'ADMIN', is_active = true
-from auth.users as users
-where profiles.id = users.id
-  and lower(users.email) = lower('admin@example.com');
 ```
 
 Verify that there is exactly one active account for each role:
@@ -91,8 +94,8 @@ join auth.users as users on users.id = profiles.id
 order by profiles.role, users.email;
 ```
 
-The `ADMIN` profile is a human application account. It is not the Supabase
-`service_role` key and does not inherit Designer or Monitor operations.
+The product does not expose user-management endpoints. Provisioning and recovery
+remain controlled through Supabase Dashboard for the MVP.
 
 ## Runtime write rules
 

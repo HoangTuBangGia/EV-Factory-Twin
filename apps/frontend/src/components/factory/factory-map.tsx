@@ -2,7 +2,8 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BUFFER_SLOT_COUNT } from "@/lib/factory-layout";
+import { BUFFER_SLOT_COUNT, defaultFactoryLayout } from "@/lib/factory-layout";
+import type { FactoryLayout } from "@/schemas/factory";
 import { useFactoryStore } from "@/stores/factory-store";
 import { FactoryMap2D } from "./factory-map-2d";
 
@@ -23,7 +24,21 @@ type Support = "probing" | "webgl" | "fallback";
 
 export interface FactoryMapProps {
   view?: "auto" | "2d";
+  layers?: FactoryMapLayers;
+  layout?: FactoryLayout;
 }
+
+export interface FactoryMapLayers {
+  stations: boolean;
+  routes: boolean;
+  noGoZones: boolean;
+}
+
+export const DEFAULT_FACTORY_MAP_LAYERS: FactoryMapLayers = {
+  stations: true,
+  routes: true,
+  noGoZones: true,
+};
 
 function detectWebGL(): boolean {
   try {
@@ -34,7 +49,11 @@ function detectWebGL(): boolean {
   }
 }
 
-export function FactoryMap({ view = "auto" }: FactoryMapProps) {
+export function FactoryMap({
+  view = "auto",
+  layers = DEFAULT_FACTORY_MAP_LAYERS,
+  layout = defaultFactoryLayout,
+}: FactoryMapProps) {
   const robotRecord = useFactoryStore((state) => state.robots);
   const robots = useMemo(() => Object.values(robotRecord), [robotRecord]);
   const selectedRobotId = useFactoryStore((state) => state.selectedRobotId);
@@ -60,19 +79,25 @@ export function FactoryMap({ view = "auto" }: FactoryMapProps) {
     {support === "probing" && <div className="map-loading"><span/>Building factory twin…</div>}
     {support === "webgl" && <FactoryScene
       robots={robots} selectedRobotId={selectedRobotId} onSelect={selectRobot}
-      bufferStock={bufferStock} resetSignal={resetSignal}
+      bufferStock={bufferStock} resetSignal={resetSignal} layers={layers} layout={layout}
     />}
     {support === "fallback" && <FactoryMap2D
       robots={robots} selectedRobotId={selectedRobotId} onSelect={selectRobot}
+      layers={layers}
+      layout={layout}
     />}
 
     <div className="map-hud" aria-hidden="true">
       <ul className="map-legend">
-        {LEGEND.map((item) => <li key={item.label}>
+        {LEGEND.filter((item) => {
+          if (item.label === "AMR route") return layers.routes;
+          if (item.label === "No-go") return layers.noGoZones;
+          return layers.stations;
+        }).map((item) => <li key={item.label}>
           <i style={{ background: item.color }}/>{item.label}
         </li>)}
       </ul>
-      <div className="map-scale">{20} × {15} m · 1 m grid</div>
+      <div className="map-scale">{layout.width} × {layout.height} m · 1 m grid</div>
       {support === "webgl" && <div className="map-hint">Drag to orbit · scroll to zoom</div>}
     </div>
     {support === "webgl" && <button type="button" className="map-reset" onClick={resetView}>

@@ -184,7 +184,7 @@ def test_finish_pickup_attaches_payload_and_starts_delivering() -> None:
     assert updated_task is not None
     assert updated_robot.status == RobotStatus.DELIVERING
     assert updated_robot.payload_id == task.payload_id
-    assert updated_task.status == TaskStatus.IN_PROGRESS
+    assert updated_task.status == TaskStatus.DELIVERING
 
 
 def test_arrive_at_dropoff_transitions_to_dropping() -> None:
@@ -200,7 +200,7 @@ def test_arrive_at_dropoff_transitions_to_dropping() -> None:
     assert updated_robot is not None
     assert updated_task is not None
     assert updated_robot.status == RobotStatus.DROPPING
-    assert updated_task.status == TaskStatus.DELIVERED
+    assert updated_task.status == TaskStatus.DELIVERING
 
 
 def test_finish_dropoff_completes_task_and_frees_robot() -> None:

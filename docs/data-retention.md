@@ -2,80 +2,50 @@
 
 ## MVP decision
 
-Factory Twin uses the Supabase PostgreSQL 17 database for identities, roles,
-scenario workflow state, review/apply actors, business audit events, and coarse
-KPI history. It does not persist the realtime robot telemetry stream.
+The target database is Supabase PostgreSQL 17.6.1.155. The MVP persists the
+telemetry history needed for stale detection, incident investigation and KPI
+calculation; it does not promise indefinite raw 10 Hz retention or a complete
+incident-replay UI.
 
-The backend currently publishes one robot telemetry event per robot at 10 Hz.
-Persisting that stream would create:
+Telemetry storage must be sampled or batched at an explicitly configured cadence.
+The source timestamp, ingest timestamp and `robot_id` form the ordering/isolation
+boundary. Late samples may be stored for history but must not overwrite a newer
+runtime snapshot.
 
-| Fleet size | Rows/second | Rows/day |
-|---:|---:|---:|
-| 5 robots (demo default) | 50 | 4,320,000 |
-| 10 robots (current configured maximum) | 100 | 8,640,000 |
+## Initial retention contract
 
-At an illustrative 0.5–1 KB per row after tuple/index overhead, the default
-fleet would consume roughly 2–4 GB/day before backups and replicas. This is an
-estimate, not a capacity measurement, and is why raw telemetry is outside the
-MVP database scope.
-
-`public.kpi_snapshots` is designed for one factory-wide sample every ten seconds:
-
-- 6 rows/minute;
-- 360 rows/hour;
-- 8,640 rows/day;
-- 259,200 rows over a 30-day detailed retention window.
-
-The backend runtime writer is enabled only when `DATABASE_URL` is configured.
-Its first sample is written after ten seconds, then it follows ten-second
-wall-clock deadlines independently of simulation speed. Each sample is one
-factory-wide row containing the current aggregate metrics and simulated elapsed
-time; `scenario_id` remains null for the MVP. Robot pose, velocity, and other
-raw telemetry are never included.
-
-Writes are serialized by a single background worker. A slow write cannot
-overlap the next one, missed deadlines are skipped instead of creating a burst,
-and a database error is logged and retried at the next cadence without stopping
-the mock factory or API. The worker is cancelled and awaited before database
-shutdown.
-
-Position history is not written. If it becomes a product requirement, the first
-implementation should sample once every 5–10 seconds per robot and measure the
-actual tuple/index size and query latency before enabling it broadly. Five
-robots at a five-second cadence would produce 86,400 rows/day, fifty times less
-than their raw 10 Hz stream.
-
-## Initial retention policy
-
-| Data | Initial retention |
+| Data | Initial policy |
 |---|---|
-| Profiles and role state | Account lifetime; soft-disable instead of delete |
-| Scenarios and review/apply actors | Project lifetime |
-| Business audit events | At least one year; append-only |
-| Alerts and task transitions | Not persisted in the auth MVP; define when added |
-| KPI snapshots | 30 days detailed; aggregate before any later deletion |
-| Raw pose/velocity telemetry | Not stored |
+| Profiles and role state | Account lifetime; inactive instead of product-side deletion |
+| Immutable layout versions | Project lifetime |
+| Scenarios, simulation runs and KPI results | Project lifetime |
+| Approval, command and business audit events | At least one year; append-only where applicable |
+| Alerts and task transitions | 90 days |
+| Detailed robot telemetry | 30 days |
+| KPI snapshots | 90 days |
 
-The migration creates the schema and access policy, and the runtime writer now
-populates it. The deletion/aggregation job is intentionally deferred: it must
-not be enabled until the team has approved retention for its demo and
-evaluation data. When enabled, the job must run under a restricted backend
-role, record how many rows it aggregated/deleted, and never modify
-`audit_events`.
+M8 implements these defaults: pg_partman drops telemetry partitions older than
+30 days, while a daily retention function prunes alerts, task transitions and KPI
+snapshots older than 90 days. Capacity measurements remain a deployment gate for
+finalizing the telemetry sampling cadence.
 
-## When to revisit PostgreSQL
+## pg_partman decision
 
-Plain PostgreSQL with timestamp indexes is the default. Before considering a
-dedicated TimescaleDB/Timescale Cloud or ClickHouse deployment, capture:
+The hosted Supabase PostgreSQL 17.6 project was verified to provide pg_partman
+5.3.1 and pg_cron 1.6.4. M8 uses time-based PostgreSQL partitions managed by
+pg_partman for robot telemetry. Deployment must still verify:
 
-1. rows inserted per second and per day;
-2. real bytes per table and index (`pg_total_relation_size`);
-3. p50/p95 latency for the actual dashboard time-range queries;
-4. maintenance cost for retention, vacuum, backup, and restore;
-5. forecast fleet count and required history window.
+1. the migration role can create/configure both extensions;
+2. scheduled maintenance succeeds and remains observable;
+3. backup/restore includes partitioned data and configuration.
 
-Re-evaluate the storage engine only if measured PostgreSQL performance misses
-an agreed target (initially p95 under 500 ms for a 24-hour KPI query) after
-appropriate indexing, batching, and native partitioning. The hosted project is
-PostgreSQL 17, so this roadmap does not assume that the deprecated Supabase
-TimescaleDB extension is available.
+If any condition fails, stop and request approval for native declarative
+partitioning plus a scheduled retention function. Do not silently create a
+non-partitioned high-volume telemetry table.
+
+## Capacity verification
+
+Record rows/second, bytes per table/index, maintenance duration, backup size and
+p50/p95 query latency. The initial query target is p95 below 500 ms for a 24-hour
+single-robot telemetry window. Retention jobs must log affected partitions/rows
+and must never modify business audit events.

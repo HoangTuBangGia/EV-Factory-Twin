@@ -805,6 +805,12 @@ wheels = [
 name = "twin-core"
 version = "0.1.0"
 source = { editable = "packages/twin-core" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.11" }]
 
 [[package]]
 name = "typing-extensions"

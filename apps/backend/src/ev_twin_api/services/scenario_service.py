@@ -1,15 +1,16 @@
 import logging
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, cast
 from uuid import uuid4
 
-from ev_sim.config import SimulationConfig as SimPyConfig
-from ev_sim.metrics import calculate_metrics
-from ev_sim.runner import run_simulation
+from ev_sim.layout import route_profile
+from ev_sim.logistics import LogisticsConfig, run_logistics_simulation
 from ev_sim.scenario import load_scenario
 from fastapi import Depends, Request
+from twin_core.models.layout import LayoutVersion
 
 from ev_twin_api.schemas.auth import CurrentUser
 from ev_twin_api.schemas.factory import MockFactoryConfig
@@ -20,6 +21,7 @@ from ev_twin_api.schemas.scenario import (
     ScenarioRunRequest,
     ScenarioStatus,
 )
+from ev_twin_api.services.layout_service import LayoutNotFoundError, LayoutService
 from ev_twin_api.services.mock_factory import MockFactory
 from ev_twin_api.services.scenario_repository import (
     InMemoryScenarioRepository,
@@ -43,25 +45,43 @@ class InvalidScenarioTransitionError(RuntimeError):
     pass
 
 
-def _run_benchmark(name: str, config: ScenarioConfig) -> tuple[ScenarioMetrics, float]:
-    sim_config = SimPyConfig(name=name, **config.model_dump())
+class InvalidScenarioConfigurationError(ValueError):
+    pass
+
+
+def _run_logistics(config: ScenarioConfig) -> tuple[ScenarioMetrics, float]:
     started_at = time.perf_counter()
-    records = run_simulation(sim_config)
-    result = calculate_metrics(
-        records,
-        simulation_time=sim_config.simulation_time,
-        total_tasks=sim_config.num_tasks,
+    result = run_logistics_simulation(
+        LogisticsConfig(
+            robot_count=config.num_robots,
+            task_count=config.num_tasks,
+            demand_interval_seconds=config.task_arrival_interval,
+            route_distance_m=config.route_distance_m,
+            robot_speed_mps=config.robot_speed_mps,
+            loading_time_seconds=config.loading_time,
+            simulation_time_seconds=config.simulation_time,
+            charger_count=config.charger_count,
+            congestion_multiplier=config.congestion_multiplier,
+        )
     )
     duration_ms = (time.perf_counter() - started_at) * 1000.0
-    metrics = ScenarioMetrics(
-        completed_tasks=result.completed_tasks,
-        unfinished_tasks=result.unfinished_tasks,
-        completion_rate=result.completion_rate,
-        throughput_per_hour=result.throughput_per_hour,
-        average_cycle_time=result.average_cycle_time,
-        average_waiting_time=result.average_waiting_time,
+    kpi = result.metrics
+    return (
+        ScenarioMetrics(
+            completed_tasks=kpi.completed_tasks,
+            unfinished_tasks=kpi.unfinished_tasks,
+            completion_rate=kpi.completion_rate,
+            throughput_per_hour=kpi.throughput_per_hour,
+            average_cycle_time=kpi.average_cycle_time,
+            average_waiting_time=kpi.average_waiting_time,
+            fleet_utilization_percent=kpi.fleet_utilization_percent,
+            starvation_events=kpi.starvation_events,
+            congestion_percent=kpi.congestion_percent,
+            travel_distance=kpi.travel_distance,
+            average_delivery_delay=kpi.average_delivery_delay,
+        ),
+        duration_ms,
     )
-    return metrics, duration_ms
 
 
 def _load_baseline_request() -> ScenarioRunRequest:
@@ -83,10 +103,15 @@ class ScenarioService:
     def __init__(
         self,
         mock_factory: MockFactory,
+        *,
+        layout_service: LayoutService,
         repository: ScenarioRepository | None = None,
+        applied_layout_sink: Callable[[LayoutVersion], None] | None = None,
     ) -> None:
         self._mock_factory = mock_factory
         self._repository = repository or InMemoryScenarioRepository()
+        self._layout_service = layout_service
+        self._applied_layout_sink = applied_layout_sink
         self._baseline: Scenario | None = None
 
     async def run(self, request: ScenarioRunRequest, actor: CurrentUser) -> Scenario:
@@ -94,7 +119,8 @@ class ScenarioService:
         # The bounded MVP workload (at most 10,000 tasks) completes quickly
         # enough to run inline. Keeping it local also makes sequential runs
         # deterministic without coordinating a process-wide executor.
-        metrics, duration_ms = _run_benchmark(request.name, config)
+        config = await self._resolve_layout(config)
+        metrics, duration_ms = _run_logistics(config)
 
         return await self._repository.create(
             name=request.name,
@@ -106,14 +132,34 @@ class ScenarioService:
             created_at=datetime.now(UTC),
         )
 
+    async def validate_request(self, request: ScenarioRunRequest) -> None:
+        config = request.to_config()
+        await self._resolve_layout(config)
+
+    async def _resolve_layout(self, config: ScenarioConfig) -> ScenarioConfig:
+        try:
+            layout = await self._layout_service.get(config.layout_id, config.layout_version)
+            profile = route_profile(layout, config.route_id)
+        except (LayoutNotFoundError, ValueError) as error:
+            raise InvalidScenarioConfigurationError(str(error)) from error
+        return config.model_copy(
+            update={
+                "route_distance_m": profile.distance_m,
+                "congestion_multiplier": profile.congestion_multiplier,
+                "travel_time": (
+                    profile.distance_m / config.robot_speed_mps * profile.congestion_multiplier
+                ),
+            }
+        )
+
     async def get_baseline(self) -> Scenario:
         cached = self._baseline
         if cached is not None:
             return cached.model_copy(deep=True)
 
         request = _load_baseline_request()
-        config = request.to_config()
-        metrics, duration_ms = _run_benchmark(request.name, config)
+        config = await self._resolve_layout(request.to_config())
+        metrics, duration_ms = _run_logistics(config)
         baseline = Scenario(
             id="baseline",
             name=request.name,
@@ -138,13 +184,43 @@ class ScenarioService:
             raise ScenarioNotFoundError(f"Scenario '{scenario_id}' not found")
         return scenario
 
+    async def get_applied_layout(self) -> LayoutVersion | None:
+        applied = [
+            scenario
+            for scenario in await self._repository.list()
+            if scenario.status == ScenarioStatus.APPLIED
+        ]
+        if not applied:
+            return None
+        latest = max(applied, key=lambda scenario: scenario.applied_at or scenario.created_at)
+        return await self._layout_service.get(latest.config.layout_id, latest.config.layout_version)
+
     async def approve(self, scenario_id: str, actor: CurrentUser) -> Scenario:
         return await self._review(scenario_id, ScenarioStatus.APPROVED, actor)
+
+    async def submit(self, scenario_id: str, actor: CurrentUser) -> Scenario:
+        scenario = await self.get(scenario_id)
+        if scenario.status != ScenarioStatus.SIMULATED:
+            raise InvalidScenarioTransitionError(
+                f"Scenario '{scenario_id}' cannot transition from {scenario.status} to SUBMITTED"
+            )
+        try:
+            return await self._repository.transition(
+                before=scenario,
+                expected_status=ScenarioStatus.SIMULATED,
+                new_status=ScenarioStatus.SUBMITTED,
+                actor=actor,
+                request_id=uuid4(),
+                occurred_at=datetime.now(UTC),
+            )
+        except Exception as error:
+            self._raise_domain_repository_error(error)
+            raise
 
     async def reject(self, scenario_id: str, actor: CurrentUser) -> Scenario:
         return await self._review(scenario_id, ScenarioStatus.REJECTED, actor)
 
-    async def apply(self, scenario_id: str, actor: CurrentUser) -> Scenario:
+    async def complete_apply(self, scenario_id: str, actor: CurrentUser) -> Scenario:
         scenario = await self.get(scenario_id)
         if scenario.status != ScenarioStatus.APPROVED:
             raise InvalidScenarioTransitionError(
@@ -163,7 +239,7 @@ class ScenarioService:
         realtime_config = MockFactoryConfig(
             robot_count=scenario.config.num_robots,
             task_interval_seconds=scenario.config.task_arrival_interval,
-            robot_speed_mps=previous_config.robot_speed_mps,
+            robot_speed_mps=scenario.config.robot_speed_mps,
             simulation_speed=previous_config.simulation_speed,
             low_battery_threshold=previous_config.low_battery_threshold,
         )
@@ -176,7 +252,7 @@ class ScenarioService:
             await self._mock_factory.reset()
 
         try:
-            return await self._repository.transition(
+            applied = await self._repository.transition(
                 before=scenario,
                 expected_status=ScenarioStatus.APPROVED,
                 new_status=ScenarioStatus.APPLIED,
@@ -185,6 +261,12 @@ class ScenarioService:
                 occurred_at=datetime.now(UTC),
                 before_commit=apply_before_database_commit,
             )
+            if self._applied_layout_sink is not None:
+                layout = await self._layout_service.get(
+                    applied.config.layout_id, applied.config.layout_version
+                )
+                self._applied_layout_sink(layout)
+            return applied
         except Exception as error:
             # PostgreSQL and the realtime in-memory factory cannot share a true
             # distributed transaction. The row is conditionally updated first
@@ -209,7 +291,7 @@ class ScenarioService:
         actor: CurrentUser,
     ) -> Scenario:
         scenario = await self.get(scenario_id)
-        if scenario.status != ScenarioStatus.SIMULATED:
+        if scenario.status != ScenarioStatus.SUBMITTED:
             raise InvalidScenarioTransitionError(
                 f"Scenario '{scenario_id}' cannot transition from {scenario.status} to {status}"
             )
@@ -217,7 +299,7 @@ class ScenarioService:
         try:
             return await self._repository.transition(
                 before=scenario,
-                expected_status=ScenarioStatus.SIMULATED,
+                expected_status=ScenarioStatus.SUBMITTED,
                 new_status=status,
                 actor=actor,
                 request_id=uuid4(),

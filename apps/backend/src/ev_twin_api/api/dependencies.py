@@ -1,3 +1,4 @@
+import hmac
 import logging
 from collections.abc import Callable, Coroutine
 from typing import Annotated, Any
@@ -5,6 +6,7 @@ from typing import Annotated, Any
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from ev_twin_api.core.config import Settings, get_settings
 from ev_twin_api.core.security import AuthenticationUnavailableError, InvalidAccessTokenError
 from ev_twin_api.schemas.auth import AppRole, CurrentUser
 from ev_twin_api.services.auth_service import AuthService, UserAccessDeniedError
@@ -18,6 +20,13 @@ bearer_scheme = HTTPBearer(
     description="Supabase Auth access token",
 )
 
+edge_bearer_scheme = HTTPBearer(
+    auto_error=False,
+    bearerFormat="opaque secret",
+    scheme_name="EdgeTelemetrySecret",
+    description="Factory-edge telemetry bridge credential",
+)
+
 
 def get_auth_service(request: Request) -> AuthService:
     return request.app.state.auth_service  # type: ignore[no-any-return]
@@ -25,6 +34,8 @@ def get_auth_service(request: Request) -> AuthService:
 
 BearerCredentials = Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)]
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
+SettingsDep = Annotated[Settings, Depends(get_settings)]
+EdgeBearerCredentials = Annotated[HTTPAuthorizationCredentials | None, Depends(edge_bearer_scheme)]
 
 
 async def get_current_user(
@@ -69,4 +80,23 @@ def require_roles(*allowed_roles: AppRole) -> RoleDependency:
     return check_role
 
 
-READ_ROLES = (AppRole.DESIGNER, AppRole.MONITOR, AppRole.ADMIN)
+READ_ROLES = (AppRole.DESIGNER, AppRole.MONITOR)
+
+
+async def require_edge_telemetry_secret(
+    credentials: EdgeBearerCredentials,
+    settings: SettingsDep,
+) -> None:
+    configured = settings.edge_telemetry_shared_secret
+    if configured is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Edge telemetry ingress is not configured",
+        )
+    supplied = credentials.credentials if credentials is not None else ""
+    if not hmac.compare_digest(supplied, configured.get_secret_value()):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid edge telemetry credential",
+            headers={"WWW-Authenticate": "Bearer"},
+        )

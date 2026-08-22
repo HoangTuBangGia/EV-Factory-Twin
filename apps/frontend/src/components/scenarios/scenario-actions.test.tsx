@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ScenarioActions } from "./scenario-actions";
 
-function renderActions(role: "DESIGNER" | "MONITOR" | "ADMIN", status: "SIMULATED" | "APPROVED") {
+function renderActions(role: "DESIGNER" | "MONITOR", status: "SIMULATED" | "APPROVED") {
   const onReview = vi.fn();
   const onApply = vi.fn();
   render(
@@ -41,9 +41,4 @@ describe("ScenarioActions", () => {
     expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
   });
 
-  it("keeps Administrator access read-only", () => {
-    renderActions("ADMIN", "APPROVED");
-    expect(screen.getByText(/read-only/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
-  });
 });

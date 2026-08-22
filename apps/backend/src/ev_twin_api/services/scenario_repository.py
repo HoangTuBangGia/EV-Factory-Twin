@@ -29,12 +29,24 @@ task_arrival_interval,
 travel_time,
 loading_time,
 simulation_time,
+layout_id,
+layout_version,
+route_id,
+robot_speed_mps,
+charger_count,
+route_distance_m,
+congestion_multiplier,
 completed_tasks,
 unfinished_tasks,
 completion_rate,
 throughput_per_hour,
 average_cycle_time,
 average_waiting_time,
+fleet_utilization_percent,
+starvation_events,
+congestion_percent,
+travel_distance,
+average_delivery_delay,
 duration_ms,
 created_at,
 created_by,
@@ -55,12 +67,24 @@ INSERT INTO public.scenarios (
     travel_time,
     loading_time,
     simulation_time,
+    layout_id,
+    layout_version,
+    route_id,
+    robot_speed_mps,
+    charger_count,
+    route_distance_m,
+    congestion_multiplier,
     completed_tasks,
     unfinished_tasks,
     completion_rate,
     throughput_per_hour,
     average_cycle_time,
     average_waiting_time,
+    fleet_utilization_percent,
+    starvation_events,
+    congestion_percent,
+    travel_distance,
+    average_delivery_delay,
     duration_ms,
     created_by,
     created_at
@@ -74,12 +98,24 @@ VALUES (
     :travel_time,
     :loading_time,
     :simulation_time,
+    :layout_id,
+    :layout_version,
+    :route_id,
+    :robot_speed_mps,
+    :charger_count,
+    :route_distance_m,
+    :congestion_multiplier,
     :completed_tasks,
     :unfinished_tasks,
     :completion_rate,
     :throughput_per_hour,
     :average_cycle_time,
     :average_waiting_time,
+    :fleet_utilization_percent,
+    :starvation_events,
+    :congestion_percent,
+    :travel_distance,
+    :average_delivery_delay,
     :duration_ms,
     :created_by,
     :created_at
@@ -97,9 +133,19 @@ SET
     reviewed_at = :occurred_at,
     version = version + 1
 WHERE id = :scenario_id
-  AND status = 'SIMULATED'::public.scenario_status
+  AND status = 'SUBMITTED'::public.scenario_status
   AND version = :expected_version
   AND created_by <> :actor_id
+RETURNING {SCENARIO_COLUMNS_SQL}
+"""
+
+SCENARIO_SUBMIT_SQL = f"""
+UPDATE public.scenarios
+SET status = 'SUBMITTED'::public.scenario_status, version = version + 1
+WHERE id = :scenario_id
+  AND status = 'SIMULATED'::public.scenario_status
+  AND version = :expected_version
+  AND created_by = :actor_id
 RETURNING {SCENARIO_COLUMNS_SQL}
 """
 
@@ -170,6 +216,7 @@ def scenario_to_audit_data(scenario: Scenario) -> dict[str, Any]:
 
 def _audit_action_for_status(status: ScenarioStatus) -> AuditAction:
     actions = {
+        ScenarioStatus.SUBMITTED: AuditAction.SCENARIO_SUBMITTED,
         ScenarioStatus.APPROVED: AuditAction.SCENARIO_APPROVED,
         ScenarioStatus.REJECTED: AuditAction.SCENARIO_REJECTED,
         ScenarioStatus.APPLIED: AuditAction.SCENARIO_APPLIED,
@@ -216,6 +263,13 @@ def _scenario_from_mapping(row: Any) -> Scenario:
             travel_time=float(row["travel_time"]),
             loading_time=float(row["loading_time"]),
             simulation_time=float(row["simulation_time"]),
+            layout_id=str(row["layout_id"]),
+            layout_version=int(row["layout_version"]),
+            route_id=str(row["route_id"]),
+            robot_speed_mps=float(row["robot_speed_mps"]),
+            charger_count=int(row["charger_count"]),
+            route_distance_m=float(row["route_distance_m"]),
+            congestion_multiplier=float(row["congestion_multiplier"]),
         ),
         metrics=ScenarioMetrics(
             completed_tasks=int(row["completed_tasks"]),
@@ -224,6 +278,11 @@ def _scenario_from_mapping(row: Any) -> Scenario:
             throughput_per_hour=float(row["throughput_per_hour"]),
             average_cycle_time=float(row["average_cycle_time"]),
             average_waiting_time=float(row["average_waiting_time"]),
+            fleet_utilization_percent=float(row["fleet_utilization_percent"]),
+            starvation_events=int(row["starvation_events"]),
+            congestion_percent=float(row["congestion_percent"]),
+            travel_distance=float(row["travel_distance"]),
+            average_delivery_delay=float(row["average_delivery_delay"]),
         ),
         duration_ms=float(row["duration_ms"]),
         created_at=row["created_at"],
@@ -319,12 +378,18 @@ class InMemoryScenarioRepository:
                     f"Scenario '{before.id}' changed concurrently or cannot transition from "
                     f"{current.status} to {new_status}"
                 )
-            if current.created_by == actor.id:
+            if new_status == ScenarioStatus.SUBMITTED and current.created_by != actor.id:
+                raise ScenarioRepositoryConflictError(
+                    f"Scenario '{before.id}' can only be submitted by its creator"
+                )
+            if new_status != ScenarioStatus.SUBMITTED and current.created_by == actor.id:
                 raise ScenarioRepositoryConflictError(
                     f"Scenario '{before.id}' creator cannot review or apply their own scenario"
                 )
 
-            if new_status in {ScenarioStatus.APPROVED, ScenarioStatus.REJECTED}:
+            if new_status == ScenarioStatus.SUBMITTED:
+                after = current.with_status(new_status)
+            elif new_status in {ScenarioStatus.APPROVED, ScenarioStatus.REJECTED}:
                 after = current.with_status(
                     new_status,
                     reviewed_at=occurred_at,
@@ -436,7 +501,9 @@ class SqlAlchemyScenarioRepository:
         occurred_at: datetime,
         before_commit: TransitionHook | None = None,
     ) -> Scenario:
-        if expected_status == ScenarioStatus.SIMULATED and new_status in {
+        if expected_status == ScenarioStatus.SIMULATED and new_status == ScenarioStatus.SUBMITTED:
+            statement = SCENARIO_SUBMIT_SQL
+        elif expected_status == ScenarioStatus.SUBMITTED and new_status in {
             ScenarioStatus.APPROVED,
             ScenarioStatus.REJECTED,
         }:

@@ -9,6 +9,9 @@ class TaskStatus(StrEnum):
     QUEUED = "QUEUED"
     ASSIGNED = "ASSIGNED"
     PICKUP = "PICKUP"
+    DELIVERING = "DELIVERING"
+    TIMED_OUT = "TIMED_OUT"
+    # Compatibility-only values for snapshots from before the MVP lifecycle was unified.
     IN_PROGRESS = "IN_PROGRESS"
     DELIVERED = "DELIVERED"
     COMPLETED = "COMPLETED"

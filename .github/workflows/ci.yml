@@ -21,6 +21,44 @@ permissions:
   contents: read
 
 jobs:
+  database:
+    name: Database · migration and persistence smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.115.0
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          enable-cache: true
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --locked --all-packages --dev
+
+      - name: Start local Supabase
+        run: supabase start
+
+      - name: Reset local Supabase
+        run: make supabase-reset
+
+      - name: Run PostgreSQL runtime-history smoke
+        run: >-
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -p pytest_asyncio.plugin
+          tests/integration/test_runtime_history_postgres.py
+        env:
+          TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:54322/postgres
+
   backend:
     name: Backend · lint, typecheck, test
     runs-on: ubuntu-24.04
@@ -99,7 +137,7 @@ jobs:
           NEXT_PUBLIC_WS_URL: ws://localhost:8000/ws/factory
 
   hosted-e2e:
-    name: Browser E2E · hosted Supabase RBAC
+    name: Browser E2E · hosted Supabase Designer/Monitor
     needs:
       - backend
       - frontend
@@ -125,8 +163,6 @@ jobs:
           DESIGNER_PASSWORD: ${{ secrets.DESIGNER_PASSWORD }}
           MONITOR_EMAIL: ${{ secrets.MONITOR_EMAIL }}
           MONITOR_PASSWORD: ${{ secrets.MONITOR_PASSWORD }}
-          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
-          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
         run: |
           credential_variables=(
             E2E_DATABASE_URL
@@ -136,8 +172,6 @@ jobs:
             DESIGNER_PASSWORD
             MONITOR_EMAIL
             MONITOR_PASSWORD
-            ADMIN_EMAIL
-            ADMIN_PASSWORD
           )
           missing_variables=()
           for credential_variable in "${credential_variables[@]}"; do
@@ -205,5 +239,3 @@ jobs:
           DESIGNER_PASSWORD: ${{ secrets.DESIGNER_PASSWORD }}
           MONITOR_EMAIL: ${{ secrets.MONITOR_EMAIL }}
           MONITOR_PASSWORD: ${{ secrets.MONITOR_PASSWORD }}
-          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
-          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}

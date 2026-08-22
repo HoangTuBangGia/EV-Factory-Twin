@@ -1,0 +1,10 @@
+string task_id
+string payload_id
+string pickup_station_id
+string dropoff_station_id
+float32 navigation_timeout_seconds
+uint32 max_retries
+---
+bool accepted
+string task_id
+string message

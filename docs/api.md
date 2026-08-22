@@ -1,10 +1,11 @@
 # FE-BE Domain Contracts
 
-Nguồn sự thật cho các schema mà backend trả về qua REST và WebSocket. Mục tiêu:
-sau này thay Mock Factory Engine bằng ROS2, các contract dưới đây không đổi, nên
-frontend không phải sửa code khi backend đổi nguồn dữ liệu.
+Nguồn sự thật cho các schema mà backend trả về qua REST và WebSocket. ROS2/Gazebo
+là nguồn runtime chính của MVP; mock factory chỉ là fallback. Contract không đổi
+khi chuyển giữa ROS2 và mock để frontend không phụ thuộc vào nguồn dữ liệu.
 
-Định nghĩa Pydantic tương ứng nằm ở `apps/backend/src/ev_twin_api/schemas/`.
+Contract nguồn-neutral nằm ở `packages/twin-core`; các schema request/response
+đặc thù FastAPI nằm ở `apps/backend/src/ev_twin_api/schemas/`.
 
 ## Quy ước chung
 
@@ -14,7 +15,7 @@ frontend không phải sửa code khi backend đổi nguồn dữ liệu.
   sang pixel để render.
 - **Timestamp:** ISO 8601, UTC, có hậu tố `Z`, độ chính xác millisecond. Ví dụ:
   `2026-08-11T04:00:00.125Z`. Mọi field `datetime` trong response dùng chung
-  format này (xem `schemas/base.py`).
+  format này (xem `twin_core.models.telemetry`). Input thiếu timezone bị từ chối.
 - **Field nullable:** field kiểu `X | None` mà **có** giá trị mặc định `None`
   nghĩa là có thể bỏ qua khi tạo object. Field kiểu `X | None` mà **không có**
   giá trị mặc định (ví dụ `task_id`, `payload_id` trong `RobotTelemetry`) là
@@ -22,9 +23,10 @@ frontend không phải sửa code khi backend đổi nguồn dữ liệu.
 
 ## Danh sách endpoint
 
-Mọi endpoint đều nằm dưới `/api/v1`, **trừ `/health`**.
+Mọi browser endpoint đều nằm dưới `/api/v1`, **trừ `/health`**. Machine edge
+runtime dùng các endpoint `/internal/v1`.
 
-Mọi REST endpoint ngoài `/health` yêu cầu Supabase access token trong header:
+Mọi browser REST endpoint ngoài `/health` yêu cầu Supabase access token trong header:
 
 ```http
 Authorization: Bearer <access-token>
@@ -34,6 +36,16 @@ Token thiếu/sai/hết hạn trả `401`; tài khoản bị khóa hoặc sai qu
 dịch vụ xác thực/JWKS/profile database chưa sẵn sàng trả `503`. Role được đọc từ
 `public.profiles`, không lấy từ request frontend hay generic claim
 `role=authenticated` của Supabase.
+
+Các `POST /internal/v1/*` là machine endpoint riêng cho factory-edge bridge.
+Nó dùng opaque bearer secret độc lập, không dùng Supabase user token:
+
+```http
+Authorization: Bearer <EDGE_TELEMETRY_SHARED_SECRET>
+```
+
+Secret phải có ít nhất 32 ký tự, chỉ truyền qua HTTPS, không đặt trong query
+string/log/frontend và không được tái sử dụng service-role key.
 
 | Method | Path | Response | Mô tả |
 |---|---|---|---|
@@ -46,7 +58,14 @@ dịch vụ xác thực/JWKS/profile database chưa sẵn sàng trả `503`. Rol
 | GET | `/api/v1/tasks/{task_id}` | [`Task`](#task) | 1 task; id lạ → 404 |
 | GET | `/api/v1/metrics` | [`FactoryMetrics`](#factorymetrics) | Số liệu vận hành |
 | GET | `/api/v1/alerts` | [`FactoryAlert[]`](#alertseverity--alertcode--factoryalert) | Alert đã phát |
-| POST | `/api/v1/mock/start` | [`MockControlResponse`](#mockcontrolresponse) | Chạy engine mock |
+| GET | `/api/v1/layouts` | [`LayoutSummary[]`](#versioned-layout) | Layout chưa archive |
+| POST | `/api/v1/layouts` | [`LayoutVersion`](#versioned-layout) | Tạo layout và version 1 |
+| GET | `/api/v1/layouts/{layout_id}` | [`LayoutVersion`](#versioned-layout) | Version mới nhất |
+| PATCH | `/api/v1/layouts/{layout_id}` | [`LayoutVersion`](#versioned-layout) | Đổi tên metadata |
+| DELETE | `/api/v1/layouts/{layout_id}` | `204` | Soft archive layout |
+| POST | `/api/v1/layouts/{layout_id}/versions` | [`LayoutVersion`](#versioned-layout) | Tạo version immutable kế tiếp |
+| GET | `/api/v1/layouts/{layout_id}/versions/{version}` | [`LayoutVersion`](#versioned-layout) | Đọc version cụ thể |
+| POST | `/api/v1/mock/start` | [`MockControlResponse`](#mockcontrolresponse) | Chạy engine mock local/test |
 | POST | `/api/v1/mock/stop` | [`MockControlResponse`](#mockcontrolresponse) | Dừng engine mock |
 | POST | `/api/v1/mock/reset` | [`MockControlResponse`](#mockcontrolresponse) | Reset state về ban đầu |
 | POST | `/api/v1/mock/config` | [`MockFactoryConfig`](#mockfactoryconfig) | Đổi tham số mô phỏng |
@@ -54,31 +73,136 @@ dịch vụ xác thực/JWKS/profile database chưa sẵn sàng trả `503`. Rol
 | GET | `/api/v1/scenarios/baseline` | [`Scenario`](#scenario) | Benchmark baseline chuẩn của repository |
 | GET | `/api/v1/scenarios/{scenario_id}` | [`Scenario`](#scenario) | Chi tiết candidate; id lạ → 404 |
 | POST | `/api/v1/scenarios/run` | [`Scenario`](#scenario) | Chạy benchmark SimPy cho candidate |
+| POST | `/api/v1/scenarios/{scenario_id}/submit` | [`Scenario`](#scenario) | DESIGNER submit candidate đã mô phỏng |
+| POST | `/api/v1/optimizations/run` | `OptimizationResult` | Đánh giá và xếp hạng tối đa 64 candidate |
 | POST | `/api/v1/scenarios/{scenario_id}/approve` | [`Scenario`](#scenario) | Phê duyệt candidate đã mô phỏng |
 | POST | `/api/v1/scenarios/{scenario_id}/reject` | [`Scenario`](#scenario) | Từ chối candidate đã mô phỏng |
-| POST | `/api/v1/scenarios/{scenario_id}/apply` | [`Scenario`](#scenario) | Áp dụng candidate đã duyệt vào mock realtime |
-| GET | `/api/v1/admin/users` | `AdminUser[]` | Danh sách account/profile; chỉ `ADMIN` |
-| PATCH | `/api/v1/admin/users/{user_id}` | `AdminUser` | Đổi role hoặc trạng thái; chỉ `ADMIN` |
-| POST | `/api/v1/admin/users/invite` | `AdminUser` | Mời user qua Supabase Auth; chỉ `ADMIN` |
-| GET | `/api/v1/admin/audit` | `AuditEvent[]` | Audit nghiệp vụ; chỉ `ADMIN` |
+| POST | `/api/v1/scenarios/{scenario_id}/apply` | `Command` | Tạo durable apply command PENDING |
+| GET | `/api/v1/commands` | `Command[]` | Danh sách command/attempt |
+| GET | `/api/v1/commands/{operation_id}` | `Command` | Chi tiết command |
+| POST | `/api/v1/commands/{operation_id}/retry` | `Command` | MONITOR retry failed/timeout command |
 | WS | `/ws/factory` | [envelope](#websocket-event-envelope) | Stream realtime |
+| POST | `/internal/v1/telemetry` | `TelemetryIngressResponse` | Edge bridge gửi một canonical robot sample |
+| POST | `/internal/v1/task-updates` | `EdgeUpdateResponse` | Edge bridge gửi một ROS task transition |
+| POST | `/internal/v1/bridge-health` | `EdgeUpdateResponse` | Edge bridge gửi heartbeat và delivery counters |
 
 Ma trận quyền REST hiện tại:
 
-| Nhóm endpoint | DESIGNER | MONITOR | ADMIN |
-|---|---:|---:|---:|
-| GET auth/factory/robot/task/KPI/alert/scenario | Có | Có | Có |
-| `POST /scenarios/run` | Có | Không | Không |
-| Approve/Reject/Apply scenario | Không | Có | Không |
-| Start/Stop/Reset/Config MockFactory | Không | Có | Không |
-| Quản lý user/role và đọc business audit | Không | Không | Có |
+| Nhóm endpoint | DESIGNER | MONITOR |
+|---|---:|---:|
+| GET auth/factory/robot/task/KPI/alert/scenario/layout | Có | Có |
+| Create/version/rename/archive layout | Có | Không |
+| `POST /scenarios/run` | Có | Không |
+| Approve/Reject/Apply scenario | Không | Có |
+| Start/Stop/Reset/Config MockFactory | Không | Có |
 
-`ADMIN` là role quản trị kỹ thuật, không tự động kế thừa quyền vận hành.
+MVP chỉ có hai application role. User provisioning thực hiện bằng Supabase Dashboard.
 WebSocket dùng cùng Supabase access token nhưng gửi token trong message đầu tiên,
 không đặt token trên query string.
 
 `/ws/factory` không xuất hiện trong `/docs` (OpenAPI không mô tả WebSocket) —
 hợp đồng của nó nằm ở mục [WebSocket event envelope](#websocket-event-envelope).
+
+## Versioned layout
+
+`layouts` giữ identity và tên mutable; `layout_versions` giữ geometry/config
+append-only. `DELETE` chỉ đặt `archived_at`: layout biến mất khỏi list nhưng các
+version vẫn đọc được theo ID để scenario/audit có thể tham chiếu ổn định.
+
+```json
+{
+  "layout_id": "LAYOUT-0001",
+  "name": "Battery transfer zone",
+  "version": 1,
+  "width": 20.0,
+  "height": 15.0,
+  "stations": [
+    {"id": "BATTERY_BUFFER", "type": "BATTERY_BUFFER", "x": 2.0, "y": 4.0},
+    {"id": "MARRIAGE_STATION", "type": "MARRIAGE_STATION", "x": 16.0, "y": 8.0},
+    {"id": "CHARGING_STATION", "type": "CHARGING_STATION", "x": 2.0, "y": 12.0}
+  ],
+  "routes": [{
+    "id": "BATTERY_DELIVERY",
+    "start_station_id": "BATTERY_BUFFER",
+    "end_station_id": "MARRIAGE_STATION",
+    "waypoints": [{"x": 2.0, "y": 4.0}, {"x": 16.0, "y": 8.0}]
+  }],
+  "no_go_zones": [],
+  "congestion_zones": [{
+    "id": "CONGESTION_01",
+    "delay_multiplier": 1.25,
+    "points": [{"x": 10.0, "y": 6.0}, {"x": 13.0, "y": 6.0}, {"x": 13.0, "y": 9.0}]
+  }],
+  "config": {
+    "robot_count": 2,
+    "demand_interval_seconds": 8.0,
+    "robot_speed_mps": 1.0,
+    "charger_count": 1
+  },
+  "created_by": "00000000-0000-0000-0000-000000000001",
+  "created_at": "2026-08-22T02:00:00Z",
+  "archived_at": null
+}
+```
+
+Create body là `{ "name": string, "content": <geometry/config> }`; create-version
+body là `{ "content": <geometry/config> }`. `layout_id`, `version`, actor và
+timestamps luôn do Backend/PostgreSQL tạo. Validation từ chối coordinate không
+hữu hạn/out-of-bounds, ID trùng, thiếu station type bắt buộc, polygon suy biến/tự
+cắt, route tham chiếu station lạ, endpoint không khớp station và route/station
+đi vào no-go zone. Congestion zone không cấm route và dùng
+`delay_multiplier` trong `[1, 10]`.
+
+## Edge telemetry ingress
+
+`POST /internal/v1/telemetry` nhận đúng một `RobotTelemetry` source-neutral. Chỉ
+một trusted bridge được hỗ trợ trong deployment hiện tại; holder của shared secret
+có thể gửi sample cho mọi robot đã đăng ký. Multi-bridge identity/allowlist là
+follow-up bảo mật riêng. Mock
+factory phải được dừng trước khi edge gửi dữ liệu để hai source không ghi đè nhau.
+
+The ROS bridge sends `pose` and `velocity` from namespaced odometry, uses the
+edge host UTC timestamp, and joins battery, status, task and payload state from
+the same robot namespace. One process loads the fleet JSON and maintains a
+separate latest-value worker per robot, so a slow robot delivery cannot overwrite
+another robot's pending sample.
+
+Response `200`:
+
+```json
+{
+  "status": "ACCEPTED",
+  "robot_id": "AMR-01",
+  "source_timestamp": "2026-08-11T04:00:00.125Z",
+  "ingested_at": "2026-08-11T04:00:00.150Z"
+}
+```
+
+`status` là `ACCEPTED` hoặc `IGNORED_STALE`. Sample có timestamp bằng/cũ hơn
+`last_seen_at` là idempotent no-op và không broadcast. Sample được nhận sẽ cập
+nhật runtime robot state và phát cùng event `robot.telemetry` cho browser. Timestamp
+mới hơn backend UTC quá `EDGE_TELEMETRY_MAX_FUTURE_SKEW_SECONDS` (mặc định 5 giây)
+bị từ chối để không làm hỏng stale ordering; ngưỡng cấu hình hợp lệ là 0–300 giây.
+
+| Condition | Status |
+|---|---:|
+| Missing/wrong edge credential | `401` |
+| Edge secret chưa cấu hình | `503` |
+| Unknown `robot_id` | `404` |
+| Mock factory đang chạy | `409` |
+| Invalid telemetry body | `422` |
+| Timestamp vượt quá future-skew cho phép | `422` |
+
+`POST /internal/v1/task-updates` maps the durable ROS `/fleet/task_updates`
+stream to the canonical Backend `Task`, rejects equal/older timestamps per
+`task_id`, updates REST snapshots and broadcasts `task.updated`. The bridge uses
+a FIFO delivery worker so lifecycle transitions are not coalesced.
+
+`POST /internal/v1/bridge-health` accepts `bridge_id`, `CONNECTED | DEGRADED`,
+the configured robot IDs, UTC timestamp, cumulative delivery counters and the
+latest per-robot delivery error. Equal/older heartbeats are ignored per
+`bridge_id`. Health is currently process-local diagnostic state; durable health
+and disconnect alerts belong to the alerts/persistence checkpoint.
 
 ## RobotStatus
 
@@ -165,11 +289,18 @@ robot đang hoạt động. Đây là ranh giới FE-BE quan trọng nhất củ
 QUEUED
 ASSIGNED
 PICKUP
+DELIVERING
+TIMED_OUT
 IN_PROGRESS
 DELIVERED
 COMPLETED
 FAILED
 ```
+
+`IN_PROGRESS` and `DELIVERED` are read-compatibility values for snapshots from
+before M3. New MOCK and ROS task flows emit the canonical MVP lifecycle:
+`QUEUED → ASSIGNED → PICKUP → DELIVERING → COMPLETED`, with `FAILED` and
+`TIMED_OUT` as execution outcomes.
 
 ## Task
 
@@ -321,7 +452,7 @@ Nhóm endpoint này tạo vòng MVP human-in-the-loop:
 chạy benchmark → xem KPI → approve/reject → apply nếu đã approve
 ```
 
-`POST /api/v1/scenarios/run` chạy benchmark SimPy nhưng **không thay đổi** mock
+`POST /api/v1/scenarios/run` chạy mô phỏng battery logistics SimPy nhưng **không thay đổi** mock
 factory realtime. Chỉ `POST /api/v1/scenarios/{scenario_id}/apply` mới cập nhật
 mock factory và reset trạng thái vận hành hiện tại.
 
@@ -329,19 +460,27 @@ Khi có `DATABASE_URL`, candidate và business audit được lưu trong Postgre
 vẫn còn sau khi backend restart. Chế độ local/test không cấu hình database mới
 dùng repository in-memory và sẽ mất dữ liệu khi process dừng. Baseline được đọc
 từ scenario chuẩn trong repository mã nguồn, có id `baseline`, không nằm trong
-`GET /api/v1/scenarios` và chỉ dùng để so sánh.
+`GET /api/v1/scenarios` và chỉ dùng để so sánh. Baseline resolve
+`LAYOUT-DEFAULT` version 1, route `BATTERY_DELIVERY` và chạy cùng logistics engine
+cùng chín KPI authoritative như candidate; khác biệt chỉ nằm ở input scenario.
 
 ### ScenarioRunRequest
 
-Body của `POST /api/v1/scenarios/run`; tất cả field đều bắt buộc:
+Body của `POST /api/v1/scenarios/run`. Mỗi run bắt buộc tham chiếu đúng một
+`layout_id` + `layout_version` bất biến và một route thuộc version đó:
 
 ```json
 {
   "name": "more-robots",
+  "layout_id": "LAYOUT-DEFAULT",
+  "layout_version": 1,
+  "route_id": "BATTERY_DELIVERY",
   "num_robots": 6,
   "num_tasks": 500,
   "task_arrival_interval": 5.0,
-  "travel_time": 30.0,
+  "travel_time": 1.0,
+  "robot_speed_mps": 1.2,
+  "charger_count": 2,
   "loading_time": 10.0,
   "simulation_time": 3600.0
 }
@@ -353,17 +492,34 @@ Body của `POST /api/v1/scenarios/run`; tất cả field đều bắt buộc:
 | `num_robots` | int | 1–10 | Số robot khả dụng |
 | `num_tasks` | int | 1–10.000 | Tổng task cần tạo trong benchmark |
 | `task_arrival_interval` | float | 1,0–60,0 giây | Khoảng cách giữa hai task mới |
-| `travel_time` | float | `> 0` và `<= 86.400` giây | Thời gian di chuyển của một task |
+| `travel_time` | float | `> 0` và `<= 86.400` giây | Field tương thích; backend tính lại từ route/speed/congestion |
 | `loading_time` | float | `> 0` và `<= 86.400` giây | Thời gian load và unload |
 | `simulation_time` | float | `> 0` và `<= 86.400` giây | Khoảng thời gian ảo được benchmark |
 
 Giá trị ngoài giới hạn hoặc thiếu field → **422**.
+
+Backend lấy khoảng cách và congestion multiplier từ geometry của layout, rồi
+mô phỏng từng robot, battery discharge/charge, charger waiting và route contention.
+Kết quả trả đủ KPI authoritative: throughput, cycle time, waiting time, fleet
+utilization, starvation, congestion, travel distance, delivery delay và
+completion rate.
+
+### Flow optimization
+
+`POST /api/v1/optimizations/run` (DESIGNER) nhận các danh sách layout version,
+route, số robot, speed, charger và demand interval. Backend chạy tích Descartes
+tối đa 64 tổ hợp, lưu từng candidate như một scenario `SIMULATED`, rồi xếp hạng
+deterministic theo completion/throughput trước, tiếp đến delay, starvation,
+congestion, cycle time và chi phí cấu hình. Response gồm `recommendation`, số
+candidate đã đánh giá và toàn bộ `ranking`. Search lớn hơn 64 hoặc route không
+thuộc layout trả **422**.
 
 ### ScenarioStatus
 
 ```text
 DRAFT
 SIMULATED
+SUBMITTED
 APPROVED
 REJECTED
 APPLIED
@@ -378,15 +534,28 @@ Các chuyển trạng thái hợp lệ:
 POST /run
     │
     ▼
-SIMULATED ── approve ──▶ APPROVED ── apply ──▶ APPLIED
-    │
-    └──────── reject ──▶ REJECTED
+SIMULATED ── submit ──▶ SUBMITTED ── approve ──▶ APPROVED
+                              │                       │
+                              └──── reject ──▶ REJECTED
+                                                      │ apply command COMPLETED
+                                                      ▼
+                                                   APPLIED
 ```
 
-- `approve` và `reject` chỉ hợp lệ khi status hiện tại là `SIMULATED`.
+- `submit` chỉ creator DESIGNER thực hiện từ `SIMULATED`.
+- `approve` và `reject` chỉ hợp lệ khi status hiện tại là `SUBMITTED`.
 - `apply` chỉ hợp lệ khi status hiện tại là `APPROVED`.
 - `REJECTED` và `APPLIED` là trạng thái kết thúc trong MVP.
 - Chuyển trạng thái không hợp lệ → **409**; id candidate không tồn tại → **404**.
+
+### Apply command
+
+`POST /api/v1/scenarios/{id}/apply` không đổi scenario ngay. Nó trả command với
+`operation_id`, status `PENDING`, timeout/retry budget và attempt 1. Edge bridge
+chủ động lease command bằng shared secret, POST ACK, gọi typed ROS service rồi
+POST `COMPLETED` hoặc `FAILED`. Scenario chỉ chuyển `APPROVED → APPLIED` sau
+`COMPLETED`. Retry giữ nguyên `operation_id` và tạo attempt number mới; topology
+không thể hot-apply phải trả `FAILED` với lý do cần relaunch Gazebo.
 
 ### Scenario
 
@@ -403,7 +572,14 @@ Tất cả endpoint scenario trả về schema này (endpoint list trả về m�
     "task_arrival_interval": 5.0,
     "travel_time": 30.0,
     "loading_time": 10.0,
-    "simulation_time": 3600.0
+    "simulation_time": 3600.0,
+    "layout_id": "LAYOUT-DEFAULT",
+    "layout_version": 1,
+    "route_id": "BATTERY_DELIVERY",
+    "robot_speed_mps": 1.2,
+    "charger_count": 2,
+    "route_distance_m": 19.66,
+    "congestion_multiplier": 1.08
   },
   "metrics": {
     "completed_tasks": 426,
@@ -411,7 +587,12 @@ Tất cả endpoint scenario trả về schema này (endpoint list trả về m�
     "completion_rate": 0.852,
     "throughput_per_hour": 426.0,
     "average_cycle_time": 750.0,
-    "average_waiting_time": 700.0
+    "average_waiting_time": 700.0,
+    "fleet_utilization_percent": 88.2,
+    "starvation_events": 4,
+    "congestion_percent": 12.5,
+    "travel_distance": 8375.16,
+    "average_delivery_delay": 42.1
   },
   "duration_ms": 8.4,
   "created_at": "2026-08-14T03:00:00.000Z",
@@ -477,51 +658,17 @@ với PostgreSQL. Backend giữ row lock trong lúc reset và khôi phục cấu
 lại factory nếu reset, audit hoặc commit lỗi. Nếu chính bước khôi phục cũng lỗi,
 backend ghi log kỹ thuật mức error để operator can thiệp.
 
-## Admin user management
-
-Ba endpoint `/api/v1/admin/users*` chỉ dành cho `ADMIN`. Response không chứa
-password, hash, access token hoặc service-role key:
-
-```json
-{
-  "id": "00000000-0000-0000-0000-000000000003",
-  "email": "monitor@example.com",
-  "display_name": "Factory Monitor",
-  "role": "MONITOR",
-  "is_active": true,
-  "created_at": "2026-08-14T03:00:00.000Z"
-}
-```
-
-`PATCH /api/v1/admin/users/{user_id}` nhận ít nhất một trong hai field:
-
-```json
-{"role":"DESIGNER","is_active":false}
-```
-
-Backend khóa các row Admin active khi kiểm tra, nên hai request đồng thời không
-thể cùng loại bỏ Admin cuối cùng; thao tác đó trả `409`. Disable user đóng toàn
-bộ WebSocket hiện tại của user với code `4403`. Request REST tiếp theo cũng bị
-profile guard từ chối `403`.
-
-`POST /api/v1/admin/users/invite` nhận `email`, `display_name`, `role`, trả `201`
-và không nhận password. Supabase gửi luồng thiết lập account. Endpoint này cần
-`SUPABASE_SERVICE_ROLE_KEY` ở backend; thiếu integration trả `503` mà không ảnh
-hưởng login/RBAC hoặc hai endpoint quản trị bằng PostgreSQL.
-
 ## Business audit
 
-`GET /api/v1/admin/audit?limit=100` chỉ dành cho `ADMIN`. Có thể lọc bằng
-`resource_type`, `resource_id`, `created_after` và `created_before`. Mỗi event có
+Audit chưa có browser endpoint trong MVP hiện tại. Mỗi event durable có
 `actor_id`, snapshot `actor_role`, `action`, `before_data`, `after_data`,
-`request_id` và `created_at`. Bảng này append-only; Designer/Monitor không có
-quyền đọc, sửa hoặc xoá qua API. Các action scenario hiện có là `SCENARIO_RUN`,
+`request_id` và `created_at`. Bảng này append-only; chỉ Monitor active được đọc
+qua Supabase RLS khi cần điều tra. Các action scenario hiện có là `SCENARIO_RUN`,
 `SCENARIO_APPROVED`, `SCENARIO_REJECTED`, `SCENARIO_APPLIED`; reset thủ công và
 reset do apply đều tạo `FACTORY_RESET`. Reset/config thủ công ghi event
 `*_REQUESTED` trước side effect và event hoàn tất dùng cùng `request_id`; nhờ đó
 nếu side effect hoặc audit hoàn tất lỗi vẫn còn durable intent để điều tra. Các
-thay đổi Admin tạo `USER_INVITED`, `ROLE_CHANGED`, `USER_DISABLED` hoặc
-`USER_ENABLED` trong cùng transaction với thay đổi profile.
+operation result sẽ bổ sung action command ở checkpoint command path.
 
 ## Health
 
@@ -571,35 +718,48 @@ Tất cả field không nullable.
 
 ```text
 AlertSeverity: INFO, WARNING, CRITICAL
-AlertCode (khởi điểm): LOW_BATTERY, ROBOT_WAITING, TASK_BACKLOG, STARVATION, ROBOT_ERROR
+AlertStatus: ACTIVE, CLEARED
+AlertCode: LOW_BATTERY, ROBOT_WAITING, TASK_BACKLOG, STARVATION, ROBOT_ERROR,
+STALE_TELEMETRY, BRIDGE_DISCONNECTED, COMMAND_TIMEOUT, CONGESTION
 ```
 
 `GET /api/v1/alerts`. Payload của WebSocket event `alert.created`.
 
 ```json
 {
-  "id": "ALERT-0001",
+  "id": "4e52ddcb-99cb-4bb7-a256-adac65a32cf2",
+  "dedupe_key": "LOW_BATTERY:AMR-01",
   "severity": "WARNING",
   "code": "LOW_BATTERY",
+  "status": "ACTIVE",
   "message": "AMR-01 battery below threshold (18%)",
   "robot_id": "AMR-01",
   "task_id": null,
-  "timestamp": "2026-08-11T04:00:00.000Z"
+  "operation_id": null,
+  "timestamp": "2026-08-11T04:00:00.000Z",
+  "last_seen_at": "2026-08-11T04:00:00.000Z",
+  "cleared_at": null
 }
 ```
 
 | Field | Type | Nullable | Ghi chú |
 |---|---|---|---|
-| `id` | string | không | |
+| `id` | UUID | không | một occurrence; retrigger tạo UUID mới |
+| `dedupe_key` | string | không | duy nhất trong các alert `ACTIVE` |
 | `severity` | `AlertSeverity` | không | |
-| `code` | string | không | một trong `AlertCode`, hoặc code mới về sau |
+| `code` | `AlertCode` | không | |
+| `status` | `AlertStatus` | không | `ACTIVE` hoặc `CLEARED` |
 | `message` | string | không | mô tả cho người xem |
 | `robot_id` | string | có (mặc định `null`) | |
 | `task_id` | string | có (mặc định `null`) | |
+| `operation_id` | UUID | có (mặc định `null`) | command liên quan nếu có |
 | `timestamp` | datetime | không | |
+| `last_seen_at` | datetime | không | lần cuối điều kiện còn được quan sát |
+| `cleared_at` | datetime | có | bắt buộc khi `CLEARED` |
 
 Alert có state (ví dụ `LOW_BATTERY:AMR-01`) được backend dedupe — chỉ phát khi
-robot **vào** điều kiện, không lặp mỗi tick trong khi vẫn ở điều kiện đó.
+robot **vào** điều kiện, không lặp mỗi tick trong khi vẫn ở điều kiện đó. Khi
+điều kiện hết, occurrence chuyển `CLEARED`; lần xuất hiện sau tạo occurrence mới.
 
 ## WebSocket event envelope
 
@@ -661,7 +821,6 @@ Sau `auth.ok`, mọi message server trên `/ws/factory` bọc trong envelope:
 
 ```text
 200  thành công
-201  Admin invite đã được tạo
 401  access token REST thiếu, sai hoặc hết hạn
 403  user inactive hoặc không đủ role
 404  robot/task/scenario id không tồn tại

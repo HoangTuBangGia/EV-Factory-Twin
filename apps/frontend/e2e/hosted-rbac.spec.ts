@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-type RoleName = "DESIGNER" | "MONITOR" | "ADMIN";
+type RoleName = "DESIGNER" | "MONITOR";
 
 interface Credentials {
   email: string;
@@ -12,13 +12,11 @@ const requiredCredentialNames = [
   "DESIGNER_PASSWORD",
   "MONITOR_EMAIL",
   "MONITOR_PASSWORD",
-  "ADMIN_EMAIL",
-  "ADMIN_PASSWORD",
 ] as const;
 const missingCredentials = requiredCredentialNames.filter((name) => !process.env[name]?.trim());
 const hostedSuiteTitle = missingCredentials.length === 0
-  ? "hosted Supabase role workflow"
-  : `hosted Supabase role workflow [SKIPPED: missing ${missingCredentials.join(", ")}]`;
+  ? "hosted Supabase Designer/Monitor workflow"
+  : `hosted Supabase Designer/Monitor workflow [SKIPPED: missing ${missingCredentials.join(", ")}]`;
 const credentials: Record<RoleName, Credentials> = {
   DESIGNER: {
     email: process.env.DESIGNER_EMAIL ?? "",
@@ -27,10 +25,6 @@ const credentials: Record<RoleName, Credentials> = {
   MONITOR: {
     email: process.env.MONITOR_EMAIL ?? "",
     password: process.env.MONITOR_PASSWORD ?? "",
-  },
-  ADMIN: {
-    email: process.env.ADMIN_EMAIL ?? "",
-    password: process.env.ADMIN_PASSWORD ?? "",
   },
 };
 const candidateName = `e2e-rbac-${Date.now()}-${process.pid}`;
@@ -51,12 +45,6 @@ async function openScenario(page: Page) {
   await scenarioTab.click();
   await expect(page.locator(".scenario-result")).toContainText(candidateName);
 }
-
-test("an anonymous direct /admin request is guarded", async ({ page }) => {
-  await page.goto("/admin");
-  await expect(page).toHaveURL(/\/login\?returnTo=%2Fadmin$/);
-  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
-});
 
 test.describe(hostedSuiteTitle, () => {
   test.describe.configure({ mode: "serial" });
@@ -90,13 +78,10 @@ test.describe(hostedSuiteTitle, () => {
     await expect(page.locator(".scenario-status")).toHaveText("SIMULATED");
   });
 
-  test("Monitor is denied /admin, recovers, approves and applies the scenario", async ({ page }) => {
+  test("Monitor cannot run scenarios, then approves and applies the candidate", async ({ page }) => {
     await login(page, "MONITOR");
-    await page.goto("/admin");
-    await expect(page).toHaveURL(/\/forbidden$/);
-    await expect(page.getByText("403 Forbidden")).toBeVisible();
-
     await openScenario(page);
+    await expect(page.getByRole("button", { name: "Run benchmark" })).toHaveCount(0);
     await page.getByRole("button", { name: "Approve" }).click();
     await expect(page.locator(".scenario-status")).toHaveText("APPROVED");
 
@@ -110,28 +95,5 @@ test.describe(hostedSuiteTitle, () => {
 
     await page.reload();
     await expect(page.locator(".robot-marker")).toHaveCount(candidateRobotCount);
-  });
-
-  test("Admin sees audit actor/action/time and has no operational actions", async ({ page }) => {
-    await login(page, "ADMIN");
-    await expect(page).toHaveURL(/\/admin$/);
-    await page.reload();
-
-    const appliedAuditRow = page.locator(".audit-table tbody tr")
-      .filter({ hasText: "SCENARIO_APPLIED" })
-      .first();
-    await expect(appliedAuditRow).toBeVisible();
-    await expect(appliedAuditRow).toContainText("MONITOR");
-    await expect(appliedAuditRow).toContainText(
-      /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i,
-    );
-    await expect(appliedAuditRow.locator("td").first()).toHaveText(/\S+/);
-
-    await openScenario(page);
-    await expect(page.getByText(/Administrator access is read-only/i)).toBeVisible();
-    await expect(page.getByRole("button", { name: "Run benchmark" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Approve" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Reject" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Apply to factory" })).toHaveCount(0);
   });
 });

@@ -1,14 +1,6 @@
 import { z } from "zod";
 import { env } from "./env";
 import { factoryAlertSchema } from "@/schemas/alert";
-import {
-  adminInviteRequestSchema,
-  adminUserSchema,
-  adminUserUpdateSchema,
-  auditEventSchema,
-  type AdminInviteRequest,
-  type AdminUserUpdate,
-} from "@/schemas/admin";
 import { currentUserSchema } from "@/schemas/auth";
 import { factoryMetricsSchema } from "@/schemas/metric";
 import { mockFactoryConfigSchema, type MockFactoryConfig } from "@/schemas/factory";
@@ -123,19 +115,4 @@ export const apiClient = {
     request(`/api/v1/scenarios/${encodeURIComponent(id)}/apply`, scenarioSchema, {
       method: "POST",
     }),
-  getAdminUsers: () => request("/api/v1/admin/users", z.array(adminUserSchema)),
-  updateAdminUser: (id: string, update: AdminUserUpdate) =>
-    request(`/api/v1/admin/users/${encodeURIComponent(id)}`, adminUserSchema, {
-      method: "PATCH",
-      body: JSON.stringify(adminUserUpdateSchema.parse(update)),
-    }),
-  inviteAdminUser: (invite: AdminInviteRequest) =>
-    request("/api/v1/admin/users/invite", adminUserSchema, {
-      method: "POST",
-      body: JSON.stringify(adminInviteRequestSchema.parse(invite)),
-    }),
-  getAdminAudit: (limit = 100) => request(
-    `/api/v1/admin/audit?limit=${Math.min(Math.max(Math.trunc(limit), 1), 100)}`,
-    z.array(auditEventSchema),
-  ),
 };

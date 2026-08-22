@@ -3,7 +3,8 @@
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { rectCenter, rectSize, toScene, ZONE } from "@/lib/factory-layout";
+import { toScene } from "@/lib/factory-layout";
+import type { FactoryLayout, FactoryStation } from "@/schemas/factory";
 import { Bollard, FloorLabel, PaintedRect } from "./shell";
 import { floorLabelTexture, hazardStripeTexture, hmiPanelTexture } from "./textures";
 
@@ -140,11 +141,14 @@ function Beacon({ active }: { active: boolean }) {
  * Marriage Station: the AMR drop pad, a scissor table that raises the pack, and
  * the body-in-white waiting on the line under a service gantry.
  */
-export function MarriageStation({ joining }: { joining: boolean }) {
-  const rect = ZONE.MARRIAGE_STATION;
-  const centre = rectCenter(rect);
-  const { width, depth } = rectSize(rect);
-  const [cx, , cz] = toScene(centre);
+export function MarriageStation({ joining, station, layout }: {
+  joining: boolean;
+  station: FactoryStation;
+  layout: FactoryLayout;
+}) {
+  const centre = { x: station.x + 0.3, y: station.y };
+  const width = 5, depth = 4.8;
+  const [cx, , cz] = toScene(centre, layout);
 
   const label = useMemo(() => floorLabelTexture("MARRIAGE STATION", "#8fb6f0", "PACK / BODY JOIN"), []);
   const hazard = useMemo(() => {
@@ -159,7 +163,7 @@ export function MarriageStation({ joining }: { joining: boolean }) {
   ), [joining]);
   useEffect(() => () => panel.dispose(), [panel]);
 
-  const padX = 16 - centre.x, padZ = -(8 - centre.y);
+  const padX = station.x - centre.x, padZ = -(station.y - centre.y);
   const gantryHeight = 3.05;
 
   return <group position={[cx, 0, cz]}>
