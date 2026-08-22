@@ -24,8 +24,9 @@ Browser:      Vercel Next.js -> Render REST/WSS + Supabase Auth
 - A separate machine-authenticated edge ingress will carry normalized telemetry
   and command acknowledgements. It must not reuse browser credentials.
 - Browser commands go through FastAPI; the browser never accesses DDS or Nav2.
-- Start with one paid Render Web Service and one Uvicorn worker while live state
-  and WebSocket membership are process-local.
+- Start the MVP/demo with one Free Render Web Service and one Uvicorn worker while
+  live state and WebSocket membership are process-local. Use paid service for
+  continuous operations where sleep and cold starts are unacceptable.
 - Use Supabase PostgreSQL 17 without assuming TimescaleDB. Add native partitioning
   only when measured telemetry volume requires it.
 
