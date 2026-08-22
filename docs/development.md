@@ -15,7 +15,12 @@ Ubuntu 24.04
 
 ## Arch Linux
 
-ROS development runs inside an Ubuntu 24.04 Distrobox.
+ROS development runs inside the prepared Ubuntu 24.04 Distrobox named `ros-jazzy`:
+
+```bash
+distrobox enter ros-jazzy
+source /opt/ros/jazzy/setup.bash
+```
 
 ## Windows
 
@@ -83,6 +88,51 @@ source ros2_ws/install/setup.bash
 ros2 launch amr_gazebo sim.launch.py
 ```
 
+The default `amr_gazebo/config/robots.json` spawns two robots. To add robots or
+change individual spawn poses, copy that file, keep every `robot_id` and namespace
+unique, then run:
+
+```bash
+ros2 launch amr_gazebo sim.launch.py robots_config:=/absolute/path/robots.json
+```
+
+The launch rejects fewer than two robots, invalid namespaces, duplicate IDs and
+non-finite poses before spawning any robot.
+
+Each robot also runs the M2 navigation/state simulator. Send a typed station goal
+from a sourced ROS terminal with:
+
+```bash
+ros2 action send_goal /amr_01/navigate_to_station \
+  amr_interfaces/action/NavigateToStation \
+  "{station_id: BATTERY_BUFFER, task_id: TASK-0001, payload_id: BP-0001, timeout_seconds: 30.0}" \
+  --feedback
+```
+
+Valid default station IDs are `BATTERY_BUFFER`, `MARRIAGE_STATION` and
+`CHARGING_STATION`. State is published on namespaced `battery_state`, `status`,
+`task_id` and `payload_id`; `state_override` accepts `ERROR` or `OFFLINE` for
+fault-path simulation. Navigation results are `SUCCESS`, `FAILED` or `TIMED_OUT`.
+
+Create a queued battery transport task through the Task Manager service:
+
+```bash
+ros2 service call /fleet/tasks/create \
+  amr_interfaces/srv/CreateTransportTask \
+  "{task_id: TASK-0001, payload_id: BP-0001, pickup_station_id: BATTERY_BUFFER, dropoff_station_id: MARRIAGE_STATION, navigation_timeout_seconds: 30.0, max_retries: 1}"
+```
+
+The service response is the acceptance acknowledgement. Observe assignment and
+execution results on the durable task update topic:
+
+```bash
+ros2 topic echo /fleet/task_updates amr_interfaces/msg/TaskState
+```
+
+The default launch runs one Task Manager and one Fleet Manager for all configured
+robots. Task Manager owns queue/lifecycle/retry; Fleet Manager owns registry,
+eligibility selection and robot navigation calls.
+
 Run the bridge in a separate terminal:
 
 ```bash
@@ -90,17 +140,19 @@ source /opt/ros/jazzy/setup.bash
 source ros2_ws/install/setup.bash
 ros2 launch telemetry_bridge telemetry_bridge.launch.py \
   backend_url:=https://YOUR_RENDER_HOST \
-  robot_id:=AMR-01
+  robots_config:="$PWD/ros2_ws/src/amr_gazebo/config/robots.json"
 ```
 
 The bridge reads its bearer secret from the `EDGE_TELEMETRY_SHARED_SECRET`
 environment variable. It accepts loopback HTTP for local development only;
 remote backend URLs must use HTTPS.
 
-For the second robot, launch a second namespaced bridge (for example `AMR-02`)
-with its own odometry/status topics. The bridge is outbound-only. Task assignment
-and reset commands must travel through the edge fleet/task manager; the browser
-must never publish ROS messages directly.
+One bridge subscribes to every robot declared in `robots_config`, preserves a
+separate latest-value delivery worker per robot, and forwards the durable
+`/fleet/task_updates` stream in FIFO order. It also emits bridge-health heartbeats.
+The bridge is outbound-only. Task assignment and reset commands must travel
+through the edge fleet/task manager; the browser must never publish ROS messages
+directly.
 
 The Makefile disables unrelated globally installed pytest plugins and enables
 `pytest-asyncio` explicitly. Tests also clear `DATABASE_URL` so a developer's

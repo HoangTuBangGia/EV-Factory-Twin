@@ -79,6 +79,101 @@ EXPECTED_COLUMNS = {
         "starvation_events",
         "fleet_utilization_percent",
     },
+    "layouts": {
+        "id",
+        "name",
+        "latest_version",
+        "created_by",
+        "created_at",
+        "updated_at",
+        "archived_at",
+    },
+    "layout_versions": {
+        "layout_id",
+        "version",
+        "content",
+        "created_by",
+        "created_at",
+    },
+    "scenario_reviews": {"id", "scenario_id", "decision", "actor_id", "created_at"},
+    "commands": {
+        "operation_id",
+        "scenario_id",
+        "status",
+        "payload",
+        "timeout_seconds",
+        "max_retries",
+        "requested_by",
+        "created_at",
+        "updated_at",
+    },
+    "command_attempts": {
+        "operation_id",
+        "attempt_number",
+        "status",
+        "leased_by",
+        "leased_at",
+        "lease_expires_at",
+        "acknowledged_at",
+        "completed_at",
+        "detail",
+    },
+    "command_acknowledgements": {
+        "id",
+        "operation_id",
+        "attempt_number",
+        "status",
+        "bridge_id",
+        "detail",
+        "created_at",
+    },
+    "robot_telemetry_history": {
+        "robot_id",
+        "source_timestamp",
+        "ingested_at",
+        "pose",
+        "velocity",
+        "battery",
+        "status",
+        "task_id",
+        "payload_id",
+        "ordering_status",
+    },
+    "bridge_health_history": {
+        "id",
+        "bridge_id",
+        "status",
+        "robot_ids",
+        "source_timestamp",
+        "ingested_at",
+        "delivered_samples",
+        "failed_deliveries",
+        "last_error",
+    },
+    "task_state_history": {
+        "id",
+        "task_id",
+        "status",
+        "assigned_robot_id",
+        "attempt",
+        "message",
+        "source_timestamp",
+        "ingested_at",
+    },
+    "alerts": {
+        "id",
+        "dedupe_key",
+        "severity",
+        "code",
+        "status",
+        "message",
+        "robot_id",
+        "task_id",
+        "operation_id",
+        "triggered_at",
+        "last_seen_at",
+        "cleared_at",
+    },
 }
 
 
@@ -162,7 +257,7 @@ def test_application_enums_match_the_api_contract() -> None:
         qualified_name = ".".join(part.sval for part in statement.typeName)
         enums[qualified_name] = tuple(value.sval for value in statement.vals)
 
-    assert enums["public.app_role"] == ("DESIGNER", "MONITOR", "ADMIN")
+    assert enums["public.app_role"] == ("DESIGNER", "MONITOR")
     assert enums["public.scenario_status"] == (
         "DRAFT",
         "SIMULATED",
@@ -170,6 +265,33 @@ def test_application_enums_match_the_api_contract() -> None:
         "REJECTED",
         "APPLIED",
     )
+    lifecycle_migration = (
+        MIGRATION_DIRECTORY / "20260822000350_add_submitted_scenario_status.sql"
+    ).read_text()
+    assert "add value if not exists 'submitted'" in lifecycle_migration.lower()
+    assert enums["public.command_status"] == (
+        "PENDING",
+        "ACKNOWLEDGED",
+        "COMPLETED",
+        "FAILED",
+        "TIMED_OUT",
+    )
+    assert enums["public.alert_severity"] == ("INFO", "WARNING", "CRITICAL")
+    assert enums["public.alert_status"] == ("ACTIVE", "CLEARED")
+
+
+def test_runtime_history_uses_partman_and_bounded_retention() -> None:
+    migration = (
+        MIGRATION_DIRECTORY / "20260822000500_create_runtime_health_history.sql"
+    ).read_text()
+    normalized = migration.lower()
+
+    assert "partition by range (source_timestamp)" in normalized
+    assert "partman.create_parent" in normalized
+    assert "retention = '30 days'" in normalized
+    assert "retention_keep_table = false" in normalized
+    assert "partman.run_maintenance_proc()" in normalized
+    assert "private.prune_runtime_history()" in normalized
 
 
 def test_every_public_table_enables_rls_and_never_disables_it() -> None:
@@ -284,15 +406,17 @@ def test_authenticated_policies_are_select_only_and_cover_each_public_table() ->
     ("policy_name", "required_fragments"),
     [
         (
-            "profiles_select_own_or_admin",
-            ("private.is_active_user", "auth.uid", "private.current_app_role", "'ADMIN'"),
+            "profiles_select_own",
+            ("private.is_active_user", "auth.uid"),
         ),
         ("scenarios_select_active_users", ("private.is_active_user",)),
         (
-            "audit_events_select_admin",
-            ("private.is_active_user", "private.current_app_role", "'ADMIN'"),
+            "audit_events_select_monitor",
+            ("private.is_active_user", "private.current_app_role", "'MONITOR'"),
         ),
         ("kpi_snapshots_select_active_users", ("private.is_active_user",)),
+        ("layouts_select_active_users", ("private.is_active_user",)),
+        ("layout_versions_select_active_users", ("private.is_active_user",)),
     ],
 )
 def test_required_rls_policy_predicates(
@@ -367,10 +491,32 @@ def test_audit_events_remains_append_only() -> None:
     assert "private.reject_audit_event_mutation" in truncate
 
 
+def test_layout_versions_are_immutable() -> None:
+    triggers = {
+        statement.trigname: RawStream()(statement)
+        for statement in _statements()
+        if isinstance(statement, ast.CreateTrigStmt)
+        and _relation_name(statement.relation) == ("public", "layout_versions")
+    }
+
+    assert "UPDATE" in triggers["layout_versions_reject_update_delete"]
+    assert "DELETE" in triggers["layout_versions_reject_update_delete"]
+    assert "BEFORE TRUNCATE" in triggers["layout_versions_reject_truncate"]
+
+
 def test_migrations_contain_no_destructive_schema_statements() -> None:
-    destructive = [
+    destructive = {
         RawStream()(statement)
         for statement in _statements()
         if isinstance(statement, (ast.DropStmt, ast.TruncateStmt))
-    ]
-    assert not destructive, f"destructive migration statement(s): {destructive}"
+    }
+    reviewed_role_reduction = {
+        "DROP POLICY profiles_select_own_or_admin ON public.profiles",
+        "DROP POLICY audit_events_select_admin ON public.audit_events",
+        "DROP TRIGGER ev_twin_on_auth_user_created ON auth.users",
+        "DROP FUNCTION private.handle_new_auth_user ()",
+        "DROP FUNCTION private.current_app_role ()",
+        "DROP TYPE public.app_role_legacy",
+    }
+    unexpected = destructive - reviewed_role_reduction
+    assert not unexpected, f"destructive migration statement(s): {sorted(unexpected)}"

@@ -8,8 +8,6 @@ export const permissions = [
   "scenarios:apply",
   "factory:control",
   "layout:edit",
-  "users:manage",
-  "audit:view",
 ] as const;
 
 export type Permission = (typeof permissions)[number];
@@ -27,12 +25,6 @@ export const rolePermissions: Readonly<Record<AppRole, readonly Permission[]>> =
     "scenarios:review",
     "scenarios:apply",
     "factory:control",
-  ],
-  ADMIN: [
-    "operations:view",
-    "scenarios:view",
-    "users:manage",
-    "audit:view",
   ],
 };
 

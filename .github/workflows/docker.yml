@@ -1,0 +1,66 @@
+name: Container CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, develop]
+    paths:
+      - "apps/backend/**"
+      - "packages/twin-core/**"
+      - "services/simulation/**"
+      - "evaluation/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".dockerignore"
+      - "render.yaml"
+      - ".github/workflows/docker.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "apps/backend/**"
+      - "packages/twin-core/**"
+      - "services/simulation/**"
+      - "evaluation/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".dockerignore"
+      - "render.yaml"
+      - ".github/workflows/docker.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend image · build and health smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build --file apps/backend/Dockerfile --tag ev-factory-twin-api:test .
+
+      - name: Start backend container
+        run: >-
+          docker run --detach --rm --name ev-factory-twin-api
+          --publish 127.0.0.1:8000:8000
+          --env APP_ENV=test
+          --env MOCK_FACTORY_ENABLED=false
+          ev-factory-twin-api:test
+
+      - name: Wait for health endpoint
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8000/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs ev-factory-twin-api
+          exit 1
+
+      - name: Stop backend container
+        if: always()
+        run: docker stop ev-factory-twin-api || true

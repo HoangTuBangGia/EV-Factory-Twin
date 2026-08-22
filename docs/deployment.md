@@ -8,19 +8,21 @@ Browser
   └── HTTPS ──────> Vercel: Next.js frontend
 ```
 
-Factory edge chạy Gazebo Harmonic, ROS 2 Jazzy, Nav2, fleet/task managers và
-telemetry bridge. Edge chỉ mở kết nối outbound TLS tới Render; browser không truy
-cập DDS. Supabase cung cấp Auth và PostgreSQL cho backend.
+Factory edge chạy Gazebo Harmonic, ROS 2 Jazzy, deterministic navigation
+simulator, fleet/task managers và telemetry bridge. Edge chỉ mở kết nối outbound
+TLS tới Render; browser không truy cập DDS. Supabase cung cấp Auth và PostgreSQL
+cho backend.
 
 Không deploy Gazebo/ROS2 lên Vercel hoặc Render. Hai nền tảng này không cung cấp
 ROS DDS, Gazebo process, network discovery ổn định hoặc GPU/robotics runtime.
 
 ## Current readiness
 
-Vercel + Render + Supabase là topology chính, nhưng repository chưa có production
-Dockerfile, `render.yaml`, hoặc deployment workflow. Các file này sẽ được thêm
-cùng checkpoint backend container đầu tiên; tài liệu này là contract triển khai,
-không phải bằng chứng deployment đã sẵn sàng.
+Repository có production `apps/backend/Dockerfile`, Render Blueprint và container
+CI health smoke. Vercel dùng native Next.js build với Root Directory
+`apps/frontend`, nên không cần `vercel.json`. Đây là deployable configuration,
+không phải bằng chứng hosted acceptance; lần chạy thật phải được ghi theo
+`docs/runbooks/mvp-edge-acceptance.md`.
 
 Không commit `.env`, `.env.local` hoặc secret. Các file này đã được `.gitignore`.
 
@@ -40,7 +42,7 @@ Chọn một trong các phương án sau:
 | Phương án | Khi dùng | Ghi chú |
 |---|---|---|
 | Máy Ubuntu 24.04 của team | Demo và development | Dễ debug, cần giữ máy online |
-| VM/cloud có Ubuntu 24.04 | Demo online ổn định | Cần CPU/RAM/GPU và network outbound |
+| GCP Compute Engine Ubuntu 24.04 | Demo online ổn định | Chạy headless theo `docs/runbooks/gcp-edge.md` |
 | Docker Compose trên edge host | Deployment lặp lại | Dùng image ROS 2 Jazzy/Gazebo Harmonic, không dùng Vercel/Render |
 
 Edge cần chạy các process:
@@ -62,7 +64,8 @@ Tối thiểu phải kiểm tra:
 make ros-check
 make ros-build
 ros2 launch amr_gazebo sim.launch.py
-ros2 launch telemetry_bridge telemetry_bridge.launch.py
+ros2 launch telemetry_bridge telemetry_bridge.launch.py \
+  robots_config:="$PWD/ros2_ws/src/amr_gazebo/config/robots.json"
 ```
 
 `EDGE_TELEMETRY_SHARED_SECRET` chỉ nằm ở Render và edge secret store. Không đặt
@@ -72,8 +75,7 @@ secret trong frontend, Supabase client hoặc Git.
 
 1. Dùng Render **paid Web Service**, một instance và một Uvicorn worker trong
    giai đoạn live state/WebSocket còn process-local.
-2. Khi `render.yaml` đã tồn tại, dùng **New > Blueprint**; trước thời điểm đó
-   không giả định repository đã có file này.
+2. Dùng **New > Blueprint** và chọn `render.yaml` trong repository.
 3. Cấu hình các biến môi trường backend trên Render:
 
    ```env
@@ -82,19 +84,20 @@ secret trong frontend, Supabase client hoặc Git.
     DATABASE_URL=postgresql+asyncpg://...
    DATABASE_SSL_MODE=require
    SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
-    SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVER_ONLY_KEY
     EDGE_TELEMETRY_SHARED_SECRET=GENERATE_AT_LEAST_32_RANDOM_CHARACTERS
     EDGE_TELEMETRY_MAX_FUTURE_SKEW_SECONDS=5
    ```
 
    `SUPABASE_JWT_ISSUER` và `SUPABASE_JWKS_URL` được suy ra từ `SUPABASE_URL`.
-   Backend không cần service-role key cho login/RBAC; chỉ endpoint Admin mời user
-   cần key này. Nếu team tạo account trong Dashboard, có thể bỏ trống nó. Sau khi
+   Backend MVP không dùng service-role key; team tạo account trong Supabase Dashboard. Sau khi
    có URL Vercel production, phải thay `CORS_ORIGINS` bằng URL Vercel thật.
    Edge secret phải được cấu hình cùng giá trị ở Render và secret store của bridge;
    không đưa vào Vercel hoặc Supabase client config. Future-skew mặc định 5 giây
    cho phép sai lệch clock nhỏ; giá trị hợp lệ là 0–300 giây.
-4. Chạy migration bằng pre-deploy command, không chạy migration mỗi lần app start.
+4. Trước deploy ứng dụng, link Supabase CLI tới đúng hosted project và chạy
+   `supabase db push` như một thao tác migration riêng có kiểm soát. Không đặt
+   migration trong application startup hoặc Render start command. Xem trước diff,
+   backup và yêu cầu người vận hành duyệt trước khi chạy lên hosted database.
 5. Chọn **Apply** và chờ service healthy.
 6. Ghi lại URL backend, ví dụ:
 
@@ -179,9 +182,9 @@ CORS cho backend production.
 Mở frontend Vercel và kiểm tra:
 
 - Mở URL khi chưa login sẽ được chuyển về `/login`.
-- Designer, Monitor và Admin login vào đúng landing page/quyền tương ứng.
+- Designer và Monitor login vào đúng landing page/quyền tương ứng.
 - Topbar chuyển từ `CONNECTING` sang `LIVE`.
-- Overview hiển thị 5 AMR từ `/api/v1/robots`.
+- Overview hiển thị tối thiểu hai AMR đã cấu hình từ `/api/v1/robots`.
 - Vị trí, pin và trạng thái robot thay đổi theo WebSocket.
 - DevTools > Network có REST `200` và WebSocket `/ws/factory` trả `101`.
 
@@ -197,8 +200,9 @@ curl -H "Authorization: Bearer <ACCESS_TOKEN>" \
 
 - Vercel tự tạo Preview Deployment cho pull request và production deployment
   khi push/merge vào production branch.
-- Khi `render.yaml` và smoke test đã được thêm, có thể cấu hình Render chỉ deploy
-  sau khi GitHub CI xanh. Hiện automation này chưa tồn tại trong repository.
+- `render.yaml` dùng `autoDeployTrigger: checksPass`, vì vậy Render chỉ auto-deploy
+  commit sau khi GitHub checks liên quan đã xanh. Migration production vẫn là
+  thao tác riêng do con người kiểm soát.
 
 ## 8. Lưu ý vận hành
 
@@ -234,14 +238,11 @@ curl -H "Authorization: Bearer <ACCESS_TOKEN>" \
 
 ## 10. Supabase và pg_partman
 
-Không cần `pg_partman` cho MVP hiện tại. MVP không lưu raw telemetry 10 Hz dài hạn;
-chỉ lưu scenario, simulation metrics, approval/audit cần thiết. PostgreSQL tables
-và index thông thường trên Supabase là đủ.
-
-Chỉ xem xét partitioning/`pg_partman` khi đã đo được raw telemetry làm phình bảng
-hoặc query history vượt ngưỡng chấp nhận. Khi đó cần xác nhận extension được bật
-trên project Supabase, quyền tạo extension, retention policy, backup/restore và
-maintenance job. Không thêm dependency này chỉ để “chuẩn bị cho tương lai”.
+Target database là Supabase PostgreSQL 17.6.1.155. Hosted project đã xác nhận có
+`pg_partman 5.3.1` và `pg_cron 1.6.4`. Migration M8 enable hai extension, tạo daily
+native partitions, premake 7 ngày và retention telemetry 30 ngày. Cron gọi partman
+maintenance mỗi giờ; alerts, task history và KPI snapshots được prune sau 90 ngày.
+Theo dõi `cron.job_run_details` và `partman.part_config.maintenance_last_run` sau deploy.
 
 ## 11. Alternative deployment
 

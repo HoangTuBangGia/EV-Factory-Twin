@@ -12,6 +12,8 @@ from ev_twin_api.services.audit_service import (
     InMemoryAuditRepository,
 )
 from ev_twin_api.services.factory_state import FactoryState
+from ev_twin_api.services.layout_repository import InMemoryLayoutRepository
+from ev_twin_api.services.layout_service import LayoutService
 from ev_twin_api.services.mock_factory import MockFactory
 from ev_twin_api.services.scenario_service import ScenarioService
 from ev_twin_api.services.websocket_manager import WebSocketManager
@@ -66,7 +68,10 @@ async def test_config_does_not_mutate_factory_when_intent_audit_fails() -> None:
 @pytest.mark.asyncio
 async def test_manual_reset_waits_for_scenario_apply_control_lock() -> None:
     mock_factory = build_mock_factory()
-    service = ScenarioService(mock_factory)
+    service = ScenarioService(
+        mock_factory,
+        layout_service=LayoutService(InMemoryLayoutRepository(include_default=True)),
+    )
     scenario = await service.run(
         ScenarioRunRequest(
             name="serialized-controls",
@@ -79,6 +84,7 @@ async def test_manual_reset_waits_for_scenario_apply_control_lock() -> None:
         ),
         DESIGNER,
     )
+    await service.submit(scenario.id, DESIGNER)
     approved = await service.approve(scenario.id, MONITOR)
 
     first_reset_started = asyncio.Event()
@@ -98,7 +104,7 @@ async def test_manual_reset_waits_for_scenario_apply_control_lock() -> None:
     audit_repository = InMemoryAuditRepository()
     audit_service = AuditService(audit_repository)
 
-    apply_task = asyncio.create_task(service.apply(approved.id, MONITOR))
+    apply_task = asyncio.create_task(service.complete_apply(approved.id, MONITOR))
     await first_reset_started.wait()
     manual_reset_task = asyncio.create_task(reset_mock(mock_factory, audit_service, MONITOR))
     await asyncio.sleep(0)

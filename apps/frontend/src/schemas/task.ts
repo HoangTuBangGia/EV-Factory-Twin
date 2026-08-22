@@ -1,7 +1,8 @@
 import { z } from "zod";
 
 export const taskStatusSchema = z.enum([
-  "QUEUED", "ASSIGNED", "PICKUP", "IN_PROGRESS", "DELIVERED", "COMPLETED", "FAILED",
+  "QUEUED", "ASSIGNED", "PICKUP", "DELIVERING", "COMPLETED", "FAILED", "TIMED_OUT",
+  "IN_PROGRESS", "DELIVERED",
 ]);
 
 export const taskSchema = z.object({

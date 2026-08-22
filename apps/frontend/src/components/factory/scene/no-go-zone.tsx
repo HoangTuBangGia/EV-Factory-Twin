@@ -3,7 +3,8 @@
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
-import { rectCenter, rectSize, toScene, ZONE } from "@/lib/factory-layout";
+import { boundsForPoints, rectCenter, rectSize, toScene } from "@/lib/factory-layout";
+import type { FactoryLayout, NoGoZone as NoGoZoneData } from "@/schemas/factory";
 import { Bollard, FloorLabel, PaintedRect } from "./shell";
 import { floorLabelTexture, hazardStripeTexture, warningSignTexture } from "./textures";
 
@@ -47,11 +48,14 @@ function KeepOutWall({ width, height, position, rotation }: {
  * No-go zone: a hazard-painted exclusion patch fenced by bollards and rails,
  * with a light curtain and a sweeping safety scanner so it reads as active.
  */
-export function NoGoZone() {
-  const rect = ZONE.NO_GO;
+export function NoGoZone({ zone, layout }: {
+  zone: NoGoZoneData;
+  layout: FactoryLayout;
+}) {
+  const rect = boundsForPoints(zone.points);
   const centre = rectCenter(rect);
   const { width, depth } = rectSize(rect);
-  const [cx, , cz] = toScene(centre);
+  const [cx, , cz] = toScene(centre, layout);
   const halfWidth = width / 2, halfDepth = depth / 2;
 
   const stripes = useMemo(() => {

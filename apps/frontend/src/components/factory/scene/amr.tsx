@@ -6,6 +6,7 @@ import { useMemo, useRef, type CSSProperties } from "react";
 import * as THREE from "three";
 import type { Line2 } from "three-stdlib";
 import { toScene } from "@/lib/factory-layout";
+import type { FactoryLayout } from "@/schemas/factory";
 import type { Robot, RobotStatus } from "@/schemas/robot";
 import { radialGlowTexture } from "./textures";
 
@@ -83,8 +84,11 @@ function CarriedPack() {
  * reported linear velocity — that is what makes the fleet read as driving
  * rather than teleporting between updates.
  */
-export function Amr({ robot, selected, onSelect }: {
-  robot: Robot; selected: boolean; onSelect: (id: string) => void;
+export function Amr({ robot, selected, onSelect, layout }: {
+  robot: Robot;
+  selected: boolean;
+  onSelect: (id: string) => void;
+  layout: FactoryLayout;
 }) {
   const root = useRef<THREE.Group>(null);
   const body = useRef<THREE.Group>(null);
@@ -103,16 +107,16 @@ export function Amr({ robot, selected, onSelect }: {
   // allocated once and only its positions are rewritten per frame.
   const trail = useRef<THREE.Vector3[]>([]);
   const seedPoints = useMemo(() => {
-    const [x, , z] = toScene(robot.pose);
+    const [x, , z] = toScene(robot.pose, layout);
     trail.current = Array.from({ length: TRAIL_LENGTH }, () => new THREE.Vector3(x, 0.05, z));
     return trail.current.map((point) => point.clone());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [robot.id]);
+  }, [layout, robot.id]);
 
   useFrame((state, delta) => {
     const group = root.current;
     if (!group) return;
-    const [tx, , tz] = toScene(robot.pose);
+    const [tx, , tz] = toScene(robot.pose, layout);
 
     if (!spawned.current) {
       group.position.set(tx, 0, tz);

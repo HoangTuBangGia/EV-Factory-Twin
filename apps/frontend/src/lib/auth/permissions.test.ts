@@ -19,14 +19,6 @@ describe("role permission matrix", () => {
     expect(can("MONITOR", "scenarios:apply")).toBe(true);
   });
 
-  it("does not grant operational mutation rights to administrators", () => {
-    expect(can("ADMIN", "operations:view")).toBe(true);
-    expect(can("ADMIN", "scenarios:run")).toBe(false);
-    expect(can("ADMIN", "scenarios:review")).toBe(false);
-    expect(can("ADMIN", "scenarios:apply")).toBe(false);
-    expect(can("ADMIN", "factory:control")).toBe(false);
-  });
-
   it("denies every permission when no role is available", () => {
     expect(permissions.every((permission) => !can(null, permission))).toBe(true);
   });

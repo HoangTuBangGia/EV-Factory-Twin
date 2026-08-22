@@ -12,8 +12,8 @@ const links: Array<{ label: string; href: string; permission: Permission }> = [
   { label: "Fleet", href: "/fleet", permission: "operations:view" },
   { label: "Tasks", href: "/tasks", permission: "operations:view" },
   { label: "Analytics", href: "/analytics", permission: "operations:view" },
+  { label: "Layouts", href: "/layouts", permission: "layout:edit" },
   { label: "Scenarios", href: "/scenarios", permission: "scenarios:view" },
-  { label: "Administration", href: "/admin", permission: "users:manage" },
 ];
 
 export function Sidebar() {

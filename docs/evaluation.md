@@ -109,10 +109,14 @@ The evaluation is incomplete unless it demonstrates:
 - Designer/Monitor approval before applying the candidate;
 - measured ROS-to-backend and backend-to-browser latency plus basic FPS.
 
+Run and record this hosted path with `docs/runbooks/mvp-edge-acceptance.md`.
+Backend/DB, frontend, ROS and container CI are necessary gates but do not replace
+the networked acceptance run against Render, Vercel and Supabase.
+
 ## Limitations
 
 - Does not model physical robot dynamics
 - Does not model production-grade robot dynamics or fleet optimization
 - Travel and loading times are deterministic
 - SimPy is used only for quick KPI and layout benchmark evaluation
-- Raw telemetry history/replay and long-term retention are outside MVP
+- Incident replay UI đầy đủ và retention vượt policy 30/90 ngày nằm ngoài MVP

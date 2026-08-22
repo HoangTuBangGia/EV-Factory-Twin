@@ -12,7 +12,6 @@ def make_test_user(role: AppRole = AppRole.MONITOR) -> CurrentUser:
     user_number = {
         AppRole.DESIGNER: 1,
         AppRole.MONITOR: 2,
-        AppRole.ADMIN: 3,
     }[role]
     return CurrentUser(
         id=UUID(f"00000000-0000-0000-0000-{user_number:012d}"),

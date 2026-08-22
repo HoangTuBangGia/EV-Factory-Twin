@@ -75,7 +75,7 @@ Phụ trách:
 - Backend command tới edge/fleet manager có acknowledgement.
 - Layout/version API và scenario gắn với layout.
 - SimPy tính throughput, cycle time, waiting và congestion.
-- Supabase lưu profiles, layouts, scenarios, KPI, approvals và audit cần thiết.
+- Supabase lưu profiles, layouts, scenarios, runs/KPI, commands, alerts, audit và telemetry cần thiết.
 - Alert stale telemetry, command timeout, robot error và congestion.
 - Render service chạy được với Supabase hosted.
 
@@ -165,7 +165,7 @@ nguồn sự thật cho đến thời điểm đó.
 
 ```ts
 type FactoryLayout = {
-  id: string;
+  layout_id: string;
   name: string;
   version: number;
   width: number;
@@ -178,12 +178,25 @@ type FactoryLayout = {
   }>;
   routes: Array<{
     id: string;
+    start_station_id: string;
+    end_station_id: string;
     waypoints: Array<{ x: number; y: number }>;
   }>;
   no_go_zones: Array<{
     id: string;
     points: Array<{ x: number; y: number }>;
   }>;
+  congestion_zones: Array<{
+    id: string;
+    delay_multiplier: number;
+    points: Array<{ x: number; y: number }>;
+  }>;
+  config: {
+    robot_count: number;
+    demand_interval_seconds: number;
+    robot_speed_mps: number;
+    charger_count: number;
+  };
 };
 ```
 
@@ -249,6 +262,10 @@ Cần thêm trong checkpoint layout:
 GET  /api/v1/layouts
 GET  /api/v1/layouts/{id}
 POST /api/v1/layouts
+PATCH /api/v1/layouts/{id}
+DELETE /api/v1/layouts/{id}
+POST /api/v1/layouts/{id}/versions
+GET  /api/v1/layouts/{id}/versions/{version}
 ```
 
 ## Definition of Done
@@ -264,9 +281,7 @@ POST /api/v1/layouts
 
 ## Không thuộc MVP
 
-- raw telemetry replay dài hạn;
-- `pg_partman`/time-series platform;
+- incident replay UI đầy đủ và telemetry retention ngoài policy;
 - CAD/BIM toàn nhà máy;
-- Admin portal mở rộng;
 - AI chatbot, predictive maintenance, MES/ERP;
 - tự động tối ưu layout.

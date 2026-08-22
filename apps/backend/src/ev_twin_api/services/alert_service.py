@@ -1,7 +1,8 @@
 import logging
 from datetime import UTC, datetime
+from uuid import uuid4
 
-from ev_twin_api.schemas.alert import AlertSeverity, FactoryAlert
+from ev_twin_api.schemas.alert import AlertCode, AlertSeverity, FactoryAlert
 from ev_twin_api.schemas.robot import Robot, RobotStatus
 from ev_twin_api.schemas.task import Task, TaskStatus
 from ev_twin_api.services.factory_state import FactoryState
@@ -9,11 +10,11 @@ from ev_twin_api.services.metrics_service import STARVATION_THRESHOLD_SECONDS
 
 logger = logging.getLogger("ev_twin_api")
 
-LOW_BATTERY = "LOW_BATTERY"
-ROBOT_WAITING = "ROBOT_WAITING"
-TASK_BACKLOG = "TASK_BACKLOG"
-STARVATION = "STARVATION"
-ROBOT_ERROR = "ROBOT_ERROR"
+LOW_BATTERY = AlertCode.LOW_BATTERY
+ROBOT_WAITING = AlertCode.ROBOT_WAITING
+TASK_BACKLOG = AlertCode.TASK_BACKLOG
+STARVATION = AlertCode.STARVATION
+ROBOT_ERROR = AlertCode.ROBOT_ERROR
 
 SEVERITY_BY_CODE = {
     LOW_BATTERY: AlertSeverity.WARNING,
@@ -43,16 +44,22 @@ class AlertService:
         self._state = state
         self._next_alert_number = 1
         self._active_condition_keys: set[str] = set()
+        self._cleared_condition_keys: set[str] = set()
         self._idle_since: dict[str, datetime] = {}
 
     def reset(self) -> None:
         self._next_alert_number = 1
         self._active_condition_keys.clear()
+        self._cleared_condition_keys.clear()
         self._idle_since.clear()
+
+    def active_condition_keys(self) -> set[str]:
+        return set(self._active_condition_keys)
 
     def check(
         self, *, low_battery_threshold: float, task_interval_seconds: float
     ) -> list[FactoryAlert]:
+        self._cleared_condition_keys.clear()
         robots = self._state.list_robots()
         tasks = self._state.list_tasks()
 
@@ -68,16 +75,27 @@ class AlertService:
             self._state.add_alert(alert)
         return new_alerts
 
+    def drain_cleared_condition_keys(self) -> set[str]:
+        cleared = set(self._cleared_condition_keys)
+        self._cleared_condition_keys.clear()
+        return cleared
+
+    def _clear_condition(self, key: str) -> None:
+        if key in self._active_condition_keys:
+            self._active_condition_keys.remove(key)
+            self._cleared_condition_keys.add(key)
+
     def _create_alert(
         self,
-        code: str,
+        code: AlertCode,
         message: str,
         *,
         robot_id: str | None = None,
         task_id: str | None = None,
     ) -> FactoryAlert:
         alert = FactoryAlert(
-            id=f"ALERT-{self._next_alert_number:04d}",
+            id=uuid4(),
+            dedupe_key=":".join(value for value in (code, robot_id, task_id) if value is not None),
             severity=SEVERITY_BY_CODE[code],
             code=code,
             message=message,
@@ -106,7 +124,7 @@ class AlertService:
                         )
                     )
             else:
-                self._active_condition_keys.discard(key)
+                self._clear_condition(key)
         return alerts
 
     def _check_robot_waiting(
@@ -137,7 +155,7 @@ class AlertService:
         for robot_id in list(self._idle_since):
             if robot_id not in still_idle_ids:
                 del self._idle_since[robot_id]
-                self._active_condition_keys.discard(f"{ROBOT_WAITING}:{robot_id}")
+                self._clear_condition(f"{ROBOT_WAITING}:{robot_id}")
 
         return alerts
 
@@ -154,7 +172,7 @@ class AlertService:
                         )
                     )
             else:
-                self._active_condition_keys.discard(key)
+                self._clear_condition(key)
         return alerts
 
     def _check_task_backlog(self, tasks: list[Task]) -> list[FactoryAlert]:
@@ -171,12 +189,19 @@ class AlertService:
                     )
                 ]
         else:
-            self._active_condition_keys.discard(TASK_BACKLOG)
+            self._clear_condition(TASK_BACKLOG)
         return []
 
     def _check_starvation(self, tasks: list[Task]) -> list[FactoryAlert]:
         now = datetime.now(UTC)
         alerts: list[FactoryAlert] = []
+        queued_ids = {task.task_id for task in tasks if task.status == TaskStatus.QUEUED}
+        for key in tuple(self._active_condition_keys):
+            if (
+                key.startswith(f"{STARVATION}:")
+                and key.removeprefix(f"{STARVATION}:") not in queued_ids
+            ):
+                self._clear_condition(key)
         for task in tasks:
             if task.status != TaskStatus.QUEUED:
                 continue

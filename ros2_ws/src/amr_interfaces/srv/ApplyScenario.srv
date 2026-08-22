@@ -1,0 +1,16 @@
+string operation_id
+uint16 attempt_number
+string scenario_id
+string layout_id
+uint32 layout_version
+string route_id
+uint16 robot_count
+float32 robot_speed_mps
+uint16 charger_count
+float32 demand_interval_seconds
+---
+uint8 COMPLETED=0
+uint8 FAILED=1
+
+uint8 outcome
+string detail

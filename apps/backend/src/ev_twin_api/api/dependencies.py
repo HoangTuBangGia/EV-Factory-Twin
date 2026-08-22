@@ -80,7 +80,7 @@ def require_roles(*allowed_roles: AppRole) -> RoleDependency:
     return check_role
 
 
-READ_ROLES = (AppRole.DESIGNER, AppRole.MONITOR, AppRole.ADMIN)
+READ_ROLES = (AppRole.DESIGNER, AppRole.MONITOR)
 
 
 async def require_edge_telemetry_secret(

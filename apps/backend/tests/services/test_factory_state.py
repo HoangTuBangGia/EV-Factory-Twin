@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from ev_twin_api.core.layout import FACTORY_HEIGHT_M, FACTORY_WIDTH_M
 from ev_twin_api.schemas.alert import AlertCode, AlertSeverity, FactoryAlert
 from ev_twin_api.schemas.factory import MockFactoryConfig
@@ -105,7 +107,8 @@ def test_reset_restores_initial_state() -> None:
     )
     state.add_alert(
         FactoryAlert(
-            id="ALERT-0001",
+            id=uuid4(),
+            dedupe_key="LOW_BATTERY:AMR-01",
             severity=AlertSeverity.WARNING,
             code=AlertCode.LOW_BATTERY,
             message="low battery",

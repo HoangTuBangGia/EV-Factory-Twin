@@ -3,7 +3,8 @@
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { CHARGER_BAY_COUNT, rectCenter, rectSize, STATION_ANCHOR, toScene, ZONE } from "@/lib/factory-layout";
+import { CHARGER_BAY_COUNT, toScene } from "@/lib/factory-layout";
+import type { FactoryLayout, FactoryStation } from "@/schemas/factory";
 import { FloorLabel, PaintedRect } from "./shell";
 import { floorLabelTexture, hmiPanelTexture } from "./textures";
 
@@ -92,19 +93,21 @@ function ChargerCabinet({ position, bay, active }: {
  * Charging Station: three DC bays with wheel stops, hanging leads and live
  * occupancy driven by how many AMRs currently report CHARGING.
  */
-export function ChargingStation({ occupied }: { occupied: number }) {
-  const rect = ZONE.CHARGING_STATION;
-  const centre = rectCenter(rect);
-  const { width, depth } = rectSize(rect);
-  const [cx, , cz] = toScene(centre);
+export function ChargingStation({ occupied, station, layout }: {
+  occupied: number;
+  station: FactoryStation;
+  layout: FactoryLayout;
+}) {
+  const centre = { x: station.x + 0.3, y: station.y + 0.1 };
+  const width = 3.4, depth = 3.4;
+  const [cx, , cz] = toScene(centre, layout);
   const label = useMemo(() => floorLabelTexture("CHARGING", "#7fe0c4", "DC FAST BAYS"), []);
   const busy = Math.max(0, Math.min(CHARGER_BAY_COUNT, Math.round(occupied)));
 
   // Every charging AMR parks on CHARGING_STATION exactly, so the bay row is
   // centred on that anchor rather than on the painted rectangle — otherwise a
   // docked robot straddles two bays.
-  const anchor = STATION_ANCHOR.CHARGING_STATION;
-  const dockX = anchor.x - centre.x, dockZ = -(anchor.y - centre.y);
+  const dockX = station.x - centre.x, dockZ = -(station.y - centre.y);
 
   return <group position={[cx, 0, cz]}>
     <PaintedRect width={width} depth={depth} color="#2f8f7a" fillOpacity={0.2} height={0.008}/>

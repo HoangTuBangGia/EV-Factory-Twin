@@ -21,7 +21,7 @@ class TaskService:
 
     Task status and robot status advance in lockstep:
     QUEUED/IDLE -> ASSIGNED/MOVING_TO_PICKUP -> PICKUP/PICKING ->
-    IN_PROGRESS/DELIVERING -> DELIVERED/DROPPING -> COMPLETED/IDLE.
+    DELIVERING -> COMPLETED/IDLE.
     Movement (and therefore the MOVING_TO_PICKUP/DELIVERING arrival
     triggers) is driven by MockFactory; this service only owns the domain
     state transitions themselves.
@@ -104,16 +104,14 @@ class TaskService:
                 update={"status": RobotStatus.DELIVERING, "payload_id": task.payload_id}
             )
         )
-        updated_task = task.model_copy(update={"status": TaskStatus.IN_PROGRESS})
+        updated_task = task.model_copy(update={"status": TaskStatus.DELIVERING})
         self._state.update_task(updated_task)
         return updated_task
 
     def arrive_at_dropoff(self, robot_id: str) -> Task:
         robot, task = self._robot_and_task(robot_id)
         self._state.update_robot(robot.model_copy(update={"status": RobotStatus.DROPPING}))
-        updated_task = task.model_copy(update={"status": TaskStatus.DELIVERED})
-        self._state.update_task(updated_task)
-        return updated_task
+        return task
 
     def finish_dropoff(self, robot_id: str) -> Task:
         robot, task = self._robot_and_task(robot_id)

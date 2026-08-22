@@ -14,11 +14,13 @@ import pytest
 from nav_msgs.msg import Odometry
 from telemetry_bridge.node import (
     LatestWorker,
+    QueueWorker,
     RejectRedirectHandler,
     TelemetryBridge,
     encode_payload,
     is_retryable_status,
     iso_timestamp,
+    load_robot_snapshots,
     telemetry_endpoint,
     yaw_from_quaternion,
 )
@@ -48,6 +50,41 @@ def test_payload_is_strict_json_and_validates_inputs():
         encode_payload("AMR-01", odom, 0.5, "IDLE", datetime.now(UTC))
     with pytest.raises(ValueError, match=r"\[0, 1\]"):
         encode_payload("AMR-01", odom, 1.1, "IDLE", datetime.now(UTC))
+
+
+def test_payload_includes_task_and_payload_ids():
+    odom = Odometry()
+    odom.pose.pose.orientation.w = 1.0
+    payload = json.loads(
+        encode_payload(
+            "AMR-01",
+            odom,
+            0.5,
+            "DELIVERING",
+            datetime.now(UTC),
+            "TASK-0001",
+            "BP-0001",
+        )
+    )
+    assert payload["task_id"] == "TASK-0001"
+    assert payload["payload_id"] == "BP-0001"
+
+
+def test_robot_config_creates_independent_snapshots(tmp_path):
+    config = tmp_path / "robots.json"
+    config.write_text(
+        json.dumps(
+            {
+                "robots": [
+                    {"robot_id": "AMR-01", "namespace": "amr_01"},
+                    {"robot_id": "AMR-02", "namespace": "amr_02"},
+                ]
+            }
+        )
+    )
+    snapshots = load_robot_snapshots(config)
+    snapshots["AMR-01"].task_id = "TASK-1"
+    assert snapshots["AMR-02"].task_id == ""
 
 
 def test_payload_matches_cross_component_contract_fixture():
@@ -149,6 +186,18 @@ def test_worker_keeps_only_latest_pending_payload():
         time.sleep(0.01)
     worker.close()
     assert sent == [b"first", b"latest"]
+
+
+def test_queue_worker_preserves_task_lifecycle_order():
+    sent = []
+    worker = QueueWorker(lambda body: sent.append(body) or 204, lambda _message: None)
+    for state in (b"QUEUED", b"ASSIGNED", b"COMPLETED"):
+        worker.submit(state)
+    deadline = time.monotonic() + 1
+    while len(sent) < 3 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    worker.close()
+    assert sent == [b"QUEUED", b"ASSIGNED", b"COMPLETED"]
 
 
 def test_worker_retries_5xx_but_not_permanent_4xx():

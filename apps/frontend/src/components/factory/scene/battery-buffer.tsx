@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { BUFFER_SLOT_COUNT, rectCenter, rectSize, toScene, ZONE } from "@/lib/factory-layout";
+import { BUFFER_SLOT_COUNT, toScene } from "@/lib/factory-layout";
+import type { FactoryLayout, FactoryStation } from "@/schemas/factory";
 import { Bollard, FloorLabel, PaintedRect } from "./shell";
 import { floorLabelTexture, hazardStripeTexture, hmiPanelTexture } from "./textures";
 
@@ -47,11 +48,14 @@ function EmptySlot({ position }: { position: [number, number, number] }) {
  * Battery Buffer: a two-level pallet rack of charged packs beside the pickup
  * pad. Occupied slot count tracks the simulator's queued task depth.
  */
-export function BatteryBuffer({ stockLevel }: { stockLevel: number }) {
-  const rect = ZONE.BATTERY_BUFFER;
-  const centre = rectCenter(rect);
-  const { width, depth } = rectSize(rect);
-  const [cx, , cz] = toScene(centre);
+export function BatteryBuffer({ stockLevel, station, layout }: {
+  stockLevel: number;
+  station: FactoryStation;
+  layout: FactoryLayout;
+}) {
+  const centre = { x: station.x + 0.6, y: station.y };
+  const width = 4, depth = 4;
+  const [cx, , cz] = toScene(centre, layout);
 
   const label = useMemo(() => floorLabelTexture("BATTERY BUFFER", "#7ecbdc", "CHARGED PACK STORE"), []);
   const hazard = useMemo(() => {
@@ -62,8 +66,8 @@ export function BatteryBuffer({ stockLevel }: { stockLevel: number }) {
   const panel = useMemo(() => hmiPanelTexture("BUFFER", ["RACK B-01", "PICK FACE 1", "AUTO"], "#3fe6d0"), []);
 
   // Pickup pad sits exactly on the station anchor the router drives AMRs to.
-  const padX = 2 - centre.x, padZ = -(4 - centre.y);
-  const rackZ = -(5.35 - centre.y);
+  const padX = station.x - centre.x, padZ = -(station.y - centre.y);
+  const rackZ = -1.35;
   const filled = Math.max(0, Math.min(BUFFER_SLOT_COUNT, Math.round(stockLevel)));
 
   return <group position={[cx, 0, cz]}>

@@ -7,7 +7,6 @@ from pydantic import BaseModel, ConfigDict
 class AppRole(StrEnum):
     DESIGNER = "DESIGNER"
     MONITOR = "MONITOR"
-    ADMIN = "ADMIN"
 
 
 class CurrentUser(BaseModel):

@@ -1,0 +1,7 @@
+{
+  "stations": {
+    "BATTERY_BUFFER": {"x": 0.25, "y": -1.0},
+    "MARRIAGE_STATION": {"x": 0.39, "y": -1.0},
+    "CHARGING_STATION": {"x": 0.0, "y": 1.0}
+  }
+}
