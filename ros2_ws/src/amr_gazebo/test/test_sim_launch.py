@@ -206,9 +206,8 @@ class TestSimRuntime(unittest.TestCase):
                 rclpy.spin_once(node, timeout_sec=0.05)
             lifecycle = []
             for update in task_updates:
-                if (
-                    update.task_id == request.task_id
-                    and (not lifecycle or lifecycle[-1] != update.status)
+                if update.task_id == request.task_id and (
+                    not lifecycle or lifecycle[-1] != update.status
                 ):
                     lifecycle.append(update.status)
             task_trace = [

@@ -8,7 +8,8 @@ Container and ROS CI are green.
 
 ## Preconditions
 
-- Distrobox `ros-jazzy` contains ROS 2 Jazzy and Gazebo Harmonic.
+- The edge is either Distrobox `ros-jazzy` for local development or the GCP VM
+  prepared with `docs/runbooks/gcp-edge.md`.
 - Render runs one paid Web Service from `render.yaml`.
 - Vercel deploys `apps/frontend` with the production environment documented in
   `docs/deployment.md`.
@@ -35,15 +36,24 @@ must refuse startup when PostgreSQL, Supabase, the edge secret, explicit CORS or
 
 ## 2. Build and launch the edge
 
-Enter the prepared environment and build the exact committed workspace:
+Set the repository root, enter Distrobox only for local development, and build
+the exact committed workspace:
 
 ```bash
 distrobox enter ros-jazzy
-cd /home/hung/Code/EV-Factory-Twin
+export EV_TWIN_ROOT=/path/to/EV-Factory-Twin
+cd "$EV_TWIN_ROOT"
 source /opt/ros/jazzy/setup.bash
 make ros-check
 source ros2_ws/install/setup.bash
 ros2 launch amr_gazebo sim.launch.py
+```
+
+On GCP, verify the already-installed systemd units instead of launching duplicate
+processes:
+
+```bash
+systemctl status ev-twin-simulation.service ev-twin-bridge.service
 ```
 
 The default config must create `AMR-01`/`amr_01` and `AMR-02`/`amr_02`. In a
@@ -122,4 +132,3 @@ latency, Backend-to-browser latency and browser FPS. Do not record credentials.
 This is an operational acceptance run, not a CI replacement. CI independently
 checks Backend/DB, frontend, ROS and the production container; this run proves
 the networked boundary using the actual hosted services.
-

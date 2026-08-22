@@ -42,7 +42,7 @@ Chọn một trong các phương án sau:
 | Phương án | Khi dùng | Ghi chú |
 |---|---|---|
 | Máy Ubuntu 24.04 của team | Demo và development | Dễ debug, cần giữ máy online |
-| VM/cloud có Ubuntu 24.04 | Demo online ổn định | Cần CPU/RAM/GPU và network outbound |
+| GCP Compute Engine Ubuntu 24.04 | Demo online ổn định | Chạy headless theo `docs/runbooks/gcp-edge.md` |
 | Docker Compose trên edge host | Deployment lặp lại | Dùng image ROS 2 Jazzy/Gazebo Harmonic, không dùng Vercel/Render |
 
 Edge cần chạy các process:
