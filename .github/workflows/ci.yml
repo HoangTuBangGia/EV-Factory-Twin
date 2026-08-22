@@ -32,6 +32,8 @@ jobs:
 
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
+        with:
+          version: 2.115.0
 
       - name: Setup uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
