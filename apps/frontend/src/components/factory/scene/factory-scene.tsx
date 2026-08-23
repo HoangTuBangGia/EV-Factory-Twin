@@ -1,7 +1,7 @@
 "use client";
 
 import { OrbitControls } from "@react-three/drei";
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useThree } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { stationByType } from "@/lib/factory-layout";
@@ -15,6 +15,29 @@ import { MarriageStation } from "./marriage-station";
 import { NoGoZone } from "./no-go-zone";
 import { ChargerApproach, RouteLanes } from "./route-lanes";
 import { EvFactoryEnvironment } from "./ev-factory-environment";
+
+const LOW_POWER_FRAME_INTERVAL_MS = 1_000 / 30;
+
+/** Cap idle rendering while keeping camera interaction immediately responsive. */
+function LowPowerFrameLoop() {
+  const invalidate = useThree((state) => state.invalidate);
+
+  useEffect(() => {
+    let frameId = 0;
+    let lastFrame = 0;
+    function scheduleFrame(timestamp: number) {
+      if (timestamp - lastFrame >= LOW_POWER_FRAME_INTERVAL_MS) {
+        lastFrame = timestamp;
+        invalidate();
+      }
+      frameId = requestAnimationFrame(scheduleFrame);
+    }
+    frameId = requestAnimationFrame(scheduleFrame);
+    return () => cancelAnimationFrame(frameId);
+  }, [invalidate]);
+
+  return null;
+}
 
 function CameraRig({ resetSignal }: { resetSignal: number }) {
   const controls = useRef<OrbitControlsImpl>(null);
@@ -56,12 +79,14 @@ export function FactoryScene({
   const homePosition: [number, number, number] = [-8, 58, 82];
 
   return <Canvas
-    shadows="percentage" dpr={[1, 1.6]} camera={{ position: homePosition, fov: 43, near: 0.5, far: 360 }}
+    frameloop="demand" shadows="basic" dpr={[0.75, 1.25]}
+    camera={{ position: homePosition, fov: 43, near: 0.5, far: 360 }}
     gl={{ antialias: true, powerPreference: "high-performance" }}
     onPointerMissed={() => onSelect(null)}
   >
     <color attach="background" args={["#0f172a"]}/>
     <fog attach="fog" args={["#0f172a", 95, 245]}/>
+    <LowPowerFrameLoop/>
     <CameraRig resetSignal={resetSignal}/>
 
     <EvFactoryEnvironment layers={layers}/>

@@ -8,7 +8,9 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 
 function ProtectedAppShell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const { user, isLoading, error, logout, refreshUser } = useAuth();
+  const isOverview = pathname === "/";
 
   if (isLoading) return <main className="center-state">Restoring secure session…</main>;
   if (!user) {
@@ -27,11 +29,11 @@ function ProtectedAppShell({ children }: { children: ReactNode }) {
 
   return (
     <DataProvider>
-      <div className="app-shell">
+      <div className={`app-shell${isOverview ? " cockpit-shell" : ""}`}>
         <Sidebar />
         <div className="workspace">
-          <Topbar />
-          <main className="content">{children}</main>
+          {!isOverview && <Topbar />}
+          <main className={`content${isOverview ? " cockpit-content" : ""}`}>{children}</main>
         </div>
       </div>
     </DataProvider>

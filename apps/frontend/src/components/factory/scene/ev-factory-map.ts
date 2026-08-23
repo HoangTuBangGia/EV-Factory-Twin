@@ -150,8 +150,8 @@ export function buildFactoryScene(
   const sunLight = new THREE.DirectionalLight('#ffffff', 1.2);
   sunLight.position.set(60, 50, 40);
   sunLight.castShadow = true;
-  sunLight.shadow.mapSize.width = 2048;
-  sunLight.shadow.mapSize.height = 2048;
+  sunLight.shadow.mapSize.width = 1024;
+  sunLight.shadow.mapSize.height = 1024;
   sunLight.shadow.camera.near = 0.5;
   sunLight.shadow.camera.far = 200;
   sunLight.shadow.camera.left = -70;
@@ -251,13 +251,12 @@ export function buildFactoryScene(
     roughness: 0.5,
   });
 
-  const glassDoorMat = new THREE.MeshPhysicalMaterial({
+  const glassDoorMat = new THREE.MeshStandardMaterial({
     color: '#93c5fd',
     transparent: true,
-    opacity: 0.4,
-    roughness: 0.1,
-    transmission: 0.8,
-    thickness: 0.5,
+    opacity: 0.35,
+    roughness: 0.22,
+    metalness: 0.08,
   });
 
   // BUILD ZONE FLOORS AND PERIMETER WALLS
@@ -376,7 +375,7 @@ export function buildFactoryScene(
         lightsGroup.add(glow);
 
         // Point light for illumination
-        if (c % 2 === 1 && r % 2 === 0) {
+        if (c === Math.ceil(lightCols / 2) && r === 2) {
           const ptLight = new THREE.PointLight('#fffbeb', 0.6, 18, 1.5);
           ptLight.position.set(lx, height - 1.2, lz);
           scene.add(ptLight);
@@ -824,7 +823,7 @@ export function buildFactoryScene(
     welderGroup.add(robotBase);
 
     // Welding Sparks Particles
-    const sparkCount = 40;
+    const sparkCount = 24;
     const sparkGeo = new THREE.BufferGeometry();
     const sparkPos = new Float32Array(sparkCount * 3);
     for (let s = 0; s < sparkCount * 3; s++) sparkPos[s] = (Math.random() - 0.5) * 0.4;
@@ -844,7 +843,7 @@ export function buildFactoryScene(
     joint2.add(sparkLight);
 
     // Safety Screen Enclosure (Amber tint)
-    const screenMat = new THREE.MeshPhysicalMaterial({
+    const screenMat = new THREE.MeshStandardMaterial({
       color: '#f59e0b',
       transparent: true,
       opacity: 0.45,
@@ -903,7 +902,7 @@ export function buildFactoryScene(
   // St1: (52, 14) -> St2: (62, 14) -> St3: (74, 14) -> St4: (82, 8) -> St5: (70, 4)
   const assemblyConveyorMat = new THREE.MeshStandardMaterial({ color: '#1e293b', metalness: 0.8 });
   const carPaintMat = new THREE.MeshStandardMaterial({ color: '#2563eb', metalness: 0.9, roughness: 0.2 });
-  const glassMat = new THREE.MeshPhysicalMaterial({ color: '#38bdf8', transmission: 0.9, roughness: 0.1, transparent: true });
+  const glassMat = new THREE.MeshStandardMaterial({ color: '#38bdf8', roughness: 0.18, metalness: 0.15, transparent: true, opacity: 0.55 });
   const wheelMat = new THREE.MeshStandardMaterial({ color: '#09090b', roughness: 0.9 });
 
   // Procedural EV Vehicle Model Generator (Progressive stages)
@@ -1367,8 +1366,8 @@ export function buildFactoryScene(
     scene.clear();
   }
 
-  // Default initial roof mode: truss only so interior is easily visible
-  setRoofMode('truss');
+  // Keep the interior visible and avoid rendering hundreds of roof/truss draw calls.
+  setRoofMode('hidden');
 
   return {
     scene,
