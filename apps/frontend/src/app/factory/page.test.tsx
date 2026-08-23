@@ -19,11 +19,12 @@ vi.mock("@/components/alerts/alert-list", () => ({ AlertList: () => null }));
 vi.mock("@/components/fleet/robot-drawer", () => ({ RobotDrawer: () => null }));
 
 describe("FactoryPage", () => {
-  it("uses the automatic 3D view and controls visible layers", () => {
+  it("uses the 2D view and controls visible layers", () => {
     render(<FactoryPage/>);
 
-    expect(screen.getByText(/Realtime 3D visualization/i)).toBeInTheDocument();
-    expect(mapSpy.mock.lastCall?.[0]).not.toHaveProperty("view", "2d");
+    expect(screen.getByText(/Realtime 2D visualization/i)).toBeInTheDocument();
+    expect(mapSpy.mock.lastCall?.[0]).toHaveProperty("view", "2d");
+    expect(mapSpy.mock.lastCall?.[0]).toHaveProperty("twoDimensionalVariant", "plant");
     expect(mapSpy.mock.lastCall?.[0]).toMatchObject({
       layers: { stations: true, routes: true, noGoZones: true },
     });

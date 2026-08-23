@@ -1,9 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { fixtureRobots } from "@/lib/fixtures";
 import { defaultFactoryLayout } from "@/lib/factory-layout";
 import { factoryLayoutSchema } from "@/schemas/factory";
 import { FactoryMap } from "./factory-map";
+
+const selectRobotSpy = vi.hoisted(() => vi.fn());
 
 /**
  * jsdom has no WebGL, so FactoryMap falls back to the 2D renderer here. That is
@@ -14,7 +16,7 @@ vi.mock("@/stores/factory-store", () => ({
   useFactoryStore: (select: (state: unknown) => unknown) => select({
     robots: Object.fromEntries(fixtureRobots.map((robot) => [robot.id, robot])),
     selectedRobotId: "AMR-02",
-    selectRobot: () => undefined,
+    selectRobot: selectRobotSpy,
     metrics: { queued_tasks: 3 },
   }),
 }));
@@ -31,6 +33,32 @@ describe("FactoryMap without WebGL", () => {
 
     expect(container.querySelector(".factory-map")).toHaveAttribute("data-view", "2d");
     expect(screen.getByRole("img", { name: "2D factory map" })).toBeInTheDocument();
+  });
+
+  it("renders the detailed plant blueprint with live robot coordinates", () => {
+    const { container } = render(<FactoryMap view="2d" twoDimensionalVariant="plant"/>);
+
+    expect(screen.getByRole("img", { name: "2D EV factory plant map" })).toHaveAttribute(
+      "viewBox",
+      "-10 -26 140 52",
+    );
+    expect(container.querySelectorAll(".plant-zone")).toHaveLength(3);
+    expect(container.querySelectorAll(".robot-marker")).toHaveLength(fixtureRobots.length);
+    expect(container.querySelector('[data-robot-id="AMR-01"]')).toHaveAttribute(
+      "transform",
+      "translate(11.5 -1.7) rotate(0)",
+    );
+    expect(container.querySelector(".map-hud")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Zone B" }));
+    expect(screen.getByRole("img", { name: "2D EV factory plant map" })).toHaveAttribute(
+      "viewBox",
+      "36 -24 58 48",
+    );
+
+    selectRobotSpy.mockClear();
+    fireEvent.click(screen.getByLabelText("AMR-01, DELIVERING, battery 82 percent"));
+    expect(selectRobotSpy).toHaveBeenCalledWith("AMR-01");
   });
 
   it("renders one marker per robot and marks the selection", () => {

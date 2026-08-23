@@ -21,7 +21,7 @@ export default function FactoryPage() {
     <header className="page-head">
       <div>
         <h2>Factory Digital Twin</h2>
-        <p>Realtime 3D visualization using factory-meter coordinates.</p>
+        <p>Realtime 2D visualization using factory-meter coordinates.</p>
       </div>
       <div className="toolbar" aria-label="Factory map layers">
         <button
@@ -56,7 +56,7 @@ export default function FactoryPage() {
           <h3>EV production plant</h3>
           <span>Click an AMR to inspect</span>
         </div>
-        <FactoryMap layers={layers}/>
+        <FactoryMap view="2d" twoDimensionalVariant="plant" layers={layers}/>
       </section>
       <section className="panel factory-alert-panel">
         <div className="panel-head">
