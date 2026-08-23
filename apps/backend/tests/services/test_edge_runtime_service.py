@@ -11,7 +11,7 @@ from ev_twin_api.services.websocket_manager import WebSocketManager
 
 
 def make_service() -> tuple[EdgeRuntimeService, FactoryState, WebSocketManager]:
-    state = FactoryState(MockFactoryConfig())
+    state = FactoryState(MockFactoryConfig(), seed_mock_robots=False)
     manager = WebSocketManager()
     return EdgeRuntimeService(state, manager), state, manager
 
@@ -63,7 +63,8 @@ async def test_stale_task_update_is_ignored() -> None:
 
 @pytest.mark.asyncio
 async def test_bridge_health_keeps_latest_timestamp() -> None:
-    service, _, _ = make_service()
+    service, state, manager = make_service()
+    manager.broadcast = AsyncMock()  # type: ignore[method-assign]
     now = datetime.now(UTC)
     health = BridgeHealth(
         bridge_id="edge-main",
@@ -74,9 +75,26 @@ async def test_bridge_health_keeps_latest_timestamp() -> None:
         failed_deliveries=0,
     )
     assert (await service.ingest_health(health)).accepted
+    assert {robot.id for robot in state.list_robots()} == {"AMR-01", "AMR-02"}
+    manager.broadcast.assert_awaited_once_with({"type": "factory.reset", "data": None})
+    manager.broadcast.reset_mock()
     assert not (
         await service.ingest_health(
             health.model_copy(update={"timestamp": now - timedelta(seconds=1)})
         )
     ).accepted
     assert service.get_health("edge-main") == health
+    assert {robot.id for robot in state.list_robots()} == {"AMR-01", "AMR-02"}
+    manager.broadcast.assert_not_awaited()
+
+
+def test_bridge_health_rejects_duplicate_robot_ids() -> None:
+    with pytest.raises(ValueError, match="unique"):
+        BridgeHealth(
+            bridge_id="edge-main",
+            status="CONNECTED",
+            robot_ids=["AMR-01", "AMR-01"],
+            timestamp=datetime.now(UTC),
+            delivered_samples=0,
+            failed_deliveries=0,
+        )

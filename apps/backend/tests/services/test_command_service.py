@@ -34,7 +34,9 @@ DESIGNER = make_test_user(AppRole.DESIGNER)
 MONITOR = make_test_user(AppRole.MONITOR)
 
 
-async def setup() -> tuple[CommandService, ScenarioService, str, InMemoryRuntimeHistoryRepository]:
+async def setup(
+    *, sweep_seconds: float = 1.0
+) -> tuple[CommandService, ScenarioService, str, InMemoryRuntimeHistoryRepository]:
     manager = WebSocketManager()
     config = MockFactoryConfig()
     state = FactoryState(config)
@@ -74,6 +76,7 @@ async def setup() -> tuple[CommandService, ScenarioService, str, InMemoryRuntime
             manager,
             InMemoryAuditRepository(),
             runtime_health,
+            sweep_seconds=sweep_seconds,
         ),
         scenarios,
         scenario.id,
@@ -191,3 +194,50 @@ async def test_timeout_alert_clears_on_retry() -> None:
 
     await commands.retry(command.operation_id)
     assert (await runtime_repository.list_alerts())[0].status == "CLEARED"
+
+
+@pytest.mark.asyncio
+async def test_background_sweep_expires_leased_command_without_api_poll() -> None:
+    commands, _, scenario_id, runtime_repository = await setup(sweep_seconds=0.005)
+    command = await commands.apply(
+        scenario_id,
+        ApplyScenarioRequest(timeout_seconds=0.01),
+        MONITOR,
+    )
+    await commands.lease("edge-main")
+
+    await commands.start()
+    try:
+        for _ in range(20):
+            if await runtime_repository.list_alerts():
+                break
+            await asyncio.sleep(0.005)
+    finally:
+        await commands.stop()
+
+    alerts = await runtime_repository.list_alerts()
+    assert alerts[0].code == "COMMAND_TIMEOUT"
+    assert (await commands.get(command.operation_id)).status == CommandStatus.TIMED_OUT
+
+
+@pytest.mark.asyncio
+async def test_background_sweep_expires_unleased_pending_command() -> None:
+    commands, _, scenario_id, runtime_repository = await setup(sweep_seconds=0.005)
+    command = await commands.apply(
+        scenario_id,
+        ApplyScenarioRequest(timeout_seconds=0.01),
+        MONITOR,
+    )
+
+    await commands.start()
+    try:
+        for _ in range(20):
+            if await runtime_repository.list_alerts():
+                break
+            await asyncio.sleep(0.005)
+    finally:
+        await commands.stop()
+
+    alerts = await runtime_repository.list_alerts()
+    assert alerts[0].code == "COMMAND_TIMEOUT"
+    assert (await commands.get(command.operation_id)).status == CommandStatus.TIMED_OUT

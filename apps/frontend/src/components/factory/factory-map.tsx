@@ -6,6 +6,8 @@ import { BUFFER_SLOT_COUNT, defaultFactoryLayout } from "@/lib/factory-layout";
 import type { FactoryLayout } from "@/schemas/factory";
 import { useFactoryStore } from "@/stores/factory-store";
 import { FactoryMap2D } from "./factory-map-2d";
+import { FactoryPlantMap2D } from "./factory-plant-map-2d";
+import { EV_FACTORY_DEPTH, EV_FACTORY_WIDTH } from "./scene/ev-factory-constants";
 
 const FactoryScene = dynamic(
   () => import("./scene/factory-scene").then((module) => module.FactoryScene),
@@ -24,6 +26,7 @@ type Support = "probing" | "webgl" | "fallback";
 
 export interface FactoryMapProps {
   view?: "auto" | "2d";
+  twoDimensionalVariant?: "layout" | "plant";
   layers?: FactoryMapLayers;
   layout?: FactoryLayout;
 }
@@ -51,6 +54,7 @@ function detectWebGL(): boolean {
 
 export function FactoryMap({
   view = "auto",
+  twoDimensionalVariant = "layout",
   layers = DEFAULT_FACTORY_MAP_LAYERS,
   layout = defaultFactoryLayout,
 }: FactoryMapProps) {
@@ -81,13 +85,17 @@ export function FactoryMap({
       robots={robots} selectedRobotId={selectedRobotId} onSelect={selectRobot}
       bufferStock={bufferStock} resetSignal={resetSignal} layers={layers} layout={layout}
     />}
-    {support === "fallback" && <FactoryMap2D
-      robots={robots} selectedRobotId={selectedRobotId} onSelect={selectRobot}
-      layers={layers}
-      layout={layout}
-    />}
+    {support === "fallback" && (twoDimensionalVariant === "plant"
+      ? <FactoryPlantMap2D
+          robots={robots} selectedRobotId={selectedRobotId} onSelect={selectRobot}
+          layers={layers} layout={layout}
+        />
+      : <FactoryMap2D
+          robots={robots} selectedRobotId={selectedRobotId} onSelect={selectRobot}
+          layers={layers} layout={layout}
+        />)}
 
-    <div className="map-hud" aria-hidden="true">
+    {twoDimensionalVariant !== "plant" && <div className="map-hud" aria-hidden="true">
       <ul className="map-legend">
         {LEGEND.filter((item) => {
           if (item.label === "AMR route") return layers.routes;
@@ -97,9 +105,13 @@ export function FactoryMap({
           <i style={{ background: item.color }}/>{item.label}
         </li>)}
       </ul>
-      <div className="map-scale">{layout.width} × {layout.height} m · 1 m grid</div>
+      <div className="map-scale">
+        {support === "webgl"
+          ? `${EV_FACTORY_WIDTH} × ${EV_FACTORY_DEPTH} m · live zone ${layout.width} × ${layout.height} m`
+          : `${layout.width} × ${layout.height} m · 1 m grid`}
+      </div>
       {support === "webgl" && <div className="map-hint">Drag to orbit · scroll to zoom</div>}
-    </div>
+    </div>}
     {support === "webgl" && <button type="button" className="map-reset" onClick={resetView}>
       Reset view
     </button>}

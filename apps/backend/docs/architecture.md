@@ -224,8 +224,8 @@ results = await asyncio.gather(
 ```
 
 Các lần gửi chạy đồng thời và có timeout, nên một browser chậm không chặn những
-browser khác. Connection chưa qua `auth.ok` không được thêm vào pool; khi Admin
-khóa user, manager đóng toàn bộ socket của user đó.
+browser khác. Connection chưa qua `auth.ok` không được thêm vào pool; khi profile
+bị vô hiệu hóa, manager đóng toàn bộ socket của user đó.
 
 Mọi tin nhắn đều bọc trong một "phong bì" giống nhau, để FE chỉ cần đọc `type`
 là biết cách xử lý `data`:
@@ -240,6 +240,8 @@ là biết cách xử lý `data`:
 | `task.updated` | mỗi khi đơn hàng đổi trạng thái |
 | `metrics.updated` | ~1 lần / giây thật, không phụ thuộc `simulation_speed` |
 | `alert.created` | khi có cảnh báo mới |
+| `alert.updated` | khi cảnh báo chuyển sang `CLEARED` |
+| `command.updated` | khi command/attempt đổi trạng thái |
 | `factory.reset` | khi ai đó gọi `POST /api/v1/mock/reset` |
 
 ## ⚠️ Cảnh báo trước khi sửa `schemas/`

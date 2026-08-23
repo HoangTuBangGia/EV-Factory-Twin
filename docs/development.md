@@ -36,6 +36,27 @@ uv sync --all-packages --dev
 make check
 ```
 
+## Frontend workflow
+
+Chạy frontend từ repository root qua Makefile để local và CI dùng cùng lệnh:
+
+```bash
+make frontend-sync
+make frontend
+```
+
+`frontend-sync` dùng lockfile qua `npm ci`; `frontend` mở Next.js development
+server. Quality gate đầy đủ gồm ESLint, TypeScript, Vitest và production build:
+
+```bash
+make frontend-check
+```
+
+Có thể chạy từng gate bằng `make frontend-lint`, `make frontend-typecheck`,
+`make frontend-test` và `make frontend-build`. Các browser workflow dùng
+`make frontend-browser-install`, `make frontend-smoke`, `make frontend-e2e-list`
+và `make frontend-e2e`.
+
 ## Local Supabase
 
 Development uses the local Supabase stack rather than a separately configured
@@ -49,6 +70,17 @@ make supabase-status
 Copy `apps/backend/.env.example` to the backend environment and
 `apps/frontend/.env.example` to `apps/frontend/.env.local`. Replace the frontend
 publishable key with the local key printed by `make supabase-status`.
+
+`COMMAND_TIMEOUT_SWEEP_SECONDS` điều khiển cadence phát hiện command attempt hết
+lease; mặc định 1 giây và không cần browser hoặc edge gọi API để kích hoạt timeout.
+
+Sau khi local Supabase đã chạy và migrations/seed đã sẵn sàng, kiểm tra repository
+PostgreSQL thật bằng:
+
+```bash
+TEST_DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:54322/postgres \
+make postgres-smoke
+```
 
 Replay all migrations against the local database with:
 
@@ -79,7 +111,11 @@ standard build type used by `telemetry_bridge`.
 
 For an edge-to-backend run, configure the backend with
 `MOCK_FACTORY_ENABLED=false` and the same `EDGE_TELEMETRY_SHARED_SECRET` used by
-the bridge. The acceptance run uses at least two namespaced AMRs. After
+the bridge. In this mode Backend starts with an empty robot registry. The bridge
+registers the exact configured `robot_id` set through authenticated bridge health
+before releasing telemetry; subsequent health updates add or remove registry
+entries without creating mock AMRs. The acceptance run uses at least two
+namespaced AMRs. After
 `make ros-build`, run Gazebo in one terminal:
 
 ```bash
@@ -160,6 +196,30 @@ local `.env` cannot accidentally turn unit/API tests into a live PostgreSQL
 dependency. Database/RLS behavior belongs in the hosted or local Supabase E2E
 workflow.
 
+## Frontend browser smoke
+
+The frontend-only Playwright smoke suite starts Next.js in mock mode and verifies
+the fixture-backed Three.js scene in desktop and mobile Chromium. It does not need
+FastAPI, Supabase credentials, or external services.
+
+Install Chromium once, then run:
+
+```bash
+make frontend-browser-install
+make frontend-smoke
+```
+
+To test an already-running frontend instead:
+
+```bash
+SMOKE_EXTERNAL_SERVER=true \
+SMOKE_BASE_URL=http://127.0.0.1:3000 \
+make frontend-smoke
+```
+
+The smoke route is `/scene-probe`; it validates a live WebGL context, responsive
+canvas bounds, the five-robot fixture input, and absence of browser console/page errors.
+
 ## Browser E2E với Supabase staging
 
 Playwright chạy trình duyệt với frontend Next.js và backend FastAPI ở local,
@@ -187,10 +247,9 @@ read -rsp 'Monitor password: ' MONITOR_PASSWORD && export MONITOR_PASSWORD
 Cài Chromium một lần trên máy phát triển, sau đó liệt kê và chạy suite:
 
 ```bash
-cd apps/frontend
-npx playwright install chromium
-npm run test:e2e:list
-npm run test:e2e
+make frontend-browser-install
+make frontend-e2e-list
+make frontend-e2e
 unset DESIGNER_PASSWORD MONITOR_PASSWORD
 ```
 
@@ -201,7 +260,7 @@ chạy thủ công ở địa chỉ khác, dùng:
 E2E_EXTERNAL_SERVERS=true \
 E2E_BASE_URL=http://127.0.0.1:3100 \
 E2E_API_URL=http://127.0.0.1:8100 \
-npm run test:e2e
+make frontend-e2e
 ```
 
 Khi thiếu một trong bốn biến role credential, nhóm hosted RBAC được Playwright

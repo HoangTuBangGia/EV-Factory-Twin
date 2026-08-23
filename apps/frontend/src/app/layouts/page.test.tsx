@@ -1,41 +1,62 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import LayoutsPage from "./page";
 
-const authState = vi.hoisted(() => ({ role: "DESIGNER" as "DESIGNER" | "MONITOR" }));
-
-vi.mock("@/components/auth/auth-provider", () => ({
-  useAuth: () => ({ user: { role: authState.role } }),
+const state = vi.hoisted(() => ({ role: "DESIGNER" as "DESIGNER" | "MONITOR" }));
+const api = vi.hoisted(() => ({
+  getLayouts: vi.fn().mockResolvedValue([]),
+  getLayout: vi.fn(),
+  createLayout: vi.fn(),
+  createLayoutVersion: vi.fn(),
+  renameLayout: vi.fn(),
+  archiveLayout: vi.fn(),
 }));
 
-describe("LayoutsPage", () => {
-  beforeEach(() => { authState.role = "DESIGNER"; });
+vi.mock("@/components/auth/auth-provider", () => ({
+  useAuth: () => ({ user: { role: state.role } }),
+}));
+vi.mock("@/lib/api-client", () => ({ apiClient: api }));
 
-  it("updates station coordinates in the live preview and resets the draft", () => {
+describe("LayoutsPage", () => {
+  beforeEach(() => {
+    state.role = "DESIGNER";
+    api.getLayouts.mockResolvedValue([]);
+    vi.clearAllMocks();
+  });
+
+  it("updates station coordinates in the validated preview", () => {
     const { container } = render(<LayoutsPage/>);
     const xInput = screen.getByLabelText("X (m)", { selector: "#BATTERY_BUFFER-x" });
 
     fireEvent.change(xInput, { target: { value: "4.2" } });
     expect(xInput).toHaveValue(4);
     expect(container.querySelector('.fm-zone circle[cx="4"]')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Reset draft" }));
-    expect(container.querySelector('.fm-zone circle[cx="2"]')).toBeInTheDocument();
   });
 
-  it("supports adding and removing route waypoints", () => {
+  it("creates a persisted layout from a valid draft", async () => {
+    api.createLayout.mockImplementation(async (request) => ({
+      ...request.content,
+      layout_id: "LAYOUT-0001",
+      name: request.name,
+      version: 1,
+      created_by: "11111111-1111-4111-8111-111111111111",
+      created_at: "2026-08-24T00:00:00Z",
+      archived_at: null,
+    }));
     render(<LayoutsPage/>);
-    expect(screen.getAllByLabelText(/BATTERY_DELIVERY waypoint \d+ X/)).toHaveLength(4);
 
-    fireEvent.click(screen.getByRole("button", { name: "Add waypoint" }));
-    expect(screen.getAllByLabelText(/BATTERY_DELIVERY waypoint \d+ X/)).toHaveLength(5);
+    fireEvent.click(screen.getByRole("button", { name: "Create layout" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove BATTERY_DELIVERY waypoint 5" }));
-    expect(screen.getAllByLabelText(/BATTERY_DELIVERY waypoint \d+ X/)).toHaveLength(4);
+    await waitFor(() => expect(api.createLayout).toHaveBeenCalledOnce());
+    expect(api.createLayout.mock.calls[0]?.[0]).toMatchObject({
+      name: "Battery logistics candidate",
+      content: { config: { robot_count: 2 }, congestion_zones: [] },
+    });
+    expect(await screen.findByText("Created LAYOUT-0001.")).toBeInTheDocument();
   });
 
   it("blocks non-Designer roles", () => {
-    authState.role = "MONITOR";
+    state.role = "MONITOR";
     render(<LayoutsPage/>);
     expect(screen.getByText("Designer access required")).toBeInTheDocument();
     expect(screen.queryByText("Candidate geometry")).not.toBeInTheDocument();

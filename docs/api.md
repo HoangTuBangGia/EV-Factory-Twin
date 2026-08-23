@@ -84,7 +84,7 @@ string/log/frontend và không được tái sử dụng service-role key.
 | WS | `/ws/factory` | [envelope](#websocket-event-envelope) | Stream realtime |
 | POST | `/internal/v1/telemetry` | `TelemetryIngressResponse` | Edge bridge gửi một canonical robot sample |
 | POST | `/internal/v1/task-updates` | `EdgeUpdateResponse` | Edge bridge gửi một ROS task transition |
-| POST | `/internal/v1/bridge-health` | `EdgeUpdateResponse` | Edge bridge gửi heartbeat và delivery counters |
+| POST | `/internal/v1/bridge-health` | `EdgeUpdateResponse` | Đăng ký authoritative fleet và gửi heartbeat/counters |
 
 Ma trận quyền REST hiện tại:
 
@@ -108,6 +108,12 @@ hợp đồng của nó nằm ở mục [WebSocket event envelope](#websocket-ev
 `layouts` giữ identity và tên mutable; `layout_versions` giữ geometry/config
 append-only. `DELETE` chỉ đặt `archived_at`: layout biến mất khỏi list nhưng các
 version vẫn đọc được theo ID để scenario/audit có thể tham chiếu ổn định.
+
+Factory UI xác định layout runtime bằng scenario `APPLIED` mới nhất và tải chính
+xác `layout_id` + `layout_version` bất biến. Khi chưa có scenario APPLIED, UI dùng
+layout mặc định đã version hóa; telemetry vẫn tiếp tục hiển thị nếu việc tải layout
+thất bại tạm thời. Event `factory.reset` làm frontend tải lại projection này để
+layout vừa APPLIED xuất hiện mà không cần reload trang.
 
 ```json
 {
@@ -201,8 +207,12 @@ a FIFO delivery worker so lifecycle transitions are not coalesced.
 `POST /internal/v1/bridge-health` accepts `bridge_id`, `CONNECTED | DEGRADED`,
 the configured robot IDs, UTC timestamp, cumulative delivery counters and the
 latest per-robot delivery error. Equal/older heartbeats are ignored per
-`bridge_id`. Health is currently process-local diagnostic state; durable health
-and disconnect alerts belong to the alerts/persistence checkpoint.
+`bridge_id`. With MOCK disabled, the accepted `robot_ids` list replaces the
+single trusted bridge registry: unchanged robot snapshots are preserved, new
+robots start OFFLINE until telemetry arrives, removed robots disappear, and a
+change broadcasts `factory.reset`. IDs must be unique non-empty strings. The
+bridge registers this list before releasing telemetry, so an unknown robot still
+returns `404` rather than implicitly creating a registry entry.
 
 ## RobotStatus
 
@@ -557,6 +567,13 @@ POST `COMPLETED` hoặc `FAILED`. Scenario chỉ chuyển `APPROVED → APPLIED`
 `COMPLETED`. Retry giữ nguyên `operation_id` và tạo attempt number mới; topology
 không thể hot-apply phải trả `FAILED` với lý do cần relaunch Gazebo.
 
+Backend chạy timeout sweep độc lập với browser và edge polling. Cadence mặc định
+là 1 giây, cấu hình bằng `COMMAND_TIMEOUT_SWEEP_SECONDS`. Attempt chưa được lease
+hết hạn từ lúc tạo/retry; attempt đã lease dùng `lease_expires_at`. Khi hết hạn,
+command chuyển `TIMED_OUT`, tạo/cập nhật alert, audit và phát `command.updated`.
+Frontend `/commands` hydrate lịch sử qua REST rồi hợp nhất update WebSocket theo
+`operation_id`. Cả hai role được đọc; chỉ MONITOR được retry.
+
 ### Scenario
 
 Tất cả endpoint scenario trả về schema này (endpoint list trả về mảng):
@@ -723,7 +740,9 @@ AlertCode: LOW_BATTERY, ROBOT_WAITING, TASK_BACKLOG, STARVATION, ROBOT_ERROR,
 STALE_TELEMETRY, BRIDGE_DISCONNECTED, COMMAND_TIMEOUT, CONGESTION
 ```
 
-`GET /api/v1/alerts`. Payload của WebSocket event `alert.created`.
+`GET /api/v1/alerts`. `alert.created` phát khi condition được kích hoạt hoặc
+retrigger; `alert.updated` phát bản ghi `CLEARED` để browser loại cảnh báo ngay
+mà không cần reload snapshot.
 
 ```json
 {
@@ -815,6 +834,8 @@ Sau `auth.ok`, mọi message server trên `/ws/factory` bọc trong envelope:
 | `task.updated` | `Task` | event-driven |
 | `metrics.updated` | `FactoryMetrics` | ~1 Hz theo đồng hồ thật |
 | `alert.created` | `FactoryAlert` | event-driven |
+| `alert.updated` | `FactoryAlert` | khi lifecycle chuyển sang `CLEARED` |
+| `command.updated` | `Command` | khi command/attempt đổi trạng thái |
 | `factory.reset` | `null` | khi `POST /api/v1/mock/reset` |
 
 ## Status codes

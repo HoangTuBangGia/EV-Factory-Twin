@@ -12,6 +12,13 @@ const scenarioResponse = {
     travel_time: 30,
     loading_time: 10,
     simulation_time: 3600,
+    layout_id: "LAYOUT-DEFAULT",
+    layout_version: 1,
+    route_id: "BATTERY_DELIVERY",
+    robot_speed_mps: 1,
+    charger_count: 1,
+    route_distance_m: 30,
+    congestion_multiplier: 1,
   },
   metrics: {
     completed_tasks: 355,
@@ -20,6 +27,11 @@ const scenarioResponse = {
     throughput_per_hour: 355,
     average_cycle_time: 900,
     average_waiting_time: 850,
+    fleet_utilization_percent: 72,
+    starvation_events: 3,
+    congestion_percent: 11,
+    travel_distance: 12_400,
+    average_delivery_delay: 8,
   },
   duration_ms: 2.4,
   created_at: "2026-08-14T00:00:00.000Z",
@@ -57,5 +69,10 @@ describe("scenarioSchema backend contract", () => {
       ...scenarioResponse,
       created_at: "2026-08-14T07:00:00.000+07:00",
     }).success).toBe(false);
+  });
+
+  it("accepts the authoritative submitted lifecycle state", () => {
+    expect(scenarioSchema.parse({ ...scenarioResponse, status: "SUBMITTED" }).status)
+      .toBe("SUBMITTED");
   });
 });

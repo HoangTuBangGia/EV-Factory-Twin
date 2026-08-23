@@ -117,7 +117,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         simulation_speed=settings.mock_simulation_speed,
     )
     websocket_manager = WebSocketManager()
-    factory_state = FactoryState(config=mock_config)
+    factory_state = FactoryState(config=mock_config, seed_mock_robots=settings.mock_factory_enabled)
     mock_factory = MockFactory(
         state=factory_state,
         config=mock_config,
@@ -175,6 +175,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         layout_service=app.state.layout_service,
         repository=scenario_repository,
         applied_layout_sink=runtime_health.set_applied_layout,
+        apply_to_mock_runtime=settings.mock_factory_enabled,
     )
     app.state.optimization_service = OptimizationService(app.state.scenario_service)
     app.state.command_service = CommandService(
@@ -183,6 +184,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         websocket_manager,
         audit_repository,
         runtime_health,
+        sweep_seconds=settings.command_timeout_sweep_seconds,
     )
     app.state.websocket_manager = websocket_manager
     kpi_snapshot_writer = build_kpi_snapshot_writer(
@@ -196,12 +198,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     await mock_factory.start()
     await runtime_health.start()
+    await app.state.command_service.start()
     if kpi_snapshot_writer is not None:
         await kpi_snapshot_writer.start()
     logger.info("backend started")
     try:
         yield
     finally:
+        await app.state.command_service.stop()
         if kpi_snapshot_writer is not None:
             await kpi_snapshot_writer.stop()
         await mock_factory.stop()

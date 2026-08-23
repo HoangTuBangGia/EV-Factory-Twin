@@ -16,6 +16,7 @@ from telemetry_bridge.node import (
     LatestWorker,
     QueueWorker,
     RejectRedirectHandler,
+    RobotSnapshot,
     TelemetryBridge,
     encode_payload,
     is_retryable_status,
@@ -276,3 +277,27 @@ def test_edge_secret_is_not_declared_as_a_ros_parameter():
     source = inspect.getsource(TelemetryBridge.__init__)
     assert 'declare_parameter("edge_secret"' not in source
     assert "EDGE_TELEMETRY_SHARED_SECRET" in source
+
+
+def test_telemetry_waits_for_authoritative_registry_registration():
+    bridge = TelemetryBridge.__new__(TelemetryBridge)
+    bridge._lock = threading.Lock()
+    bridge._registry_ready = False
+    odom = Odometry()
+    odom.pose.pose.orientation.w = 1.0
+    bridge._robots = {"AMR-01": RobotSnapshot("AMR-01", "amr_01", odom=odom)}
+    submitted = []
+
+    class RecordingWorker:
+        def submit(self, body):
+            submitted.append(body)
+
+    bridge._workers = {"AMR-01": RecordingWorker()}
+
+    bridge._queue_latest()
+    assert submitted == []
+    assert bridge._robots["AMR-01"].odom is not None
+
+    bridge._record_health_result(True, "")
+    bridge._queue_latest()
+    assert len(submitted) == 1

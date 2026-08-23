@@ -266,6 +266,7 @@ class TelemetryBridge(Node):
         self._opener = opener
         self._bridge_id = str(self.get_parameter("bridge_id").value)
         self._command_active = False
+        self._registry_ready = False
 
         def sender(path: str):
             endpoint = edge_endpoint(backend_url, path)
@@ -297,8 +298,11 @@ class TelemetryBridge(Node):
             sender("/internal/v1/task-updates"), self.get_logger().warning
         )
         self._health_worker = LatestWorker(
-            sender("/internal/v1/bridge-health"), self.get_logger().warning
+            sender("/internal/v1/bridge-health"),
+            self.get_logger().warning,
+            self._record_health_result,
         )
+        self._queue_health()
         odom_qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
             depth=1,
@@ -438,6 +442,8 @@ class TelemetryBridge(Node):
     def _queue_latest(self) -> None:
         pending = []
         with self._lock:
+            if not self._registry_ready:
+                return
             for robot in self._robots.values():
                 if robot.odom is not None:
                     pending.append(
@@ -487,6 +493,10 @@ class TelemetryBridge(Node):
             else:
                 self._failed_deliveries += 1
                 self._robot_errors[robot_id] = detail
+
+    def _record_health_result(self, success: bool, _detail: str) -> None:
+        with self._lock:
+            self._registry_ready = success
 
     def _queue_health(self) -> None:
         with self._lock:

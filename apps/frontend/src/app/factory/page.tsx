@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertList } from "@/components/alerts/alert-list";
 import {
   DEFAULT_FACTORY_MAP_LAYERS,
@@ -8,10 +8,35 @@ import {
   type FactoryMapLayers,
 } from "@/components/factory/factory-map";
 import { RobotDrawer } from "@/components/fleet/robot-drawer";
+import { apiClient } from "@/lib/api-client";
+import { defaultFactoryLayout } from "@/lib/factory-layout";
+import { latestAppliedScenario, projectLayoutVersion } from "@/lib/layout-projection";
+import type { FactoryLayout } from "@/schemas/factory";
+import { useFactoryStore } from "@/stores/factory-store";
 
 export default function FactoryPage() {
   const [layers, setLayers] = useState<FactoryMapLayers>(DEFAULT_FACTORY_MAP_LAYERS);
+  const [layout, setLayout] = useState<FactoryLayout>(defaultFactoryLayout);
+  const factoryRevision = useFactoryStore((state) => state.factoryRevision);
   const allLayersVisible = Object.values(layers).every(Boolean);
+
+  useEffect(() => {
+    let active = true;
+    void apiClient.getScenarios()
+      .then(async (scenarios) => {
+        const applied = latestAppliedScenario(scenarios);
+        if (!applied) return;
+        const version = await apiClient.getLayoutVersion(
+          applied.config.layout_id,
+          applied.config.layout_version,
+        );
+        if (active) setLayout(projectLayoutVersion(version));
+      })
+      .catch(() => {
+        // Runtime telemetry remains usable with the documented default layout.
+      });
+    return () => { active = false; };
+  }, [factoryRevision]);
 
   function toggleLayer(layer: keyof FactoryMapLayers) {
     setLayers((current) => ({ ...current, [layer]: !current[layer] }));
@@ -21,7 +46,7 @@ export default function FactoryPage() {
     <header className="page-head">
       <div>
         <h2>Factory Digital Twin</h2>
-        <p>Realtime 3D visualization using factory-meter coordinates.</p>
+        <p>Realtime 2D visualization using factory-meter coordinates.</p>
       </div>
       <div className="toolbar" aria-label="Factory map layers">
         <button
@@ -53,10 +78,10 @@ export default function FactoryPage() {
     <div className="grid main-grid factory-page-grid">
       <section className="panel factory-map-panel">
         <div className="panel-head">
-          <h3>Battery transfer zone</h3>
-          <span>Click an AMR to inspect</span>
+          <h3>{layout.name}</h3>
+          <span>{layout.id} · v{layout.version} · click an AMR to inspect</span>
         </div>
-        <FactoryMap layers={layers}/>
+        <FactoryMap view="2d" twoDimensionalVariant="plant" layers={layers} layout={layout}/>
       </section>
       <section className="panel factory-alert-panel">
         <div className="panel-head">

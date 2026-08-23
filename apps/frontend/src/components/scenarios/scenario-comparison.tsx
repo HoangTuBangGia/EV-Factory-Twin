@@ -5,8 +5,12 @@ type MetricKey = keyof Pick<
   | "throughput_per_hour"
   | "average_cycle_time"
   | "average_waiting_time"
+  | "fleet_utilization_percent"
+  | "starvation_events"
+  | "congestion_percent"
+  | "travel_distance"
+  | "average_delivery_delay"
   | "completion_rate"
-  | "unfinished_tasks"
 >;
 
 interface MetricRow {
@@ -49,9 +53,37 @@ const rows: MetricRow[] = [
     format: (value) => `${number.format(value * 100)}%`,
   },
   {
-    key: "unfinished_tasks",
-    label: "Backlog",
-    unit: "tasks",
+    key: "fleet_utilization_percent",
+    label: "Fleet utilization",
+    unit: "%",
+    higherIsBetter: true,
+    format: (value) => number.format(value),
+  },
+  {
+    key: "starvation_events",
+    label: "Starvation",
+    unit: "events",
+    higherIsBetter: false,
+    format: (value) => number.format(value),
+  },
+  {
+    key: "congestion_percent",
+    label: "Congestion",
+    unit: "%",
+    higherIsBetter: false,
+    format: (value) => number.format(value),
+  },
+  {
+    key: "travel_distance",
+    label: "Travel distance",
+    unit: "m",
+    higherIsBetter: false,
+    format: (value) => number.format(value),
+  },
+  {
+    key: "average_delivery_delay",
+    label: "Delivery delay",
+    unit: "s",
     higherIsBetter: false,
     format: (value) => number.format(value),
   },
