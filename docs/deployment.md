@@ -58,6 +58,11 @@ outbound traffic; không mở cổng DDS cho Internet. Nếu cần điều khi�
 backend gửi command tới một edge gateway đã xác thực, gateway publish ROS2 topic
 hoặc gọi ROS2 service trong mạng nội bộ.
 
+Với `MOCK_FACTORY_ENABLED=false`, Render không tạo robot mặc định. Telemetry
+bridge phải đăng ký thành công danh sách robot qua bridge health trước khi gửi
+telemetry; danh sách trong file fleet edge vì vậy là nguồn registry authoritative.
+MVP production chỉ hỗ trợ một trusted bridge cho toàn fleet.
+
 Tối thiểu phải kiểm tra:
 
 ```bash

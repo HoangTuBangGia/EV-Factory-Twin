@@ -19,6 +19,13 @@ describe("role permission matrix", () => {
     expect(can("MONITOR", "scenarios:apply")).toBe(true);
   });
 
+  it("allows both roles to inspect commands but only Monitor to retry", () => {
+    expect(can("DESIGNER", "commands:view")).toBe(true);
+    expect(can("DESIGNER", "commands:retry")).toBe(false);
+    expect(can("MONITOR", "commands:view")).toBe(true);
+    expect(can("MONITOR", "commands:retry")).toBe(true);
+  });
+
   it("denies every permission when no role is available", () => {
     expect(permissions.every((permission) => !can(null, permission))).toBe(true);
   });

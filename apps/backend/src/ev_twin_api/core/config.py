@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     edge_telemetry_shared_secret: SecretStr | None = None
     edge_telemetry_max_future_skew_seconds: float = Field(default=5.0, ge=0, le=300)
     runtime_health_sweep_seconds: float = Field(default=1.0, ge=0.1, le=60)
+    command_timeout_sweep_seconds: float = Field(default=1.0, ge=0.1, le=60)
     stale_telemetry_seconds: float = Field(default=10.0, ge=1, le=3600)
     bridge_disconnect_seconds: float = Field(default=5.0, ge=1, le=3600)
     runtime_low_battery_percent: float = Field(default=20.0, ge=0, le=100)

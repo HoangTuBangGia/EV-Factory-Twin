@@ -2,9 +2,9 @@
 
 > **Project:** EV Factory Digital Twin — AMR-based Battery Intralogistics  
 > **Scope:** Frontend only  
-> **Current phase:** Mock-data / Web MVP, **no ROS2, no Gazebo yet**  
+> **Current phase:** Unified MOCK/ROS2 Web MVP with authenticated REST and WebSocket contracts
 > **Frontend stack:** Next.js + TypeScript + Tailwind CSS + Zustand + Zod + ECharts + Vitest  
-> **Optional later:** Three.js / React Three Fiber
+> **Visualization:** Data-driven 2D and Three.js / React Three Fiber views
 
 ---
 
@@ -19,9 +19,9 @@ The frontend depends only on a stable backend contract:
 ```text
 Telemetry Source
     │
-    ├── Mock now
-    ├── ROS2 later
-    └── Replay later
+    ├── Mock
+    ├── ROS2 / Gazebo
+    └── Replay
         │
         ▼
       FastAPI
@@ -477,6 +477,15 @@ Alert event:
 {
   "type": "alert.created",
   "data": {}
+}
+```
+
+Alert lifecycle update:
+
+```json
+{
+  "type": "alert.updated",
+  "data": { "status": "CLEARED" }
 }
 ```
 
@@ -1287,6 +1296,7 @@ Acceptance:
 [ ] task.updated handler
 [ ] metrics.updated handler
 [ ] alert.created handler
+[ ] alert.updated handler
 [ ] reconnect logic
 [ ] LIVE/OFFLINE indicator
 ```

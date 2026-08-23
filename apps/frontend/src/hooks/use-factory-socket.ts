@@ -48,6 +48,8 @@ export function useFactorySocket(
       if (event.type === "task.updated") current.updateTask(event.data);
       if (event.type === "metrics.updated") current.setMetrics(event.data);
       if (event.type === "alert.created") current.addAlert(event.data);
+      if (event.type === "alert.updated") current.addAlert(event.data);
+      if (event.type === "command.updated") current.updateCommand(event.data);
     }
 
     function synchronizeSnapshot() {
@@ -134,6 +136,7 @@ export function useFactorySocket(
       }
       if (event.type === "factory.reset") {
         useFactoryStore.getState().clearMetricsHistory();
+        useFactoryStore.getState().bumpFactoryRevision();
         void synchronizeSnapshot().catch(() => {
           requestRecovery("Factory reset snapshot synchronization failed");
         });

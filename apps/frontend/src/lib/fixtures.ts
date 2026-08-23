@@ -25,9 +25,9 @@ export const fixtureMetrics: FactoryMetrics = {
 };
 
 export const fixtureAlerts: FactoryAlert[] = [
-  { id: "ALT-001", severity: "WARNING", code: "LOW_BATTERY", message: "AMR-05 battery below 20%", robot_id: "AMR-05", task_id: null, timestamp: now },
-  { id: "ALT-002", severity: "INFO", code: "TASK_ASSIGNED", message: "TASK-102 assigned to AMR-02", robot_id: "AMR-02", task_id: "TASK-102", timestamp: now },
-  { id: "ALT-003", severity: "CRITICAL", code: "STARVATION_RISK", message: "Marriage Station supply risk detected", robot_id: null, task_id: null, timestamp: now },
+  { id: "11111111-1111-4111-8111-111111111111", dedupe_key: "LOW_BATTERY:AMR-05", severity: "WARNING", code: "LOW_BATTERY", status: "ACTIVE", message: "AMR-05 battery below 20%", robot_id: "AMR-05", task_id: null, operation_id: null, timestamp: now, last_seen_at: now, cleared_at: null },
+  { id: "22222222-2222-4222-8222-222222222222", dedupe_key: "TASK_BACKLOG", severity: "INFO", code: "TASK_BACKLOG", status: "ACTIVE", message: "Battery task backlog detected", robot_id: null, task_id: "TASK-102", operation_id: null, timestamp: now, last_seen_at: now, cleared_at: null },
+  { id: "33333333-3333-4333-8333-333333333333", dedupe_key: "STARVATION", severity: "CRITICAL", code: "STARVATION", status: "ACTIVE", message: "Marriage Station supply risk detected", robot_id: null, task_id: null, operation_id: null, timestamp: now, last_seen_at: now, cleared_at: null },
 ];
 
 export const throughputHistory = [42, 48, 46, 55, 58, 61.4];

@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 
 import pytest
 from ev_twin_api.schemas.edge_runtime import BridgeHealth
@@ -15,10 +16,12 @@ from ev_twin_api.services.websocket_manager import WebSocketManager
 async def setup(now: datetime):
     state = FactoryState(MockFactoryConfig())
     repository = InMemoryRuntimeHistoryRepository()
+    websockets = WebSocketManager()
+    websockets.broadcast = AsyncMock()
     service = RuntimeHealthService(
         state,
         repository,
-        WebSocketManager(),
+        websockets,
         stale_telemetry_seconds=5,
         bridge_disconnect_seconds=5,
         low_battery_percent=20,
@@ -28,13 +31,13 @@ async def setup(now: datetime):
     service.set_applied_layout(
         await LayoutService(InMemoryLayoutRepository(include_default=True)).get("LAYOUT-DEFAULT", 1)
     )
-    return service, state, repository
+    return service, state, repository, websockets
 
 
 @pytest.mark.asyncio
 async def test_stale_telemetry_deduplicates_clears_and_retriggers() -> None:
     now = datetime.now(UTC)
-    service, state, repository = await setup(now)
+    service, state, repository, websockets = await setup(now)
     telemetry = robot_to_telemetry(state.get_robot("AMR-01"))
     await service.note_telemetry(telemetry, now - timedelta(seconds=6))
 
@@ -44,6 +47,10 @@ async def test_stale_telemetry_deduplicates_clears_and_retriggers() -> None:
 
     await service.note_telemetry(telemetry, now)
     assert (await repository.list_alerts())[0].status == "CLEARED"
+    assert any(
+        call.args[0]["type"] == "alert.updated" and call.args[0]["data"]["status"] == "CLEARED"
+        for call in websockets.broadcast.await_args_list
+    )
     await service.note_telemetry(telemetry, now - timedelta(seconds=6))
     await service.sweep()
     assert [alert.status for alert in await repository.list_alerts()] == [
@@ -55,7 +62,7 @@ async def test_stale_telemetry_deduplicates_clears_and_retriggers() -> None:
 @pytest.mark.asyncio
 async def test_bridge_degraded_and_disconnect_share_one_condition() -> None:
     now = datetime.now(UTC)
-    service, _, repository = await setup(now)
+    service, _, repository, _ = await setup(now)
     degraded = BridgeHealth(
         bridge_id="edge-main",
         status="DEGRADED",
@@ -86,7 +93,7 @@ async def test_bridge_degraded_and_disconnect_share_one_condition() -> None:
 @pytest.mark.asyncio
 async def test_congestion_uses_applied_layout_zone_and_clears_on_exit() -> None:
     now = datetime.now(UTC)
-    service, state, repository = await setup(now)
+    service, state, repository, _ = await setup(now)
     first = state.get_robot("AMR-01")
     second = state.get_robot("AMR-02")
     first.status = second.status = "MOVING"

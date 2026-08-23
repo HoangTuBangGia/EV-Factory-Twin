@@ -51,16 +51,19 @@ MONITOR = make_test_user(AppRole.MONITOR)
 
 def build_scenario_service(
     applied_layout_sink: Callable[[LayoutVersion], None] | None = None,
+    *,
+    apply_to_mock_runtime: bool = True,
 ) -> tuple[ScenarioService, MockFactory, FactoryState, WebSocketManager]:
     config = MockFactoryConfig()
     manager = WebSocketManager()
-    state = FactoryState(config)
-    mock_factory = MockFactory(state, config, manager)
+    state = FactoryState(config, seed_mock_robots=apply_to_mock_runtime)
+    mock_factory = MockFactory(state, config, manager, enabled=apply_to_mock_runtime)
     return (
         ScenarioService(
             mock_factory,
             layout_service=LayoutService(InMemoryLayoutRepository(include_default=True)),
             applied_layout_sink=applied_layout_sink,
+            apply_to_mock_runtime=apply_to_mock_runtime,
         ),
         mock_factory,
         state,
@@ -216,6 +219,22 @@ async def test_apply_waits_for_positive_command_result() -> None:
         call.args[0] == {"type": "factory.reset", "data": None}
         for call in broadcast.await_args_list
     )
+
+
+@pytest.mark.asyncio
+async def test_ros_apply_completion_does_not_reset_edge_runtime_state() -> None:
+    service, mock_factory, state, _ = build_scenario_service(apply_to_mock_runtime=False)
+    state.synchronize_robot_registry(["EDGE-01", "EDGE-02"])
+    scenario = await service.run(scenario_request(num_robots=4), DESIGNER)
+    await service.submit(scenario.id, DESIGNER)
+    approved = await service.approve(scenario.id, MONITOR)
+    mock_factory.reset = AsyncMock()
+
+    applied = await service.complete_apply(approved.id, MONITOR)
+
+    assert applied.status == ScenarioStatus.APPLIED
+    assert {robot.id for robot in state.list_robots()} == {"EDGE-01", "EDGE-02"}
+    mock_factory.reset.assert_not_awaited()
 
 
 @pytest.mark.asyncio

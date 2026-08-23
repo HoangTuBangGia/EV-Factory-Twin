@@ -18,6 +18,7 @@ class WebSocketEventType(StrEnum):
     TASK_UPDATED = "task.updated"
     METRICS_UPDATED = "metrics.updated"
     ALERT_CREATED = "alert.created"
+    ALERT_UPDATED = "alert.updated"
     FACTORY_RESET = "factory.reset"
     COMMAND_UPDATED = "command.updated"
 
@@ -63,6 +64,10 @@ def metrics_updated_event(metrics: FactoryMetrics) -> dict[str, Any]:
 
 def alert_created_event(alert: FactoryAlert) -> dict[str, Any]:
     return {"type": WebSocketEventType.ALERT_CREATED, "data": alert.model_dump(mode="json")}
+
+
+def alert_updated_event(alert: FactoryAlert) -> dict[str, Any]:
+    return {"type": WebSocketEventType.ALERT_UPDATED, "data": alert.model_dump(mode="json")}
 
 
 def factory_reset_event() -> dict[str, Any]:

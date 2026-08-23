@@ -107,11 +107,13 @@ class ScenarioService:
         layout_service: LayoutService,
         repository: ScenarioRepository | None = None,
         applied_layout_sink: Callable[[LayoutVersion], None] | None = None,
+        apply_to_mock_runtime: bool = True,
     ) -> None:
         self._mock_factory = mock_factory
         self._repository = repository or InMemoryScenarioRepository()
         self._layout_service = layout_service
         self._applied_layout_sink = applied_layout_sink
+        self._apply_to_mock_runtime = apply_to_mock_runtime
         self._baseline: Scenario | None = None
 
     async def run(self, request: ScenarioRunRequest, actor: CurrentUser) -> Scenario:
@@ -247,6 +249,8 @@ class ScenarioService:
 
         async def apply_before_database_commit(_: Scenario) -> None:
             nonlocal factory_mutation_started
+            if not self._apply_to_mock_runtime:
+                return
             factory_mutation_started = True
             self._mock_factory.apply_config(realtime_config)
             await self._mock_factory.reset()

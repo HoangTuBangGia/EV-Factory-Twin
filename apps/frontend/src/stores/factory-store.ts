@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { FactoryAlert } from "@/schemas/alert";
+import type { Command } from "@/schemas/command";
 import type { FactoryMetrics } from "@/schemas/metric";
 import type { Robot, RobotTelemetry } from "@/schemas/robot";
 import type { Task } from "@/schemas/task";
@@ -16,12 +17,20 @@ const METRICS_HISTORY_LIMIT = Math.ceil(
   METRICS_HISTORY_WINDOW_MS / METRICS_HISTORY_SAMPLE_INTERVAL_MS,
 );
 
+function latestCommand(current: Command | undefined, incoming: Command) {
+  return current && Date.parse(current.updated_at) > Date.parse(incoming.updated_at)
+    ? current
+    : incoming;
+}
+
 interface FactoryStore {
   robots: Record<string, Robot>;
   tasks: Record<string, Task>;
   metrics: FactoryMetrics | null;
   metricsHistory: MetricsSample[];
   alerts: FactoryAlert[];
+  commands: Record<string, Command>;
+  factoryRevision: number;
   selectedRobotId: string | null;
   connectionStatus: ConnectionStatus;
   setRobots: (robots: Robot[]) => void;
@@ -32,13 +41,16 @@ interface FactoryStore {
   clearMetricsHistory: () => void;
   setAlerts: (alerts: FactoryAlert[]) => void;
   addAlert: (alert: FactoryAlert) => void;
+  setCommands: (commands: Command[]) => void;
+  updateCommand: (command: Command) => void;
+  bumpFactoryRevision: () => void;
   selectRobot: (id: string | null) => void;
   setConnectionStatus: (status: ConnectionStatus) => void;
   reset: () => void;
 }
 
 export const useFactoryStore = create<FactoryStore>((set) => ({
-  robots: {}, tasks: {}, metrics: null, metricsHistory: [], alerts: [], selectedRobotId: null,
+  robots: {}, tasks: {}, metrics: null, metricsHistory: [], alerts: [], commands: {}, factoryRevision: 0, selectedRobotId: null,
   connectionStatus: "CONNECTING",
   setRobots: (robots) => set({ robots: Object.fromEntries(robots.map((robot) => [robot.id, robot])) }),
   updateRobotTelemetry: (telemetry) => set((state) => {
@@ -76,7 +88,26 @@ export const useFactoryStore = create<FactoryStore>((set) => ({
   }),
   clearMetricsHistory: () => set({ metricsHistory: [] }),
   setAlerts: (alerts) => set({ alerts }),
-  addAlert: (alert) => set((state) => ({ alerts: [alert, ...state.alerts].slice(0, 50) })),
+  addAlert: (alert) => set((state) => ({
+    alerts: [alert, ...state.alerts.filter((current) => current.dedupe_key !== alert.dedupe_key)]
+      .slice(0, 50),
+  })),
+  setCommands: (commands) => set((state) => ({
+    commands: {
+      ...state.commands,
+      ...Object.fromEntries(commands.map((command) => [
+        command.operation_id,
+        latestCommand(state.commands[command.operation_id], command),
+      ])),
+    },
+  })),
+  updateCommand: (command) => set((state) => ({
+    commands: {
+      ...state.commands,
+      [command.operation_id]: latestCommand(state.commands[command.operation_id], command),
+    },
+  })),
+  bumpFactoryRevision: () => set((state) => ({ factoryRevision: state.factoryRevision + 1 })),
   selectRobot: (selectedRobotId) => set({ selectedRobotId }),
   setConnectionStatus: (connectionStatus) => set({ connectionStatus }),
   reset: () => set({
@@ -85,6 +116,8 @@ export const useFactoryStore = create<FactoryStore>((set) => ({
     metrics: null,
     metricsHistory: [],
     alerts: [],
+    commands: {},
+    factoryRevision: 0,
     selectedRobotId: null,
     connectionStatus: "OFFLINE",
   }),

@@ -22,7 +22,7 @@ class RuntimeHistoryRepository(Protocol):
     async def record_task(self, update: TaskUpdate, ingested_at: datetime) -> None: ...
 
     async def activate_alert(self, alert: FactoryAlert) -> bool: ...
-    async def clear_alert(self, dedupe_key: str, cleared_at: datetime) -> bool: ...
+    async def clear_alert(self, dedupe_key: str, cleared_at: datetime) -> FactoryAlert | None: ...
     async def list_alerts(self) -> list[FactoryAlert]: ...
 
 
@@ -75,7 +75,7 @@ class InMemoryRuntimeHistoryRepository:
         self.alerts.append(alert.model_copy(deep=True))
         return True
 
-    async def clear_alert(self, dedupe_key: str, cleared_at: datetime) -> bool:
+    async def clear_alert(self, dedupe_key: str, cleared_at: datetime) -> FactoryAlert | None:
         active = next(
             (
                 item
@@ -85,11 +85,11 @@ class InMemoryRuntimeHistoryRepository:
             None,
         )
         if active is None:
-            return False
+            return None
         active.status = AlertStatus.CLEARED
         active.cleared_at = cleared_at
         active.last_seen_at = cleared_at
-        return True
+        return active.model_copy(deep=True)
 
     async def list_alerts(self) -> list[FactoryAlert]:
         return [item.model_copy(deep=True) for item in reversed(self.alerts)]
@@ -197,18 +197,21 @@ class SqlAlchemyRuntimeHistoryRepository:
             )
             return bool(result.scalar_one())
 
-    async def clear_alert(self, dedupe_key: str, cleared_at: datetime) -> bool:
+    async def clear_alert(self, dedupe_key: str, cleared_at: datetime) -> FactoryAlert | None:
         async with self._database.session() as session, session.begin():
             result = await session.execute(
                 text("""
                     update public.alerts set status='CLEARED', cleared_at=:cleared_at,
                         last_seen_at=:cleared_at
                     where dedupe_key=:dedupe_key and status='ACTIVE'
-                    returning id
+                    returning id, dedupe_key, severity::text severity, code,
+                        status::text status, message, robot_id, task_id, operation_id,
+                        triggered_at timestamp, last_seen_at, cleared_at
                 """),
                 {"dedupe_key": dedupe_key, "cleared_at": cleared_at},
             )
-            return result.scalar_one_or_none() is not None
+            row = result.mappings().one_or_none()
+            return FactoryAlert.model_validate(row) if row is not None else None
 
     async def list_alerts(self) -> list[FactoryAlert]:
         async with self._database.session() as session:
