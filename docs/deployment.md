@@ -73,8 +73,9 @@ secret trong frontend, Supabase client hoặc Git.
 
 ## 3. Deploy backend lên Render
 
-1. Dùng Render **paid Web Service**, một instance và một Uvicorn worker trong
-   giai đoạn live state/WebSocket còn process-local.
+1. MVP/demo dùng Render **Free Web Service**, một instance và một Uvicorn worker
+   trong giai đoạn live state/WebSocket còn process-local. Chuyển sang paid khi
+   cần telemetry liên tục hoặc không chấp nhận cold start.
 2. Dùng **New > Blueprint** và chọn `render.yaml` trong repository.
 3. Cấu hình các biến môi trường backend trên Render:
 
@@ -215,8 +216,8 @@ curl -H "Authorization: Bearer <ACCESS_TOKEN>" \
   thể chậm và WebSocket sẽ ngắt khi service ngủ; frontend có reconnect tự động.
 - Chỉ chạy một backend instance. Nếu scale nhiều instance khi chưa có Redis hoặc
   database dùng chung, mỗi instance sẽ có một factory state khác nhau.
-- Không dùng Render Free cho telemetry vận hành: service có thể sleep và làm đứt
-  WebSocket. Paid Web Service là yêu cầu tối thiểu.
+- Render Free phù hợp MVP/demo nhưng có thể sleep và làm đứt WebSocket. Paid Web
+  Service là yêu cầu tối thiểu khi chuyển sang telemetry vận hành liên tục.
 - Chọn Supabase pooler session mode cho backend nếu Render không có IPv6 ổn định;
   không dùng transaction pooling cho kết nối SQLAlchemy lâu sống.
 - Bật backup/restore phù hợp trên Supabase production và kiểm thử restore trước

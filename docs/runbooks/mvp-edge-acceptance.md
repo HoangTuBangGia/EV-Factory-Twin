@@ -10,7 +10,8 @@ Container and ROS CI are green.
 
 - The edge is either Distrobox `ros-jazzy` for local development or the GCP VM
   prepared with `docs/runbooks/gcp-edge.md`.
-- Render runs one paid Web Service from `render.yaml`.
+- Render runs the single Free MVP/demo Web Service from `render.yaml`; warm its
+  health endpoint before timed acceptance measurements.
 - Vercel deploys `apps/frontend` with the production environment documented in
   `docs/deployment.md`.
 - Hosted Supabase migrations are current and the DESIGNER/MONITOR accounts exist.
