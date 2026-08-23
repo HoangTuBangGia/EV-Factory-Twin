@@ -109,6 +109,12 @@ hợp đồng của nó nằm ở mục [WebSocket event envelope](#websocket-ev
 append-only. `DELETE` chỉ đặt `archived_at`: layout biến mất khỏi list nhưng các
 version vẫn đọc được theo ID để scenario/audit có thể tham chiếu ổn định.
 
+Factory UI xác định layout runtime bằng scenario `APPLIED` mới nhất và tải chính
+xác `layout_id` + `layout_version` bất biến. Khi chưa có scenario APPLIED, UI dùng
+layout mặc định đã version hóa; telemetry vẫn tiếp tục hiển thị nếu việc tải layout
+thất bại tạm thời. Event `factory.reset` làm frontend tải lại projection này để
+layout vừa APPLIED xuất hiện mà không cần reload trang.
+
 ```json
 {
   "layout_id": "LAYOUT-0001",

@@ -24,6 +24,7 @@ interface FactoryStore {
   metricsHistory: MetricsSample[];
   alerts: FactoryAlert[];
   commands: Record<string, Command>;
+  factoryRevision: number;
   selectedRobotId: string | null;
   connectionStatus: ConnectionStatus;
   setRobots: (robots: Robot[]) => void;
@@ -35,13 +36,14 @@ interface FactoryStore {
   setAlerts: (alerts: FactoryAlert[]) => void;
   addAlert: (alert: FactoryAlert) => void;
   updateCommand: (command: Command) => void;
+  bumpFactoryRevision: () => void;
   selectRobot: (id: string | null) => void;
   setConnectionStatus: (status: ConnectionStatus) => void;
   reset: () => void;
 }
 
 export const useFactoryStore = create<FactoryStore>((set) => ({
-  robots: {}, tasks: {}, metrics: null, metricsHistory: [], alerts: [], commands: {}, selectedRobotId: null,
+  robots: {}, tasks: {}, metrics: null, metricsHistory: [], alerts: [], commands: {}, factoryRevision: 0, selectedRobotId: null,
   connectionStatus: "CONNECTING",
   setRobots: (robots) => set({ robots: Object.fromEntries(robots.map((robot) => [robot.id, robot])) }),
   updateRobotTelemetry: (telemetry) => set((state) => {
@@ -86,6 +88,7 @@ export const useFactoryStore = create<FactoryStore>((set) => ({
   updateCommand: (command) => set((state) => ({
     commands: { ...state.commands, [command.operation_id]: command },
   })),
+  bumpFactoryRevision: () => set((state) => ({ factoryRevision: state.factoryRevision + 1 })),
   selectRobot: (selectedRobotId) => set({ selectedRobotId }),
   setConnectionStatus: (connectionStatus) => set({ connectionStatus }),
   reset: () => set({
@@ -95,6 +98,7 @@ export const useFactoryStore = create<FactoryStore>((set) => ({
     metricsHistory: [],
     alerts: [],
     commands: {},
+    factoryRevision: 0,
     selectedRobotId: null,
     connectionStatus: "OFFLINE",
   }),

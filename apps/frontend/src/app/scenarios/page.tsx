@@ -10,9 +10,11 @@ import {
   ScenarioComparison,
   ScenarioStatusBadge,
 } from "@/components/scenarios/scenario-comparison";
+import { OptimizationPanel } from "@/components/scenarios/optimization-panel";
 import { apiClient } from "@/lib/api-client";
 import { can } from "@/lib/auth/permissions";
 import { useFactoryStore } from "@/stores/factory-store";
+import type { LayoutSummary, LayoutVersion } from "@/schemas/layout";
 import {
   scenarioRunRequestSchema,
   type Scenario,
@@ -26,12 +28,17 @@ function readScenarioInput(form: HTMLFormElement): ScenarioRunRequest {
   const data = new FormData(form);
   return {
     name: String(data.get("name") ?? ""),
+    layout_id: String(data.get("layout_id") ?? ""),
+    layout_version: Number(data.get("layout_version")),
+    route_id: String(data.get("route_id") ?? ""),
     num_robots: Number(data.get("num_robots")),
     num_tasks: Number(data.get("num_tasks")),
     task_arrival_interval: Number(data.get("task_arrival_interval")),
     travel_time: Number(data.get("travel_time")),
     loading_time: Number(data.get("loading_time")),
     simulation_time: Number(data.get("simulation_time")),
+    robot_speed_mps: Number(data.get("robot_speed_mps")),
+    charger_count: Number(data.get("charger_count")),
   };
 }
 
@@ -83,6 +90,10 @@ function ReadOnlyConfiguration({ scenario }: { scenario: Scenario | null }) {
 
   const values = [
     ["Robot count", scenario.config.num_robots],
+    ["Layout", `${scenario.config.layout_id} · v${scenario.config.layout_version}`],
+    ["Route", scenario.config.route_id],
+    ["Robot speed", `${scenario.config.robot_speed_mps} m/s`],
+    ["Chargers", scenario.config.charger_count],
     ["Tasks", scenario.config.num_tasks],
     ["Arrival interval", `${scenario.config.task_arrival_interval} s`],
     ["Travel time", `${scenario.config.travel_time} s`],
@@ -107,6 +118,8 @@ export default function ScenariosPage() {
   const [baseline, setBaseline] = useState<Scenario | null>(null);
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [candidate, setCandidate] = useState<Scenario | null>(null);
+  const [layouts, setLayouts] = useState<LayoutSummary[]>([]);
+  const [selectedLayout, setSelectedLayout] = useState<LayoutVersion | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [actionError, setActionError] = useState<string | null>(null);
@@ -131,17 +144,41 @@ export default function ScenariosPage() {
     setLoadState("loading");
     setActionError(null);
     try {
-      const [loadedBaseline] = await Promise.all([
+      const [loadedBaseline, loadedLayouts] = await Promise.all([
         apiClient.getBaselineScenario(),
+        apiClient.getLayouts(),
         loadScenarios(),
       ]);
       setBaseline(loadedBaseline);
+      setLayouts(loadedLayouts);
+      if (loadedLayouts[0]) {
+        setSelectedLayout(await apiClient.getLayout(loadedLayouts[0].id));
+      }
       setLoadState("ready");
     } catch (error) {
       setActionError(`Unable to load scenarios: ${message(error)}`);
       setLoadState("error");
     }
   }, [loadScenarios]);
+
+  async function selectLayout(layoutId: string) {
+    setActionError(null);
+    try {
+      setSelectedLayout(await apiClient.getLayout(layoutId));
+    } catch (error) {
+      setActionError(`Unable to load layout: ${message(error)}`);
+    }
+  }
+
+  async function selectLayoutVersion(version: number) {
+    if (!selectedLayout || !Number.isInteger(version) || version < 1) return;
+    setActionError(null);
+    try {
+      setSelectedLayout(await apiClient.getLayoutVersion(selectedLayout.layout_id, version));
+    } catch (error) {
+      setActionError(`Unable to load layout version: ${message(error)}`);
+    }
+  }
 
   useEffect(() => { void loadPage(); }, [loadPage]);
 
@@ -290,22 +327,64 @@ export default function ScenariosPage() {
             <span>{mayRun ? "Designer · SimPy benchmark" : `${user.role} · Read only`}</span>
           </div>
           {mayRun ? (
-            <form className="panel-body" onSubmit={runScenario} noValidate>
+            <form key={`${selectedLayout?.layout_id}-${selectedLayout?.version}`}
+              className="panel-body" onSubmit={runScenario} noValidate>
               <div className="form-grid">
                 <div className="field field-wide">
                   <label htmlFor="scenario-name">Scenario name</label>
                   <input id="scenario-name" name="name" defaultValue="candidate-01" required />
                   {fieldErrors.name && <span className="field-error">{fieldErrors.name}</span>}
                 </div>
+                <div className="field field-wide">
+                  <label htmlFor="scenario-layout">Layout</label>
+                  <select id="scenario-layout" name="layout_id" required
+                    value={selectedLayout?.layout_id ?? ""}
+                    onChange={(event) => void selectLayout(event.target.value)}>
+                    <option value="" disabled>Select a layout</option>
+                    {layouts.map((layout) => <option value={layout.id} key={layout.id}>
+                      {layout.name} · v{layout.latest_version}
+                    </option>)}
+                  </select>
+                  {fieldErrors.layout_id && <span className="field-error">{fieldErrors.layout_id}</span>}
+                </div>
+                <div className="field">
+                  <label htmlFor="scenario-layout-version">Layout version</label>
+                  <input id="scenario-layout-version" name="layout_version" type="number" min="1"
+                    max={layouts.find((layout) => layout.id === selectedLayout?.layout_id)?.latest_version}
+                    value={selectedLayout?.version ?? ""}
+                    onChange={(event) => void selectLayoutVersion(Number(event.target.value))}/>
+                  {fieldErrors.layout_version && <span className="field-error">{fieldErrors.layout_version}</span>}
+                </div>
+                <div className="field field-wide">
+                  <label htmlFor="scenario-route">Route</label>
+                  <select id="scenario-route" name="route_id" required disabled={!selectedLayout}>
+                    {selectedLayout?.routes.map((route) => <option value={route.id} key={route.id}>
+                      {route.id} · {route.start_station_id} → {route.end_station_id}
+                    </option>)}
+                  </select>
+                  {fieldErrors.route_id && <span className="field-error">{fieldErrors.route_id}</span>}
+                </div>
                 <div className="field">
                   <label htmlFor="num-robots">Robot count</label>
-                  <input id="num-robots" name="num_robots" type="number" min="1" max="10" defaultValue="5" />
+                  <input id="num-robots" name="num_robots" type="number" min="1" max="10" defaultValue={selectedLayout?.config.robot_count ?? 2} />
                   {fieldErrors.num_robots && <span className="field-error">{fieldErrors.num_robots}</span>}
                 </div>
                 <div className="field">
                   <label htmlFor="num-tasks">Number of tasks</label>
                   <input id="num-tasks" name="num_tasks" type="number" min="1" max="10000" defaultValue="500" />
                   {fieldErrors.num_tasks && <span className="field-error">{fieldErrors.num_tasks}</span>}
+                </div>
+                <div className="field">
+                  <label htmlFor="robot-speed">Robot speed (m/s)</label>
+                  <input id="robot-speed" name="robot_speed_mps" type="number" min="0.1" max="10" step="0.1"
+                    defaultValue={selectedLayout?.config.robot_speed_mps ?? 1}/>
+                  {fieldErrors.robot_speed_mps && <span className="field-error">{fieldErrors.robot_speed_mps}</span>}
+                </div>
+                <div className="field">
+                  <label htmlFor="charger-count">Charger count</label>
+                  <input id="charger-count" name="charger_count" type="number" min="1" max="20"
+                    defaultValue={selectedLayout?.config.charger_count ?? 1}/>
+                  {fieldErrors.charger_count && <span className="field-error">{fieldErrors.charger_count}</span>}
                 </div>
                 <div className="field">
                   <label htmlFor="task-interval">Task arrival interval (s)</label>
@@ -328,7 +407,7 @@ export default function ScenariosPage() {
                   {fieldErrors.simulation_time && <span className="field-error">{fieldErrors.simulation_time}</span>}
                 </div>
               </div>
-              <p className="form-help">Robot count maps to the realtime mock twin after Monitor approval.</p>
+              <p className="form-help">Route distance and congestion are resolved authoritatively from the immutable layout version.</p>
               <div className="button-row">
                 <button className="button" type="reset" disabled={activeAction !== null}>Reset form</button>
                 <button className="button primary" type="submit" disabled={activeAction !== null}>
@@ -377,6 +456,8 @@ export default function ScenariosPage() {
           )}
         </section>
       </div>
+      {mayRun && <OptimizationPanel key={`${selectedLayout?.layout_id}-${selectedLayout?.version}`}
+        layouts={layouts} selectedLayout={selectedLayout}/>}
     </>
   );
 }

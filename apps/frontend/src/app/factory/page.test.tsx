@@ -3,6 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 import FactoryPage from "./page";
 
 const mapSpy = vi.hoisted(() => vi.fn());
+const apiMocks = vi.hoisted(() => ({
+  getScenarios: vi.fn().mockResolvedValue([]),
+  getLayoutVersion: vi.fn(),
+}));
+
+vi.mock("@/lib/api-client", () => ({ apiClient: apiMocks }));
 
 vi.mock("@/components/factory/factory-map", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/components/factory/factory-map")>();

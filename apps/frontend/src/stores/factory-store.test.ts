@@ -169,6 +169,12 @@ describe("factory store realtime updates", () => {
     expect(useFactoryStore.getState().metricsHistory).toEqual([]);
   });
 
+  it("increments the factory revision used by applied-layout consumers", () => {
+    const before = useFactoryStore.getState().factoryRevision;
+    useFactoryStore.getState().bumpFactoryRevision();
+    expect(useFactoryStore.getState().factoryRevision).toBe(before + 1);
+  });
+
   it("clears user-scoped factory data on logout", () => {
     useFactoryStore.getState().setMetrics(fixtureMetrics);
     useFactoryStore.getState().selectRobot(fixtureRobots[0].id);

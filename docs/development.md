@@ -36,6 +36,27 @@ uv sync --all-packages --dev
 make check
 ```
 
+## Frontend workflow
+
+Chạy frontend từ repository root qua Makefile để local và CI dùng cùng lệnh:
+
+```bash
+make frontend-sync
+make frontend
+```
+
+`frontend-sync` dùng lockfile qua `npm ci`; `frontend` mở Next.js development
+server. Quality gate đầy đủ gồm ESLint, TypeScript, Vitest và production build:
+
+```bash
+make frontend-check
+```
+
+Có thể chạy từng gate bằng `make frontend-lint`, `make frontend-typecheck`,
+`make frontend-test` và `make frontend-build`. Các browser workflow dùng
+`make frontend-browser-install`, `make frontend-smoke`, `make frontend-e2e-list`
+và `make frontend-e2e`.
+
 ## Local Supabase
 
 Development uses the local Supabase stack rather than a separately configured
@@ -169,9 +190,8 @@ FastAPI, Supabase credentials, or external services.
 Install Chromium once, then run:
 
 ```bash
-cd apps/frontend
-npx playwright install chromium
-npm run test:smoke
+make frontend-browser-install
+make frontend-smoke
 ```
 
 To test an already-running frontend instead:
@@ -179,7 +199,7 @@ To test an already-running frontend instead:
 ```bash
 SMOKE_EXTERNAL_SERVER=true \
 SMOKE_BASE_URL=http://127.0.0.1:3000 \
-npm run test:smoke
+make frontend-smoke
 ```
 
 The smoke route is `/scene-probe`; it validates a live WebGL context, responsive
@@ -212,10 +232,9 @@ read -rsp 'Monitor password: ' MONITOR_PASSWORD && export MONITOR_PASSWORD
 Cài Chromium một lần trên máy phát triển, sau đó liệt kê và chạy suite:
 
 ```bash
-cd apps/frontend
-npx playwright install chromium
-npm run test:e2e:list
-npm run test:e2e
+make frontend-browser-install
+make frontend-e2e-list
+make frontend-e2e
 unset DESIGNER_PASSWORD MONITOR_PASSWORD
 ```
 
@@ -226,7 +245,7 @@ chạy thủ công ở địa chỉ khác, dùng:
 E2E_EXTERNAL_SERVERS=true \
 E2E_BASE_URL=http://127.0.0.1:3100 \
 E2E_API_URL=http://127.0.0.1:8100 \
-npm run test:e2e
+make frontend-e2e
 ```
 
 Khi thiếu một trong bốn biến role credential, nhóm hosted RBAC được Playwright

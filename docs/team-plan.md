@@ -161,9 +161,8 @@ Frontend cập nhật store theo `robot_id`, không reload toàn bộ scene.
 
 ### Layout
 
-Đây là target contract cho checkpoint layout. Chỉ dùng sau khi backend cập nhật
-Pydantic schema và `docs/api.md`; contract đang chạy trong `docs/api.md` vẫn là
-nguồn sự thật cho đến thời điểm đó.
+Contract layout này đã được Backend và Frontend dùng chung. `docs/api.md` là
+nguồn sự thật cho validation và wire format.
 
 ```ts
 type FactoryLayout = {
@@ -208,10 +207,14 @@ type FactoryLayout = {
 type ScenarioRunRequest = {
   name: string;
   layout_id: string;
+  layout_version: number;
+  route_id: string;
   num_robots: number;
   num_tasks: number;
   task_arrival_interval: number;
-  robot_speed: number;
+  robot_speed_mps: number;
+  charger_count: number;
+  travel_time: number;
   loading_time: number;
   simulation_time: number;
 };
@@ -227,8 +230,11 @@ type ScenarioMetrics = {
   throughput_per_hour: number;
   average_cycle_time: number;
   average_waiting_time: number;
+  fleet_utilization_percent: number;
+  starvation_events: number;
   congestion_percent: number;
-  duration_ms: number;
+  travel_distance: number;
+  average_delivery_delay: number;
 };
 ```
 
@@ -258,7 +264,7 @@ POST /api/v1/scenarios/{id}/apply
 WS   /ws/factory
 ```
 
-Cần thêm trong checkpoint layout:
+Layout/version API đã có và được Layout editor sử dụng:
 
 ```text
 GET  /api/v1/layouts
@@ -286,4 +292,4 @@ GET  /api/v1/layouts/{id}/versions/{version}
 - incident replay UI đầy đủ và telemetry retention ngoài policy;
 - CAD/BIM toàn nhà máy;
 - AI chatbot, predictive maintenance, MES/ERP;
-- tự động tối ưu layout.
+- AI/ML hoặc continuous optimizer; bounded deterministic search tối đa 64 candidate thuộc MVP.

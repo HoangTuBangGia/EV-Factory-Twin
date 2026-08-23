@@ -136,6 +136,7 @@ export function useFactorySocket(
       }
       if (event.type === "factory.reset") {
         useFactoryStore.getState().clearMetricsHistory();
+        useFactoryStore.getState().bumpFactoryRevision();
         void synchronizeSnapshot().catch(() => {
           requestRecovery("Factory reset snapshot synchronization failed");
         });
