@@ -111,7 +111,11 @@ standard build type used by `telemetry_bridge`.
 
 For an edge-to-backend run, configure the backend with
 `MOCK_FACTORY_ENABLED=false` and the same `EDGE_TELEMETRY_SHARED_SECRET` used by
-the bridge. The acceptance run uses at least two namespaced AMRs. After
+the bridge. In this mode Backend starts with an empty robot registry. The bridge
+registers the exact configured `robot_id` set through authenticated bridge health
+before releasing telemetry; subsequent health updates add or remove registry
+entries without creating mock AMRs. The acceptance run uses at least two
+namespaced AMRs. After
 `make ros-build`, run Gazebo in one terminal:
 
 ```bash

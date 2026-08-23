@@ -75,6 +75,31 @@ def test_robot_count_from_config() -> None:
     assert set(state.robots.keys()) == {"AMR-01", "AMR-02", "AMR-03"}
 
 
+def test_edge_state_starts_empty_and_registry_preserves_known_telemetry() -> None:
+    state = FactoryState(MockFactoryConfig(), seed_mock_robots=False)
+    assert state.list_robots() == []
+
+    assert state.synchronize_robot_registry(["EDGE-01", "EDGE-02"])
+    edge_01 = state.get_robot("EDGE-01")
+    assert edge_01 is not None
+    assert edge_01.status == RobotStatus.OFFLINE
+    edge_01.battery = 73.0
+    state.update_robot(edge_01)
+
+    assert state.synchronize_robot_registry(["EDGE-01", "EDGE-03"])
+    assert state.get_robot("EDGE-01").battery == 73.0
+    assert state.get_robot("EDGE-02") is None
+    assert state.get_robot("EDGE-03") is not None
+    assert not state.synchronize_robot_registry(["EDGE-01", "EDGE-03"])
+
+
+def test_bridge_registry_does_not_replace_mock_robots() -> None:
+    state = _new_state(robot_count=2)
+
+    assert not state.synchronize_robot_registry(["EDGE-01"])
+    assert {robot.id for robot in state.list_robots()} == {"AMR-01", "AMR-02"}
+
+
 def test_get_unknown_robot_returns_none() -> None:
     state = _new_state()
     assert state.get_robot("AMR-99") is None

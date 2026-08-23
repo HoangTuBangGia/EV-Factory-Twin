@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 from ev_twin_api.schemas.edge_runtime import BridgeHealth, EdgeUpdateResponse, TaskUpdate
 from ev_twin_api.schemas.task import Task, TaskStatus
-from ev_twin_api.schemas.websocket import task_updated_event
+from ev_twin_api.schemas.websocket import factory_reset_event, task_updated_event
 from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.runtime_health import RuntimeHealthService
 from ev_twin_api.services.runtime_history import (
@@ -69,9 +69,12 @@ class EdgeRuntimeService:
         current = self._bridge_health.get(health.bridge_id)
         if current is not None and health.timestamp <= current.timestamp:
             return EdgeUpdateResponse(accepted=False, identifier=health.bridge_id)
+        registry_changed = self._state.synchronize_robot_registry(health.robot_ids)
         self._bridge_health[health.bridge_id] = health
         if self._runtime_health is not None:
             await self._runtime_health.note_bridge_health(health, ingested_at)
+        if registry_changed:
+            await self._websocket_manager.broadcast(factory_reset_event())
         return EdgeUpdateResponse(accepted=True, identifier=health.bridge_id)
 
     def get_health(self, bridge_id: str) -> BridgeHealth | None:

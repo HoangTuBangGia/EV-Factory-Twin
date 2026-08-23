@@ -72,6 +72,8 @@ Phụ trách:
 - Hai AMR chạy trong Gazebo với namespace riêng.
 - Odometry, battery, status và task state được chuẩn hóa.
 - Telemetry đi qua bridge → FastAPI → WebSocket.
+- Khi chạy ROS, bridge health là authoritative robot registry; Backend không seed
+  robot mock và chỉ nhận telemetry sau khi fleet đăng ký thành công.
 - Backend command tới edge/fleet manager có acknowledgement.
 - Command history hiển thị từng attempt; chỉ Monitor retry command failed/timeout còn budget.
 - Layout/version API và scenario gắn với layout.

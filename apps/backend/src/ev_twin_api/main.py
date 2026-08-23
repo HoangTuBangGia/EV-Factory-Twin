@@ -117,7 +117,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         simulation_speed=settings.mock_simulation_speed,
     )
     websocket_manager = WebSocketManager()
-    factory_state = FactoryState(config=mock_config)
+    factory_state = FactoryState(config=mock_config, seed_mock_robots=settings.mock_factory_enabled)
     mock_factory = MockFactory(
         state=factory_state,
         config=mock_config,
@@ -175,6 +175,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         layout_service=app.state.layout_service,
         repository=scenario_repository,
         applied_layout_sink=runtime_health.set_applied_layout,
+        apply_to_mock_runtime=settings.mock_factory_enabled,
     )
     app.state.optimization_service = OptimizationService(app.state.scenario_service)
     app.state.command_service = CommandService(

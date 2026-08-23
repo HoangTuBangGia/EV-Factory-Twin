@@ -67,6 +67,21 @@ def test_edge_telemetry_reaches_authenticated_websocket_and_rest_state() -> None
                 websocket.send_json({"type": "auth", "access_token": "integration-token"})
                 assert websocket.receive_json()["type"] == "auth.ok"
 
+                health_accepted = client.post(
+                    "/internal/v1/bridge-health",
+                    json={
+                        "bridge_id": "edge-main",
+                        "status": "CONNECTED",
+                        "robot_ids": ["AMR-01", "AMR-02"],
+                        "timestamp": datetime.now(UTC).isoformat(),
+                        "delivered_samples": 0,
+                        "failed_deliveries": 0,
+                        "last_error": None,
+                    },
+                    headers={"Authorization": f"Bearer {EDGE_SECRET}"},
+                )
+                registry_event = websocket.receive_json()
+
                 accepted = client.post(
                     "/internal/v1/telemetry",
                     json=payload,
@@ -92,20 +107,10 @@ def test_edge_telemetry_reaches_authenticated_websocket_and_rest_state() -> None
                     headers={"Authorization": f"Bearer {EDGE_SECRET}"},
                 )
                 task_event = websocket.receive_json()
-                health_accepted = client.post(
-                    "/internal/v1/bridge-health",
-                    json={
-                        "bridge_id": "edge-main",
-                        "status": "CONNECTED",
-                        "robot_ids": ["AMR-01", "AMR-02"],
-                        "timestamp": datetime.now(UTC).isoformat(),
-                        "delivered_samples": 2,
-                        "failed_deliveries": 0,
-                        "last_error": None,
-                    },
-                    headers={"Authorization": f"Bearer {EDGE_SECRET}"},
-                )
 
+            assert health_accepted.status_code == 200
+            assert health_accepted.json()["accepted"] is True
+            assert registry_event == {"type": "factory.reset", "data": None}
             assert accepted.status_code == 200
             assert accepted.json()["status"] == "ACCEPTED"
             assert event == {
@@ -116,8 +121,10 @@ def test_edge_telemetry_reaches_authenticated_websocket_and_rest_state() -> None
             assert task_accepted.json()["accepted"] is True
             assert task_event["type"] == "task.updated"
             assert task_event["data"]["task_id"] == "TASK-EDGE-0001"
-            assert health_accepted.status_code == 200
-            assert health_accepted.json()["accepted"] is True
+
+            robots_response = client.get("/api/v1/robots")
+            assert robots_response.status_code == 200
+            assert {robot["id"] for robot in robots_response.json()} == {"AMR-01", "AMR-02"}
 
             task_response = client.get("/api/v1/tasks/TASK-EDGE-0001")
             assert task_response.status_code == 200

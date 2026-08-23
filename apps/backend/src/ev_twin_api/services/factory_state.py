@@ -57,8 +57,9 @@ class FactoryState:
     everything. Durable (PostgreSQL/TimescaleDB) persistence is a later phase.
     """
 
-    def __init__(self, config: MockFactoryConfig) -> None:
+    def __init__(self, config: MockFactoryConfig, *, seed_mock_robots: bool = True) -> None:
         self.config = config
+        self._seed_mock_robots = seed_mock_robots
         self.robots: dict[str, Robot] = {}
         self.stations: list[Station] = []
         self.tasks: dict[str, Task] = {}
@@ -67,7 +68,7 @@ class FactoryState:
         self.initialize()
 
     def initialize(self) -> None:
-        self.robots = _initial_robots(self.config.robot_count)
+        self.robots = _initial_robots(self.config.robot_count) if self._seed_mock_robots else {}
         self.stations = list(STATIONS)
         self.tasks = {}
         self.alerts = []
@@ -94,6 +95,33 @@ class FactoryState:
 
     def update_robot(self, robot: Robot) -> None:
         self.robots[robot.id] = robot.model_copy(deep=True)
+
+    def synchronize_robot_registry(self, robot_ids: list[str]) -> bool:
+        """Replace the edge registry while preserving telemetry for known robots."""
+
+        if self._seed_mock_robots:
+            return False
+        previous_ids = set(self.robots)
+        next_ids = set(robot_ids)
+        if previous_ids == next_ids:
+            return False
+
+        epoch = datetime(1970, 1, 1, tzinfo=UTC)
+        self.robots = {
+            robot_id: self.robots.get(robot_id)
+            or Robot(
+                id=robot_id,
+                name=robot_id,
+                status=RobotStatus.OFFLINE,
+                pose=Pose(x=IDLE_ZONE_X, y=IDLE_ZONE_Y, yaw=0.0),
+                velocity=Velocity(linear=0.0, angular=0.0),
+                battery=0.0,
+                last_seen_at=epoch,
+            )
+            for robot_id in robot_ids
+        }
+        logger.info("edge robot registry synchronized with %d robots", len(self.robots))
+        return True
 
     def list_tasks(self) -> list[Task]:
         return [task.model_copy(deep=True) for task in self.tasks.values()]

@@ -1318,7 +1318,11 @@ The state simulator publishes battery/status/task/payload topics. One telemetry
 bridge loads the same validated fleet JSON, subscribes to every namespace and
 normalizes those fields with odometry into `RobotTelemetry`. Each robot owns an
 independent latest-value HTTP worker; fleet task transitions use a FIFO worker
-and bridge health is emitted once per second.
+and bridge health is emitted once per second. In ROS runtime mode the Backend
+does not seed mock robots: the authenticated bridge-health `robot_ids` list is
+the authoritative registry for the current single trusted bridge. The bridge
+retains the latest odometry until that registration succeeds, and registry
+changes trigger `factory.reset` so browser clients reload the REST snapshot.
 
 The M2 edge runtime adds one namespaced `amr_navigation` action server per robot.
 It translates typed station goals into bounded planar velocity commands and

@@ -84,7 +84,7 @@ string/log/frontend và không được tái sử dụng service-role key.
 | WS | `/ws/factory` | [envelope](#websocket-event-envelope) | Stream realtime |
 | POST | `/internal/v1/telemetry` | `TelemetryIngressResponse` | Edge bridge gửi một canonical robot sample |
 | POST | `/internal/v1/task-updates` | `EdgeUpdateResponse` | Edge bridge gửi một ROS task transition |
-| POST | `/internal/v1/bridge-health` | `EdgeUpdateResponse` | Edge bridge gửi heartbeat và delivery counters |
+| POST | `/internal/v1/bridge-health` | `EdgeUpdateResponse` | Đăng ký authoritative fleet và gửi heartbeat/counters |
 
 Ma trận quyền REST hiện tại:
 
@@ -207,8 +207,12 @@ a FIFO delivery worker so lifecycle transitions are not coalesced.
 `POST /internal/v1/bridge-health` accepts `bridge_id`, `CONNECTED | DEGRADED`,
 the configured robot IDs, UTC timestamp, cumulative delivery counters and the
 latest per-robot delivery error. Equal/older heartbeats are ignored per
-`bridge_id`. Health is currently process-local diagnostic state; durable health
-and disconnect alerts belong to the alerts/persistence checkpoint.
+`bridge_id`. With MOCK disabled, the accepted `robot_ids` list replaces the
+single trusted bridge registry: unchanged robot snapshots are preserved, new
+robots start OFFLINE until telemetry arrives, removed robots disappear, and a
+change broadcasts `factory.reset`. IDs must be unique non-empty strings. The
+bridge registers this list before releasing telemetry, so an unknown robot still
+returns `404` rather than implicitly creating a registry entry.
 
 ## RobotStatus
 
