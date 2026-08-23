@@ -168,10 +168,12 @@ class InMemoryCommandRepository:
 
     def _expire(self, command: Command, now: datetime) -> None:
         attempt = command.attempts[-1]
+        deadline = attempt.lease_expires_at or (
+            command.updated_at + timedelta(seconds=command.timeout_seconds)
+        )
         if (
             command.status in {CommandStatus.PENDING, CommandStatus.ACKNOWLEDGED}
-            and attempt.lease_expires_at is not None
-            and attempt.lease_expires_at <= now
+            and deadline <= now
         ):
             command.status = attempt.status = CommandStatus.TIMED_OUT
             attempt.completed_at = now
@@ -277,8 +279,11 @@ class SqlAlchemyCommandRepository:
                     return existing
                 raise CommandConflictError("command acknowledgement is stale or invalid")
             await session.execute(
-                text("update public.commands set status='ACKNOWLEDGED' where operation_id=:id"),
-                {"id": request.operation_id},
+                text("""
+                    update public.commands set status='ACKNOWLEDGED', updated_at=:now
+                    where operation_id=:id
+                """),
+                {"id": request.operation_id, "now": now},
             )
             await self._ack_event(session, request, CommandStatus.ACKNOWLEDGED, "", now)
             command = await self._load(session, request.operation_id)
@@ -307,10 +312,11 @@ class SqlAlchemyCommandRepository:
                 raise CommandConflictError("command result is stale or invalid")
             await session.execute(
                 text("""
-                    update public.commands set status=cast(:status as public.command_status)
+                    update public.commands
+                    set status=cast(:status as public.command_status), updated_at=:now
                     where operation_id=:operation_id
                 """),
-                request.model_dump(mode="json"),
+                {**request.model_dump(mode="json"), "now": now},
             )
             await self._ack_event(session, request, request.status, request.detail, now)
             command = await self._load(session, request.operation_id)
@@ -336,8 +342,11 @@ class SqlAlchemyCommandRepository:
                 {"operation_id": operation_id, "number": number},
             )
             await session.execute(
-                text("update public.commands set status='PENDING' where operation_id=:id"),
-                {"id": operation_id},
+                text("""
+                    update public.commands set status='PENDING', updated_at=:now
+                    where operation_id=:id
+                """),
+                {"id": operation_id, "now": now},
             )
             updated = await self._load(session, operation_id)
             assert updated is not None
@@ -358,10 +367,19 @@ class SqlAlchemyCommandRepository:
                 with expired as (
                     update public.command_attempts
                     set status='TIMED_OUT', completed_at=:now, detail='command attempt timed out'
-                    where status in ('PENDING','ACKNOWLEDGED') and lease_expires_at <= :now
-                    returning operation_id
+                    from public.commands c
+                    where command_attempts.operation_id = c.operation_id
+                      and command_attempts.status in ('PENDING','ACKNOWLEDGED')
+                      and (
+                        command_attempts.lease_expires_at <= :now
+                        or (
+                          command_attempts.lease_expires_at is null
+                          and c.updated_at + c.timeout_seconds * interval '1 second' <= :now
+                        )
+                      )
+                    returning command_attempts.operation_id
                 )
-                update public.commands set status='TIMED_OUT'
+                update public.commands set status='TIMED_OUT', updated_at=:now
                 where operation_id in (select operation_id from expired)
                 returning operation_id
             """),

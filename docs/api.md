@@ -564,10 +564,11 @@ POST `COMPLETED` hoặc `FAILED`. Scenario chỉ chuyển `APPROVED → APPLIED`
 không thể hot-apply phải trả `FAILED` với lý do cần relaunch Gazebo.
 
 Backend chạy timeout sweep độc lập với browser và edge polling. Cadence mặc định
-là 1 giây, cấu hình bằng `COMMAND_TIMEOUT_SWEEP_SECONDS`; attempt đã lease quá
-`lease_expires_at` chuyển `TIMED_OUT`, tạo/cập nhật alert, audit và phát
-`command.updated`. Frontend `/commands` hydrate lịch sử qua REST rồi hợp nhất các
-update WebSocket theo `operation_id`. Cả hai role được đọc; chỉ MONITOR được retry.
+là 1 giây, cấu hình bằng `COMMAND_TIMEOUT_SWEEP_SECONDS`. Attempt chưa được lease
+hết hạn từ lúc tạo/retry; attempt đã lease dùng `lease_expires_at`. Khi hết hạn,
+command chuyển `TIMED_OUT`, tạo/cập nhật alert, audit và phát `command.updated`.
+Frontend `/commands` hydrate lịch sử qua REST rồi hợp nhất update WebSocket theo
+`operation_id`. Cả hai role được đọc; chỉ MONITOR được retry.
 
 ### Scenario
 

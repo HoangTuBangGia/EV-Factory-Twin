@@ -1,6 +1,6 @@
 ROS_DISTRO ?= jazzy
 
-.PHONY: sync lint format format-check migration-check integration test test-cov typecheck check backend frontend-sync frontend frontend-lint frontend-typecheck frontend-test frontend-build frontend-check frontend-browser-install frontend-smoke frontend-e2e-list frontend-e2e docker-build supabase-start supabase-status supabase-reset supabase-stop ros-deps ros-build ros-test ros-check
+.PHONY: sync lint format format-check migration-check integration postgres-smoke test test-cov typecheck check backend frontend-sync frontend frontend-lint frontend-typecheck frontend-test frontend-build frontend-check frontend-browser-install frontend-smoke frontend-e2e-list frontend-e2e docker-build supabase-start supabase-status supabase-reset supabase-stop ros-deps ros-build ros-test ros-check
 
 sync:
 	uv sync --all-packages --dev
@@ -22,6 +22,13 @@ migration-check:
 
 integration:
 	APP_ENV=test DATABASE_URL= PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -p pytest_asyncio.plugin tests/integration
+
+postgres-smoke:
+	@test -n "$(TEST_DATABASE_URL)" || (echo "TEST_DATABASE_URL is required" >&2; exit 2)
+	@APP_ENV=test DATABASE_URL= PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 TEST_DATABASE_URL="$(TEST_DATABASE_URL)" \
+		uv run pytest -p pytest_asyncio.plugin \
+		tests/integration/test_runtime_history_postgres.py \
+		tests/integration/test_command_repository_postgres.py
 
 test:
 	APP_ENV=test DATABASE_URL= PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -p pytest_asyncio.plugin

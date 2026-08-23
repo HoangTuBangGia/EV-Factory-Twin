@@ -16,6 +16,8 @@ could also remain stale until edge or browser traffic invoked expiration.
 
 - `CommandService` owns a bounded-cadence timeout task started and stopped by
   FastAPI lifespan.
+- Unleased attempts expire from their create/retry timestamp; leased attempts
+  expire at `lease_expires_at`, so a disconnected edge cannot leave PENDING forever.
 - Existing repository expiration remains the single source of timeout state,
   alert, audit and WebSocket behavior.
 - `/commands` hydrates REST history and merges `command.updated` by operation ID.
@@ -30,7 +32,8 @@ could also remain stale until edge or browser traffic invoked expiration.
 
 ## Verification
 
-Run `make check` and `make frontend-check`.
+Run `make check`, `make frontend-check` and `make postgres-smoke` with
+`TEST_DATABASE_URL` pointing to migrated local Supabase.
 
 ## CI / Build Impact
 

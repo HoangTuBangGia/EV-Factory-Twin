@@ -74,6 +74,14 @@ publishable key with the local key printed by `make supabase-status`.
 `COMMAND_TIMEOUT_SWEEP_SECONDS` điều khiển cadence phát hiện command attempt hết
 lease; mặc định 1 giây và không cần browser hoặc edge gọi API để kích hoạt timeout.
 
+Sau khi local Supabase đã chạy và migrations/seed đã sẵn sàng, kiểm tra repository
+PostgreSQL thật bằng:
+
+```bash
+TEST_DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:54322/postgres \
+make postgres-smoke
+```
+
 Replay all migrations against the local database with:
 
 ```bash
