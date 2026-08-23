@@ -83,7 +83,9 @@ async def test_runtime_history_repository_round_trip() -> None:
         assert not await repository.activate_alert(
             alert.model_copy(update={"id": uuid4(), "last_seen_at": now + timedelta(seconds=1)})
         )
-        assert await repository.clear_alert(dedupe_key, now + timedelta(seconds=2))
+        cleared = await repository.clear_alert(dedupe_key, now + timedelta(seconds=2))
+        assert cleared is not None
+        assert cleared.status == "CLEARED"
         assert await repository.activate_alert(
             alert.model_copy(
                 update={

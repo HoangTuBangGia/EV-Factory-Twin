@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fixtureMetrics, fixtureRobots } from "@/lib/fixtures";
+import { fixtureAlerts, fixtureMetrics, fixtureRobots } from "@/lib/fixtures";
 import { factoryEventSchema } from "@/schemas/websocket-event";
 import {
   METRICS_HISTORY_SAMPLE_INTERVAL_MS,
@@ -87,6 +87,24 @@ describe("factory store realtime updates", () => {
     if (parsed.type !== "command.updated") throw new Error("Expected command update");
     useFactoryStore.getState().updateCommand(parsed.data);
     expect(useFactoryStore.getState().commands[operationId]?.status).toBe("ACKNOWLEDGED");
+  });
+
+  it("replaces an active alert with its realtime cleared update", () => {
+    const active = fixtureAlerts[0];
+    useFactoryStore.getState().setAlerts([active]);
+    const event = factoryEventSchema.parse({
+      type: "alert.updated",
+      data: {
+        ...active,
+        status: "CLEARED",
+        last_seen_at: "2026-08-13T08:01:00.000Z",
+        cleared_at: "2026-08-13T08:01:00.000Z",
+      },
+    });
+
+    if (event.type !== "alert.updated") throw new Error("Expected alert update");
+    useFactoryStore.getState().addAlert(event.data);
+    expect(useFactoryStore.getState().alerts).toEqual([event.data]);
   });
 
   it("updates current metrics immediately but samples chart history every five seconds", () => {

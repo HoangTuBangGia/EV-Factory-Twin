@@ -1118,6 +1118,8 @@ robot.telemetry
 task.updated
 metrics.updated
 alert.created
+alert.updated
+command.updated
 factory.reset
 ```
 

@@ -480,6 +480,15 @@ Alert event:
 }
 ```
 
+Alert lifecycle update:
+
+```json
+{
+  "type": "alert.updated",
+  "data": { "status": "CLEARED" }
+}
+```
+
 ---
 
 ## 12. Validate external data with Zod
@@ -1287,6 +1296,7 @@ Acceptance:
 [ ] task.updated handler
 [ ] metrics.updated handler
 [ ] alert.created handler
+[ ] alert.updated handler
 [ ] reconnect logic
 [ ] LIVE/OFFLINE indicator
 ```

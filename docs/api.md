@@ -723,7 +723,9 @@ AlertCode: LOW_BATTERY, ROBOT_WAITING, TASK_BACKLOG, STARVATION, ROBOT_ERROR,
 STALE_TELEMETRY, BRIDGE_DISCONNECTED, COMMAND_TIMEOUT, CONGESTION
 ```
 
-`GET /api/v1/alerts`. Payload của WebSocket event `alert.created`.
+`GET /api/v1/alerts`. `alert.created` phát khi condition được kích hoạt hoặc
+retrigger; `alert.updated` phát bản ghi `CLEARED` để browser loại cảnh báo ngay
+mà không cần reload snapshot.
 
 ```json
 {
@@ -815,6 +817,8 @@ Sau `auth.ok`, mọi message server trên `/ws/factory` bọc trong envelope:
 | `task.updated` | `Task` | event-driven |
 | `metrics.updated` | `FactoryMetrics` | ~1 Hz theo đồng hồ thật |
 | `alert.created` | `FactoryAlert` | event-driven |
+| `alert.updated` | `FactoryAlert` | khi lifecycle chuyển sang `CLEARED` |
+| `command.updated` | `Command` | khi command/attempt đổi trạng thái |
 | `factory.reset` | `null` | khi `POST /api/v1/mock/reset` |
 
 ## Status codes

@@ -20,6 +20,8 @@ edge Fleet Manager.
 - Added `command.updated` to the shared realtime event handling path.
 - Apply no longer treats command creation as immediate scenario application.
 - Alert parsing now retains lifecycle, deduplication and operation metadata.
+- Backend emits `alert.updated` with the cleared record so active alerts disappear
+  from the browser without waiting for a snapshot reload.
 
 ## Files Changed
 
@@ -34,8 +36,10 @@ Completed successfully:
 
 - `npm run lint`
 - `npm run typecheck`
-- `npm test -- --run` — 26 files, 98 tests
+- `npm test -- --run` — 27 files, 100 tests
 - `npm run build` — Next.js production build
+- `make check` — 391 passed, PostgreSQL smoke skipped without `TEST_DATABASE_URL`
+- PostgreSQL runtime-history smoke against Supabase local — 1 passed
 - `git diff --check`
 
 ## CI / Build Impact

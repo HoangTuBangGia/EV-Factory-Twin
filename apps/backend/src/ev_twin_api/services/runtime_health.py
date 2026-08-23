@@ -12,7 +12,7 @@ from ev_twin_api.schemas.alert import AlertCode, AlertSeverity, FactoryAlert
 from ev_twin_api.schemas.edge_runtime import BridgeHealth, BridgeStatus
 from ev_twin_api.schemas.robot import RobotStatus
 from ev_twin_api.schemas.telemetry import RobotTelemetry
-from ev_twin_api.schemas.websocket import alert_created_event
+from ev_twin_api.schemas.websocket import alert_created_event, alert_updated_event
 from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.runtime_history import RuntimeHistoryRepository
 from ev_twin_api.services.websocket_manager import WebSocketManager
@@ -119,7 +119,7 @@ class RuntimeHealthService:
         await self._repository.activate_alert(alert)
 
     async def clear_existing(self, dedupe_key: str) -> None:
-        await self._repository.clear_alert(dedupe_key, self._clock())
+        await self._clear(dedupe_key, self._clock())
 
     async def sweep(self) -> None:
         now = self._clock()
@@ -187,7 +187,7 @@ class RuntimeHealthService:
     ) -> None:
         now = self._clock()
         if not active:
-            await self._repository.clear_alert(dedupe_key, now)
+            await self._clear(dedupe_key, now)
             return
         alert = FactoryAlert(
             id=uuid4(),
@@ -204,6 +204,11 @@ class RuntimeHealthService:
         if await self._repository.activate_alert(alert):
             self._state.add_alert(alert)
             await self._websockets.broadcast(alert_created_event(alert))
+
+    async def _clear(self, dedupe_key: str, cleared_at: datetime) -> None:
+        cleared = await self._repository.clear_alert(dedupe_key, cleared_at)
+        if cleared is not None:
+            await self._websockets.broadcast(alert_updated_event(cleared))
 
     async def _run(self) -> None:
         while True:
