@@ -183,6 +183,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         websocket_manager,
         audit_repository,
         runtime_health,
+        sweep_seconds=settings.command_timeout_sweep_seconds,
     )
     app.state.websocket_manager = websocket_manager
     kpi_snapshot_writer = build_kpi_snapshot_writer(
@@ -196,12 +197,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     await mock_factory.start()
     await runtime_health.start()
+    await app.state.command_service.start()
     if kpi_snapshot_writer is not None:
         await kpi_snapshot_writer.start()
     logger.info("backend started")
     try:
         yield
     finally:
+        await app.state.command_service.stop()
         if kpi_snapshot_writer is not None:
             await kpi_snapshot_writer.stop()
         await mock_factory.stop()

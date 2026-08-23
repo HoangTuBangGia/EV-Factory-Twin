@@ -71,6 +71,9 @@ Copy `apps/backend/.env.example` to the backend environment and
 `apps/frontend/.env.example` to `apps/frontend/.env.local`. Replace the frontend
 publishable key with the local key printed by `make supabase-status`.
 
+`COMMAND_TIMEOUT_SWEEP_SECONDS` điều khiển cadence phát hiện command attempt hết
+lease; mặc định 1 giây và không cần browser hoặc edge gọi API để kích hoạt timeout.
+
 Replay all migrations against the local database with:
 
 ```bash

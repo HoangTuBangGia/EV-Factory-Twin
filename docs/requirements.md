@@ -18,10 +18,10 @@ docs và CI.
 | Vị trí và trạng thái realtime | Đạt MVP | REST cung cấp snapshot; WebSocket phát telemetry và event cập nhật |
 | Giao diện giám sát | Đạt MVP | Factory page hiển thị telemetry realtime trên layout APPLIED; fallback layout chuẩn khi chưa apply |
 | KPI authoritative | Đạt MVP | Scenario comparison hiển thị đủ chín KPI do Backend/SimPy tính |
-| Cảnh báo bất thường | Một phần | Có alert mock; cần thêm stale telemetry, command timeout và ROS disconnect |
+| Cảnh báo bất thường | Đạt MVP | Có low battery, robot error, backlog, stale telemetry, bridge disconnect, command timeout và congestion lifecycle |
 | Chạy và so sánh nhiều scenario | Đạt MVP | Scenario chọn layout version/route/config thật và có bounded optimization tối đa 64 candidate |
 | Human-in-the-loop trước khi apply | Một phần | Có approve/reject/apply và RBAC; cần E2E Designer/Monitor với ROS apply |
-| Thử thay đổi cấu hình vận hành | Một phần | Có mock apply; cần command path áp dụng vào ROS2 runtime |
+| Thử thay đổi cấu hình vận hành | Đạt ở contract | Durable apply command có ACK/result/timeout/retry/audit và UI history; acceptance ROS thật còn ở M13 |
 | Cho phép đổi bố trí và chạy lại | Đạt MVP | Designer CRUD layout, tạo version immutable và dùng version đó cho SimPy/apply |
 | Giao diện 3D | Một phần | Có React Three Fiber scene nhưng route factory chính vẫn dùng 2D |
 | Ít nhất hai vai trò Designer/Monitor | Đạt ở code | Supabase Auth, profile role và FastAPI guard đã có; chỉ cần E2E hai role |

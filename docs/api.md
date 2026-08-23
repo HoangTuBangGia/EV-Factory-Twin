@@ -563,6 +563,12 @@ POST `COMPLETED` hoặc `FAILED`. Scenario chỉ chuyển `APPROVED → APPLIED`
 `COMPLETED`. Retry giữ nguyên `operation_id` và tạo attempt number mới; topology
 không thể hot-apply phải trả `FAILED` với lý do cần relaunch Gazebo.
 
+Backend chạy timeout sweep độc lập với browser và edge polling. Cadence mặc định
+là 1 giây, cấu hình bằng `COMMAND_TIMEOUT_SWEEP_SECONDS`; attempt đã lease quá
+`lease_expires_at` chuyển `TIMED_OUT`, tạo/cập nhật alert, audit và phát
+`command.updated`. Frontend `/commands` hydrate lịch sử qua REST rồi hợp nhất các
+update WebSocket theo `operation_id`. Cả hai role được đọc; chỉ MONITOR được retry.
+
 ### Scenario
 
 Tất cả endpoint scenario trả về schema này (endpoint list trả về mảng):

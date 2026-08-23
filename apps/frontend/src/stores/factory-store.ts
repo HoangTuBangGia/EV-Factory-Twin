@@ -17,6 +17,12 @@ const METRICS_HISTORY_LIMIT = Math.ceil(
   METRICS_HISTORY_WINDOW_MS / METRICS_HISTORY_SAMPLE_INTERVAL_MS,
 );
 
+function latestCommand(current: Command | undefined, incoming: Command) {
+  return current && Date.parse(current.updated_at) > Date.parse(incoming.updated_at)
+    ? current
+    : incoming;
+}
+
 interface FactoryStore {
   robots: Record<string, Robot>;
   tasks: Record<string, Task>;
@@ -35,6 +41,7 @@ interface FactoryStore {
   clearMetricsHistory: () => void;
   setAlerts: (alerts: FactoryAlert[]) => void;
   addAlert: (alert: FactoryAlert) => void;
+  setCommands: (commands: Command[]) => void;
   updateCommand: (command: Command) => void;
   bumpFactoryRevision: () => void;
   selectRobot: (id: string | null) => void;
@@ -85,8 +92,20 @@ export const useFactoryStore = create<FactoryStore>((set) => ({
     alerts: [alert, ...state.alerts.filter((current) => current.dedupe_key !== alert.dedupe_key)]
       .slice(0, 50),
   })),
+  setCommands: (commands) => set((state) => ({
+    commands: {
+      ...state.commands,
+      ...Object.fromEntries(commands.map((command) => [
+        command.operation_id,
+        latestCommand(state.commands[command.operation_id], command),
+      ])),
+    },
+  })),
   updateCommand: (command) => set((state) => ({
-    commands: { ...state.commands, [command.operation_id]: command },
+    commands: {
+      ...state.commands,
+      [command.operation_id]: latestCommand(state.commands[command.operation_id], command),
+    },
   })),
   bumpFactoryRevision: () => set((state) => ({ factoryRevision: state.factoryRevision + 1 })),
   selectRobot: (selectedRobotId) => set({ selectedRobotId }),

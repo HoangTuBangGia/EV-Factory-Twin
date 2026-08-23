@@ -73,6 +73,7 @@ Phụ trách:
 - Odometry, battery, status và task state được chuẩn hóa.
 - Telemetry đi qua bridge → FastAPI → WebSocket.
 - Backend command tới edge/fleet manager có acknowledgement.
+- Command history hiển thị từng attempt; chỉ Monitor retry command failed/timeout còn budget.
 - Layout/version API và scenario gắn với layout.
 - SimPy tính throughput, cycle time, waiting và congestion.
 - Supabase lưu profiles, layouts, scenarios, runs/KPI, commands, alerts, audit và telemetry cần thiết.

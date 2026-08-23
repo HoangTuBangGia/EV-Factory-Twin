@@ -87,6 +87,13 @@ describe("factory store realtime updates", () => {
     if (parsed.type !== "command.updated") throw new Error("Expected command update");
     useFactoryStore.getState().updateCommand(parsed.data);
     expect(useFactoryStore.getState().commands[operationId]?.status).toBe("ACKNOWLEDGED");
+
+    useFactoryStore.getState().setCommands([{
+      ...parsed.data,
+      status: "PENDING",
+      updated_at: "2026-08-13T08:00:00.000Z",
+    }]);
+    expect(useFactoryStore.getState().commands[operationId]?.status).toBe("ACKNOWLEDGED");
   });
 
   it("replaces an active alert with its realtime cleared update", () => {

@@ -21,6 +21,7 @@ describe("Sidebar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
     expect(screen.getByRole("navigation", { name: "Application navigation" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Commands" })).toHaveAttribute("href", "/commands");
 
     fireEvent.pointerDown(document.body);
     expect(screen.queryByRole("navigation", { name: "Application navigation" })).not.toBeInTheDocument();
