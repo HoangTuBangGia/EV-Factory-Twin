@@ -53,7 +53,7 @@ export default function FactoryPage() {
     <div className="grid main-grid factory-page-grid">
       <section className="panel factory-map-panel">
         <div className="panel-head">
-          <h3>Battery transfer zone</h3>
+          <h3>EV production plant</h3>
           <span>Click an AMR to inspect</span>
         </div>
         <FactoryMap layers={layers}/>

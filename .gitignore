@@ -65,3 +65,5 @@ evaluation/reports/*
 .ai-log/archive/
 
 opencode.json
+# Local source clone used to import the procedural EV factory scene.
+apps/frontend/EV-3D-map/

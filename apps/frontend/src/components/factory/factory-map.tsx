@@ -6,6 +6,7 @@ import { BUFFER_SLOT_COUNT, defaultFactoryLayout } from "@/lib/factory-layout";
 import type { FactoryLayout } from "@/schemas/factory";
 import { useFactoryStore } from "@/stores/factory-store";
 import { FactoryMap2D } from "./factory-map-2d";
+import { EV_FACTORY_DEPTH, EV_FACTORY_WIDTH } from "./scene/ev-factory-constants";
 
 const FactoryScene = dynamic(
   () => import("./scene/factory-scene").then((module) => module.FactoryScene),
@@ -97,7 +98,11 @@ export function FactoryMap({
           <i style={{ background: item.color }}/>{item.label}
         </li>)}
       </ul>
-      <div className="map-scale">{layout.width} × {layout.height} m · 1 m grid</div>
+      <div className="map-scale">
+        {support === "webgl"
+          ? `${EV_FACTORY_WIDTH} × ${EV_FACTORY_DEPTH} m · live zone ${layout.width} × ${layout.height} m`
+          : `${layout.width} × ${layout.height} m · 1 m grid`}
+      </div>
       {support === "webgl" && <div className="map-hint">Drag to orbit · scroll to zoom</div>}
     </div>
     {support === "webgl" && <button type="button" className="map-reset" onClick={resetView}>
