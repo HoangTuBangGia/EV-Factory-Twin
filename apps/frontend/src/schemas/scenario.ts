@@ -3,6 +3,7 @@ import { z } from "zod";
 export const scenarioStatusSchema = z.enum([
   "DRAFT",
   "SIMULATED",
+  "SUBMITTED",
   "APPROVED",
   "REJECTED",
   "APPLIED",
@@ -15,6 +16,13 @@ export const scenarioConfigSchema = z.object({
   travel_time: z.number().positive().max(86_400),
   loading_time: z.number().positive().max(86_400),
   simulation_time: z.number().positive().max(86_400),
+  layout_id: z.string().min(1).max(80).default("LAYOUT-DEFAULT"),
+  layout_version: z.number().int().min(1).default(1),
+  route_id: z.string().min(1).max(80).default("BATTERY_DELIVERY"),
+  robot_speed_mps: z.number().positive().max(10).default(1),
+  charger_count: z.number().int().min(1).max(20).default(1),
+  route_distance_m: z.number().positive().max(100_000).default(30),
+  congestion_multiplier: z.number().min(1).max(10).default(1),
 });
 
 export const scenarioRunRequestSchema = scenarioConfigSchema.extend({
@@ -28,6 +36,11 @@ export const scenarioMetricsSchema = z.object({
   throughput_per_hour: z.number().nonnegative(),
   average_cycle_time: z.number().nonnegative(),
   average_waiting_time: z.number().nonnegative(),
+  fleet_utilization_percent: z.number().min(0).max(100),
+  starvation_events: z.number().int().nonnegative(),
+  congestion_percent: z.number().min(0).max(100),
+  travel_distance: z.number().nonnegative(),
+  average_delivery_delay: z.number().nonnegative(),
 });
 
 const utcDateTimeSchema = z.string().datetime({ offset: true }).refine(
@@ -53,6 +66,6 @@ export const scenarioSchema = z.object({
 
 export type ScenarioStatus = z.infer<typeof scenarioStatusSchema>;
 export type ScenarioConfig = z.infer<typeof scenarioConfigSchema>;
-export type ScenarioRunRequest = z.infer<typeof scenarioRunRequestSchema>;
+export type ScenarioRunRequest = z.input<typeof scenarioRunRequestSchema>;
 export type ScenarioMetrics = z.infer<typeof scenarioMetricsSchema>;
 export type Scenario = z.infer<typeof scenarioSchema>;

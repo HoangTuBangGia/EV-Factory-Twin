@@ -68,6 +68,8 @@ test.describe(hostedSuiteTitle, () => {
 
     await expect(page.locator(".scenario-result")).toContainText(candidateName);
     await expect(page.locator(".scenario-status")).toHaveText("SIMULATED");
+    await page.getByRole("button", { name: "Submit for review" }).click();
+    await expect(page.locator(".scenario-status")).toHaveText("SUBMITTED");
     await expect(page.getByText(/Waiting for monitor review/i)).toBeVisible();
     await expect(page.getByRole("button", { name: "Approve" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Reject" })).toHaveCount(0);
@@ -75,7 +77,7 @@ test.describe(hostedSuiteTitle, () => {
 
     await page.reload();
     await openScenario(page);
-    await expect(page.locator(".scenario-status")).toHaveText("SIMULATED");
+    await expect(page.locator(".scenario-status")).toHaveText("SUBMITTED");
   });
 
   test("Monitor cannot run scenarios, then approves and applies the candidate", async ({ page }) => {
@@ -90,10 +92,6 @@ test.describe(hostedSuiteTitle, () => {
     await expect(page.locator(".scenario-status")).toHaveText("APPROVED");
     page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Apply to factory" }).click();
-    await expect(page).toHaveURL(/\/factory$/);
-    await expect(page.locator(".robot-marker")).toHaveCount(candidateRobotCount);
-
-    await page.reload();
-    await expect(page.locator(".robot-marker")).toHaveCount(candidateRobotCount);
+    await expect(page.getByRole("status")).toContainText("PENDING");
   });
 });

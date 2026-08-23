@@ -1,7 +1,6 @@
 "use client";
 
 import { type FormEvent, useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
   ScenarioActions,
@@ -13,6 +12,7 @@ import {
 } from "@/components/scenarios/scenario-comparison";
 import { apiClient } from "@/lib/api-client";
 import { can } from "@/lib/auth/permissions";
+import { useFactoryStore } from "@/stores/factory-store";
 import {
   scenarioRunRequestSchema,
   type Scenario,
@@ -48,7 +48,8 @@ function upsertScenario(scenarios: Scenario[], updated: Scenario) {
 
 function newestUsefulScenario(scenarios: Scenario[]) {
   const reversed = [...scenarios].reverse();
-  return reversed.find((scenario) => scenario.status === "SIMULATED")
+  return reversed.find((scenario) => scenario.status === "SUBMITTED")
+    ?? reversed.find((scenario) => scenario.status === "SIMULATED")
     ?? reversed.find((scenario) => scenario.status === "APPROVED")
     ?? reversed[0]
     ?? null;
@@ -102,7 +103,6 @@ function ReadOnlyConfiguration({ scenario }: { scenario: Scenario | null }) {
 }
 
 export default function ScenariosPage() {
-  const router = useRouter();
   const { user } = useAuth();
   const [baseline, setBaseline] = useState<Scenario | null>(null);
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
@@ -111,6 +111,9 @@ export default function ScenariosPage() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [actionError, setActionError] = useState<string | null>(null);
   const [activeAction, setActiveAction] = useState<ScenarioAction | null>(null);
+  const [operationId, setOperationId] = useState<string | null>(null);
+  const command = useFactoryStore((state) => operationId ? state.commands[operationId] : null);
+  const updateCommand = useFactoryStore((state) => state.updateCommand);
 
   const loadScenarios = useCallback(async () => {
     const loaded = await apiClient.getScenarios();
@@ -141,6 +144,10 @@ export default function ScenariosPage() {
   }, [loadScenarios]);
 
   useEffect(() => { void loadPage(); }, [loadPage]);
+
+  useEffect(() => {
+    if (command?.status === "COMPLETED") void loadScenarios();
+  }, [command?.status, loadScenarios]);
 
   if (!user) return null;
   const mayRun = can(user.role, "scenarios:run");
@@ -180,8 +187,8 @@ export default function ScenariosPage() {
   }
 
   async function review(action: "approve" | "reject") {
-    if (!candidate || !mayReview) {
-      setActionError("Your role cannot review scenarios.");
+    if (!candidate || candidate.status !== "SUBMITTED" || !mayReview) {
+      setActionError("Only a Monitor can review a submitted scenario.");
       return;
     }
     setActionError(null);
@@ -199,22 +206,42 @@ export default function ScenariosPage() {
     }
   }
 
+  async function submitScenario() {
+    if (!candidate || candidate.status !== "SIMULATED" || !mayRun) {
+      setActionError("Only a Designer can submit a simulated scenario.");
+      return;
+    }
+    setActionError(null);
+    setActiveAction("submit");
+    try {
+      const updated = await apiClient.submitScenario(candidate.id);
+      setCandidate(updated);
+      setScenarios((current) => upsertScenario(current, updated));
+    } catch (error) {
+      setActionError(message(error));
+    } finally {
+      setActiveAction(null);
+    }
+  }
+
   async function applyScenario() {
     if (!candidate || candidate.status !== "APPROVED" || !mayApply) {
       setActionError("Only a Monitor can apply an approved scenario.");
       return;
     }
     if (!window.confirm(
-      "Apply this scenario? The realtime mock factory will reset and current tasks will be cleared.",
+      "Apply this scenario? A command will be sent to the simulation Fleet Manager.",
     )) return;
 
     setActionError(null);
     setActiveAction("apply");
     try {
-      const updated = await apiClient.applyScenario(candidate.id);
-      setCandidate(updated);
-      setScenarios((current) => upsertScenario(current, updated));
-      router.push("/factory");
+      const createdCommand = await apiClient.applyScenario(candidate.id, {
+        timeout_seconds: 30,
+        max_retries: 1,
+      });
+      updateCommand(createdCommand);
+      setOperationId(createdCommand.operation_id);
     } catch (error) {
       setActionError(message(error));
     } finally {
@@ -339,9 +366,13 @@ export default function ScenariosPage() {
                 role={user.role}
                 status={candidate.status}
                 activeAction={activeAction}
+                onSubmitScenario={() => void submitScenario()}
                 onReview={(action) => void review(action)}
                 onApply={() => void applyScenario()}
               />
+              {command && <div className="review-note" role="status">
+                Command <strong>{command.operation_id}</strong> · {command.status}
+              </div>}
             </div>
           )}
         </section>

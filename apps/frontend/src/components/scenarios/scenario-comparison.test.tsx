@@ -10,6 +10,11 @@ const baseline: ScenarioMetrics = {
   throughput_per_hour: 200,
   average_cycle_time: 120,
   average_waiting_time: 70,
+  fleet_utilization_percent: 75,
+  starvation_events: 2,
+  congestion_percent: 10,
+  travel_distance: 1_200,
+  average_delivery_delay: 5,
 };
 
 describe("ScenarioComparison", () => {
@@ -18,12 +23,12 @@ describe("ScenarioComparison", () => {
       ...baseline,
       throughput_per_hour: 240,
       average_waiting_time: 50,
-      unfinished_tasks: 130,
+      average_delivery_delay: 8,
     }} />);
 
     expect(screen.getAllByText("Better")).toHaveLength(2);
     expect(screen.getByText("Worse")).toBeInTheDocument();
-    expect(screen.getAllByText("Same")).toHaveLength(2);
+    expect(screen.getAllByText("Same")).toHaveLength(6);
   });
 
   it("renders the workflow status", () => {

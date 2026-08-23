@@ -44,6 +44,51 @@ describe("factory store realtime updates", () => {
     expect(reset.success).toBe(true);
   });
 
+  it("stores authoritative command updates by operation ID", () => {
+    const operationId = "33333333-3333-4333-8333-333333333333";
+    const parsed = factoryEventSchema.parse({
+      type: "command.updated",
+      data: {
+        operation_id: operationId,
+        scenario_id: "SCN-0001",
+        status: "ACKNOWLEDGED",
+        payload: {
+          num_robots: 2,
+          num_tasks: 10,
+          task_arrival_interval: 5,
+          travel_time: 30,
+          loading_time: 5,
+          simulation_time: 600,
+          layout_id: "LAYOUT-DEFAULT",
+          layout_version: 1,
+          route_id: "BATTERY_DELIVERY",
+          robot_speed_mps: 1,
+          charger_count: 1,
+          route_distance_m: 30,
+          congestion_multiplier: 1,
+        },
+        timeout_seconds: 30,
+        max_retries: 1,
+        attempts: [{
+          attempt_number: 1,
+          status: "ACKNOWLEDGED",
+          leased_by: "edge-main",
+          lease_expires_at: "2026-08-13T08:00:30.000Z",
+          acknowledged_at: "2026-08-13T08:00:01.000Z",
+          completed_at: null,
+          detail: "",
+        }],
+        requested_by: "22222222-2222-4222-8222-222222222222",
+        created_at: "2026-08-13T08:00:00.000Z",
+        updated_at: "2026-08-13T08:00:01.000Z",
+      },
+    });
+
+    if (parsed.type !== "command.updated") throw new Error("Expected command update");
+    useFactoryStore.getState().updateCommand(parsed.data);
+    expect(useFactoryStore.getState().commands[operationId]?.status).toBe("ACKNOWLEDGED");
+  });
+
   it("updates current metrics immediately but samples chart history every five seconds", () => {
     useFactoryStore.getState().setMetrics({
       ...fixtureMetrics,
@@ -117,6 +162,7 @@ describe("factory store realtime updates", () => {
     expect(state.metrics).toBeNull();
     expect(state.metricsHistory).toEqual([]);
     expect(state.alerts).toEqual([]);
+    expect(state.commands).toEqual({});
     expect(state.selectedRobotId).toBeNull();
     expect(state.connectionStatus).toBe("OFFLINE");
   });
