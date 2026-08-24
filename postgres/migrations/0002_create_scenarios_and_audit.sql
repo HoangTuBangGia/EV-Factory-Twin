@@ -8,8 +8,6 @@ create type public.scenario_status as enum (
     'APPLIED'
 );
 
-grant usage on type public.scenario_status to authenticated, service_role;
-
 create sequence public.scenario_number_seq as bigint start with 1 increment by 1 cache 1;
 
 create function private.next_scenario_id()
@@ -33,8 +31,7 @@ end;
 $$;
 
 revoke all on function private.next_scenario_id()
-    from public, anon, authenticated, service_role;
-grant execute on function private.next_scenario_id() to service_role;
+    from public;
 
 create table public.scenarios (
     id text primary key default private.next_scenario_id(),
@@ -150,20 +147,6 @@ before update on public.scenarios
 for each row
 execute function private.set_updated_at();
 
-alter table public.scenarios enable row level security;
-
-revoke all on table public.scenarios from anon;
-revoke all on table public.scenarios from authenticated;
-grant select on table public.scenarios to authenticated;
-grant select, insert, update on table public.scenarios to service_role;
-grant usage, select on sequence public.scenario_number_seq to service_role;
-
-create policy scenarios_select_active_users
-on public.scenarios
-for select
-to authenticated
-using ((select private.is_active_user()));
-
 create table public.audit_events (
     id bigint generated always as identity primary key,
     actor_id uuid not null references public.profiles (id) on delete restrict,
@@ -222,7 +205,7 @@ end;
 $$;
 
 revoke all on function private.set_audit_actor_role()
-    from public, anon, authenticated, service_role;
+    from public;
 
 create trigger audit_events_set_actor_role
 before insert on public.audit_events
@@ -241,7 +224,7 @@ end;
 $$;
 
 revoke all on function private.reject_audit_event_mutation()
-    from public, anon, authenticated, service_role;
+    from public;
 
 create trigger audit_events_reject_update_delete
 before update or delete on public.audit_events
@@ -252,21 +235,3 @@ create trigger audit_events_reject_truncate
 before truncate on public.audit_events
 for each statement
 execute function private.reject_audit_event_mutation();
-
-alter table public.audit_events enable row level security;
-
-revoke all on table public.audit_events from anon;
-revoke all on table public.audit_events from authenticated;
-revoke all on table public.audit_events from service_role;
-grant select, insert on table public.audit_events to service_role;
-grant usage, select on sequence public.audit_events_id_seq to service_role;
-grant select on table public.audit_events to authenticated;
-
-create policy audit_events_select_admin
-on public.audit_events
-for select
-to authenticated
-using (
-    (select private.is_active_user())
-    and (select private.current_app_role()) = 'ADMIN'::public.app_role
-);

@@ -1,5 +1,9 @@
 # MVP Edge Acceptance Runbook
 
+> Superseded for deployment/auth configuration by ADR-0005 and
+> `docs/deployment.md`. Provider-specific Render/Vercel/Supabase steps below are
+> retained only as the record of the earlier acceptance design and must not be run.
+
 ## Purpose
 
 Prove the production-shaped path from two Gazebo AMRs at the factory edge to

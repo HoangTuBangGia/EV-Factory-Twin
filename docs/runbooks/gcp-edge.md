@@ -4,7 +4,7 @@
 
 Run the ROS 2 Jazzy, Gazebo Harmonic, fleet/task managers and authenticated
 telemetry bridge on one Ubuntu 24.04 Compute Engine VM. Render, Vercel and
-Supabase remain managed cloud services. ROS DDS and Gazebo are never exposed to
+Cloud Run and Cloud SQL provide the application services. ROS DDS and Gazebo are never exposed to
 the Internet.
 
 This MVP uses one ordinary VM and headless Gazebo. Kubernetes, Cloud Run, GPU,
@@ -134,4 +134,3 @@ approved edit of `/etc/ev-factory-twin/bridge.env` followed by bridge restart.
 - ROS nodes missing: source both setup files and inspect the simulation journal.
 - Command timeout: keep the `operation_id`, restore the edge, then use the
   Backend retry endpoint to create the next immutable attempt.
-

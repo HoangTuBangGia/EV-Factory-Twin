@@ -1,5 +1,9 @@
 # EV Factory Digital Twin — MVP Advanced Architecture
 
+> Deployment/auth update (ADR-0005): runtime hiện dùng Cloud Run, Cloud SQL
+> PostgreSQL 17 và FastAPI-issued JWT. Các sơ đồ Supabase/Render/Vercel phía dưới
+> là baseline lịch sử và không còn authoritative cho deployment.
+
 > **Project:** EV Factory Digital Twin for AMR-based Battery Intralogistics  
 > **Scope:** Core Platform Architecture  
 > **Status:** Architecture Baseline  

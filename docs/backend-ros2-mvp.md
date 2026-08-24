@@ -12,7 +12,7 @@ The acceptance path is:
 ```
 
 ROS 2 Jazzy and Gazebo Harmonic run at the edge in Distrobox `ros-jazzy`.
-Render hosts FastAPI, Vercel hosts Next.js, and Supabase PostgreSQL 17.6.1.155
+Cloud Run hosts FastAPI and Next.js, while Cloud SQL PostgreSQL 17
 stores durable state. The browser never connects to ROS DDS.
 
 ## Roles
@@ -27,7 +27,7 @@ The product has exactly two application roles:
 | Approve/reject/apply scenario | No | Yes |
 | Control simulation runtime | No | Yes |
 
-User provisioning is performed in Supabase Dashboard. There is no Admin role,
+User provisioning uses `make user-create`. There is no Admin role,
 Admin page, or user-management API in the MVP.
 
 ## Identity and ordering
@@ -103,7 +103,7 @@ count, speed, chargers, routes, layouts and demand; no ML is used.
 
 ## Persistence and alerts
 
-Supabase stores profiles/RBAC, immutable layouts, scenarios, runs/metrics,
+Cloud SQL stores profiles/RBAC, immutable layouts, scenarios, runs/metrics,
 approvals, commands/attempts/acknowledgements, alerts, audit, task history and
 bounded telemetry history. Every exposed table uses RLS and required indexes.
 Telemetry partition and retention follow `docs/data-retention.md`.

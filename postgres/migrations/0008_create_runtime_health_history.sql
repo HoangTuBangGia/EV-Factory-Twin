@@ -6,8 +6,6 @@ create extension if not exists pg_cron;
 
 create type public.alert_severity as enum ('INFO', 'WARNING', 'CRITICAL');
 create type public.alert_status as enum ('ACTIVE', 'CLEARED');
-grant usage on type public.alert_severity, public.alert_status to authenticated, service_role;
-
 create table public.robot_telemetry_history (
     robot_id text not null,
     source_timestamp timestamptz not null,
@@ -113,29 +111,6 @@ create unique index alerts_one_active_dedupe_idx on public.alerts (dedupe_key)
 create index alerts_status_triggered_idx on public.alerts (status, triggered_at desc);
 create index alerts_retention_idx on public.alerts (triggered_at);
 
-alter table public.robot_telemetry_history enable row level security;
-alter table public.bridge_health_history enable row level security;
-alter table public.task_state_history enable row level security;
-alter table public.alerts enable row level security;
-
-revoke all on table public.robot_telemetry_history, public.bridge_health_history,
-    public.task_state_history, public.alerts from anon, authenticated;
-grant select on table public.robot_telemetry_history, public.bridge_health_history,
-    public.task_state_history, public.alerts to authenticated;
-grant select, insert, update on table public.robot_telemetry_history,
-    public.bridge_health_history, public.task_state_history, public.alerts to service_role;
-grant usage, select on sequence public.bridge_health_history_id_seq,
-    public.task_state_history_id_seq to service_role;
-
-create policy telemetry_history_read on public.robot_telemetry_history for select to authenticated
-using ((select private.is_active_user()));
-create policy bridge_health_read on public.bridge_health_history for select to authenticated
-using ((select private.is_active_user()));
-create policy task_history_read on public.task_state_history for select to authenticated
-using ((select private.is_active_user()));
-create policy alerts_read on public.alerts for select to authenticated
-using ((select private.is_active_user()));
-
 select cron.schedule(
     'ev-twin-partman-maintenance',
     '15 * * * *',
@@ -150,8 +125,7 @@ begin
     delete from public.kpi_snapshots where recorded_at < now() - interval '90 days';
 end;
 $$;
-revoke all on function private.prune_runtime_history() from public, anon, authenticated;
-grant execute on function private.prune_runtime_history() to service_role;
+revoke all on function private.prune_runtime_history() from public;
 select cron.schedule(
     'ev-twin-runtime-history-retention',
     '35 2 * * *',

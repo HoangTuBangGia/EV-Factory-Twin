@@ -75,10 +75,7 @@ export default defineConfig({
         MOCK_FACTORY_ENABLED: "true",
         DATABASE_URL: process.env.DATABASE_URL,
         DATABASE_SSL_MODE: process.env.DATABASE_SSL_MODE,
-        SUPABASE_URL: process.env.SUPABASE_URL,
-        SUPABASE_JWT_ISSUER: process.env.SUPABASE_JWT_ISSUER,
-        SUPABASE_JWKS_URL: process.env.SUPABASE_JWKS_URL,
-        SUPABASE_JWT_AUDIENCE: process.env.SUPABASE_JWT_AUDIENCE,
+        AUTH_JWT_SECRET: process.env.AUTH_JWT_SECRET,
       }),
     },
     {
@@ -94,9 +91,6 @@ export default defineConfig({
         NEXT_PUBLIC_DATA_SOURCE: "api",
         NEXT_PUBLIC_API_URL: localBackendUrl,
         NEXT_PUBLIC_WS_URL: websocketURL,
-        NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
-          process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
       }),
     },
   ],

@@ -23,8 +23,7 @@ end;
 $$;
 
 revoke all on function private.next_layout_id()
-    from public, anon, authenticated, service_role;
-grant execute on function private.next_layout_id() to service_role;
+    from public;
 
 create table public.layouts (
     id text primary key default private.next_layout_id(),
@@ -92,7 +91,7 @@ end;
 $$;
 
 revoke all on function private.reject_layout_version_mutation()
-    from public, anon, authenticated, service_role;
+    from public;
 
 create trigger layout_versions_reject_update_delete
 before update or delete on public.layout_versions
@@ -103,29 +102,3 @@ create trigger layout_versions_reject_truncate
 before truncate on public.layout_versions
 for each statement
 execute function private.reject_layout_version_mutation();
-
-alter table public.layouts enable row level security;
-alter table public.layout_versions enable row level security;
-
-revoke all on table public.layouts from anon;
-revoke all on table public.layouts from authenticated;
-grant select on table public.layouts to authenticated;
-grant select, insert, update on table public.layouts to service_role;
-grant usage, select on sequence public.layout_number_seq to service_role;
-
-revoke all on table public.layout_versions from anon;
-revoke all on table public.layout_versions from authenticated;
-grant select on table public.layout_versions to authenticated;
-grant select, insert on table public.layout_versions to service_role;
-
-create policy layouts_select_active_users
-on public.layouts
-for select
-to authenticated
-using ((select private.is_active_user()));
-
-create policy layout_versions_select_active_users
-on public.layout_versions
-for select
-to authenticated
-using ((select private.is_active_user()));

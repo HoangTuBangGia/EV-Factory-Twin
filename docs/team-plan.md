@@ -64,8 +64,8 @@ Phụ trách:
 - `packages/twin-core`
 - `services/simulation`
 - `ros2_ws`
-- `supabase`
-- Render và edge runbook
+- `postgres`
+- Cloud Run, Cloud SQL và edge runbook
 
 Đầu ra:
 
@@ -78,16 +78,16 @@ Phụ trách:
 - Command history hiển thị từng attempt; chỉ Monitor retry command failed/timeout còn budget.
 - Layout/version API và scenario gắn với layout.
 - SimPy tính throughput, cycle time, waiting và congestion.
-- Supabase lưu profiles, layouts, scenarios, runs/KPI, commands, alerts, audit và telemetry cần thiết.
+- Cloud SQL lưu profiles, layouts, scenarios, runs/KPI, commands, alerts, audit và telemetry cần thiết.
 - Alert stale telemetry, command timeout, robot error và congestion.
-- Render service chạy được với Supabase hosted.
+- FastAPI chạy trên Cloud Run với Cloud SQL PostgreSQL 17.
 
 ## Phân công Frontend
 
 Phụ trách:
 
 - `apps/frontend`
-- frontend E2E và Vercel configuration
+- frontend E2E và Cloud Run configuration
 
 Đầu ra:
 
@@ -99,7 +99,7 @@ Phụ trách:
 - Scenario form và KPI comparison.
 - Designer/Monitor UI permissions.
 - Connection state và telemetry latency.
-- Vercel build và browser smoke flow.
+- Cloud Run build và browser smoke flow.
 
 ## Contract bắt buộc
 
@@ -110,7 +110,7 @@ Gazebo → ROS2 → Telemetry Bridge → FastAPI → WebSocket → Next.js/Three
 ```
 
 - Browser không truy cập ROS DDS.
-- Frontend không query Supabase tables trực tiếp.
+- Frontend không query PostgreSQL trực tiếp.
 - Backend là nguồn quyết định quyền và KPI authoritative.
 - Mock và ROS2 phải trả cùng telemetry contract.
 
@@ -287,7 +287,7 @@ GET  /api/v1/layouts/{id}/versions/{version}
 - Monitor approve/reject trước khi apply.
 - Backend command có acknowledgement.
 - Alert và connection state hiển thị được.
-- Supabase, Render, Vercel và edge runbook được smoke test.
+- Cloud SQL, Cloud Run và edge runbook được smoke test.
 - `make check`, frontend tests/build và ROS CI đều xanh.
 
 ## Không thuộc MVP

@@ -15,8 +15,8 @@ const requiredCredentialNames = [
 ] as const;
 const missingCredentials = requiredCredentialNames.filter((name) => !process.env[name]?.trim());
 const hostedSuiteTitle = missingCredentials.length === 0
-  ? "hosted Supabase Designer/Monitor workflow"
-  : `hosted Supabase Designer/Monitor workflow [SKIPPED: missing ${missingCredentials.join(", ")}]`;
+  ? "hosted GCP Designer/Monitor workflow"
+  : `hosted GCP Designer/Monitor workflow [SKIPPED: missing ${missingCredentials.join(", ")}]`;
 const credentials: Record<RoleName, Credentials> = {
   DESIGNER: {
     email: process.env.DESIGNER_EMAIL ?? "",

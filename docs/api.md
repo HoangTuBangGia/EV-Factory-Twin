@@ -26,19 +26,19 @@ Contract nguồn-neutral nằm ở `packages/twin-core`; các schema request/res
 Mọi browser endpoint đều nằm dưới `/api/v1`, **trừ `/health`**. Machine edge
 runtime dùng các endpoint `/internal/v1`.
 
-Mọi browser REST endpoint ngoài `/health` yêu cầu Supabase access token trong header:
+Mọi browser REST endpoint ngoài `/health` và `/api/v1/auth/login` yêu cầu access
+token do FastAPI phát hành trong header:
 
 ```http
 Authorization: Bearer <access-token>
 ```
 
 Token thiếu/sai/hết hạn trả `401`; tài khoản bị khóa hoặc sai quyền trả `403`;
-dịch vụ xác thực/JWKS/profile database chưa sẵn sàng trả `503`. Role được đọc từ
-`public.profiles`, không lấy từ request frontend hay generic claim
-`role=authenticated` của Supabase.
+dịch vụ xác thực/profile database chưa sẵn sàng trả `503`. Role được đọc từ
+`public.profiles`, không lấy từ request frontend hay JWT claim.
 
 Các `POST /internal/v1/*` là machine endpoint riêng cho factory-edge bridge.
-Nó dùng opaque bearer secret độc lập, không dùng Supabase user token:
+Nó dùng opaque bearer secret độc lập, không dùng browser JWT:
 
 ```http
 Authorization: Bearer <EDGE_TELEMETRY_SHARED_SECRET>
@@ -50,6 +50,8 @@ string/log/frontend và không được tái sử dụng service-role key.
 | Method | Path | Response | Mô tả |
 |---|---|---|---|
 | GET | `/health` | [`HealthResponse`](#health) | Liveness, không phụ thuộc engine mock |
+| POST | `/api/v1/auth/login` | `LoginResponse` | Đăng nhập email/password và nhận JWT 8 giờ |
+| POST | `/api/v1/auth/logout` | `204` | Kết thúc session phía browser; JWT là stateless |
 | GET | `/api/v1/auth/me` | `CurrentUser` | User/profile/role đang đăng nhập |
 | GET | `/api/v1/factory` | [`FactoryLayout`](#station--factorylayout) | Kích thước nhà máy + 6 station |
 | GET | `/api/v1/robots` | [`Robot[]`](#robot) | Toàn bộ AMR |
@@ -96,8 +98,8 @@ Ma trận quyền REST hiện tại:
 | Approve/Reject/Apply scenario | Không | Có |
 | Start/Stop/Reset/Config MockFactory | Không | Có |
 
-MVP chỉ có hai application role. User provisioning thực hiện bằng Supabase Dashboard.
-WebSocket dùng cùng Supabase access token nhưng gửi token trong message đầu tiên,
+MVP chỉ có hai application role. User provisioning dùng `make user-create`.
+WebSocket dùng cùng Backend access token nhưng gửi token trong message đầu tiên,
 không đặt token trên query string.
 
 `/ws/factory` không xuất hiện trong `/docs` (OpenAPI không mô tả WebSocket) —
@@ -687,7 +689,7 @@ backend ghi log kỹ thuật mức error để operator can thiệp.
 Audit chưa có browser endpoint trong MVP hiện tại. Mỗi event durable có
 `actor_id`, snapshot `actor_role`, `action`, `before_data`, `after_data`,
 `request_id` và `created_at`. Bảng này append-only; chỉ Monitor active được đọc
-qua Supabase RLS khi cần điều tra. Các action scenario hiện có là `SCENARIO_RUN`,
+qua Backend audit API khi cần điều tra. Các action scenario hiện có là `SCENARIO_RUN`,
 `SCENARIO_APPROVED`, `SCENARIO_REJECTED`, `SCENARIO_APPLIED`; reset thủ công và
 reset do apply đều tạo `FACTORY_RESET`. Reset/config thủ công ghi event
 `*_REQUESTED` trước side effect và event hoàn tất dùng cùng `request_id`; nhờ đó
@@ -796,7 +798,7 @@ accept WebSocket, client phải gửi JSON dưới đây trong thời gian cấu
 ```json
 {
   "type": "auth",
-  "access_token": "<supabase-access-token>"
+  "access_token": "<backend-access-token>"
 }
 ```
 

@@ -4,17 +4,11 @@ from ev_twin_api.core.database import Database, normalize_async_database_url
 from pydantic import ValidationError
 
 
-def test_supabase_jwt_urls_are_derived_from_project_url() -> None:
-    settings = Settings(
-        _env_file=None,
-        supabase_url="https://project.supabase.co/",
-    )
-
-    assert settings.effective_supabase_jwt_issuer == "https://project.supabase.co/auth/v1"
-    assert (
-        settings.effective_supabase_jwks_url
-        == "https://project.supabase.co/auth/v1/.well-known/jwks.json"
-    )
+def test_local_auth_defaults_are_bounded() -> None:
+    settings = Settings(_env_file=None)
+    assert settings.auth_jwt_issuer == "ev-factory-twin"
+    assert settings.auth_jwt_audience == "ev-factory-twin-browser"
+    assert settings.auth_access_token_ttl_seconds == 28800
 
 
 def test_plain_postgresql_url_is_normalized_for_asyncpg_without_connecting() -> None:
@@ -28,13 +22,10 @@ def test_database_may_be_absent_at_startup() -> None:
     assert Database(None).configured is False
 
 
-def test_jwt_verification_capacity_must_cover_worker_count() -> None:
-    with pytest.raises(ValidationError, match="in-flight limit"):
-        Settings(
-            _env_file=None,
-            supabase_jwt_verification_max_workers=4,
-            supabase_jwt_verification_max_in_flight=3,
-        )
+def test_auth_jwt_secret_is_optional_but_must_be_long_when_set() -> None:
+    assert Settings(_env_file=None).auth_jwt_secret is None
+    with pytest.raises(ValidationError, match="at least 64 characters"):
+        Settings(_env_file=None, auth_jwt_secret="too-short")
 
 
 def test_edge_telemetry_secret_is_optional_but_must_be_long_when_set() -> None:
@@ -75,7 +66,7 @@ def test_telemetry_history_flush_cadence_is_bounded() -> None:
 def test_production_requires_durable_authenticated_runtime() -> None:
     with pytest.raises(
         ValidationError,
-        match="production requires DATABASE_URL, SUPABASE_URL, EDGE_TELEMETRY_SHARED_SECRET",
+        match="production requires DATABASE_URL, AUTH_JWT_SECRET, EDGE_TELEMETRY_SHARED_SECRET",
     ):
         Settings(_env_file=None, app_env="production", mock_factory_enabled=False)
 
@@ -84,7 +75,7 @@ def test_production_requires_durable_authenticated_runtime() -> None:
         app_env="production",
         cors_origins=["https://ev-factory-twin.vercel.app"],
         database_url="postgresql+asyncpg://user:password@db.example.com/postgres",
-        supabase_url="https://project.supabase.co",
+        auth_jwt_secret="a" * 64,
         edge_telemetry_shared_secret="0123456789abcdef0123456789abcdef",
         mock_factory_enabled=False,
     )
@@ -96,7 +87,7 @@ def test_production_rejects_mock_runtime_and_wildcard_cors() -> None:
         "_env_file": None,
         "app_env": "production",
         "database_url": "postgresql+asyncpg://user:password@db.example.com/postgres",
-        "supabase_url": "https://project.supabase.co",
+        "auth_jwt_secret": "a" * 64,
         "edge_telemetry_shared_secret": "0123456789abcdef0123456789abcdef",
     }
 

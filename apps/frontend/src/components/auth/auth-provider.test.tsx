@@ -1,144 +1,70 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { Session } from "@supabase/supabase-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "./auth-provider";
 
-const mocks = vi.hoisted(() => {
-  class MockApiError extends Error {
-    constructor(readonly status = 500) {
-      super(`API ${status}`);
-    }
-  }
-  return {
-    ApiError: MockApiError,
-    replace: vi.fn(),
-    refresh: vi.fn(),
-    getSession: vi.fn(),
-    signInWithPassword: vi.fn(),
-    signOut: vi.fn(),
-    getCurrentUser: vi.fn(),
-    setApiAccessToken: vi.fn(),
-    setApiUnauthorizedHandler: vi.fn(),
-    unsubscribe: vi.fn(),
-  };
-});
+const mocks = vi.hoisted(() => ({
+  replace: vi.fn(), refresh: vi.fn(), login: vi.fn(), logout: vi.fn(),
+  getCurrentUser: vi.fn(), setApiAccessToken: vi.fn(), setApiUnauthorizedHandler: vi.fn(),
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: mocks.replace, refresh: mocks.refresh }),
   usePathname: () => "/factory",
 }));
-
 vi.mock("@/lib/api-client", () => ({
-  ApiError: mocks.ApiError,
-  apiClient: { getCurrentUser: mocks.getCurrentUser },
+  ApiError: class extends Error { constructor(readonly status = 500) { super(); } },
+  apiClient: { login: mocks.login, logout: mocks.logout, getCurrentUser: mocks.getCurrentUser },
   setApiAccessToken: mocks.setApiAccessToken,
   setApiUnauthorizedHandler: mocks.setApiUnauthorizedHandler,
 }));
 
-vi.mock("@/lib/supabase/client", () => ({
-  getSupabaseBrowserClient: () => ({
-    auth: {
-      getSession: mocks.getSession,
-      signInWithPassword: mocks.signInWithPassword,
-      signOut: mocks.signOut,
-      onAuthStateChange: () => ({
-        data: { subscription: { unsubscribe: mocks.unsubscribe } },
-      }),
-    },
-  }),
-}));
-
-const session = {
-  access_token: "restored-access-token",
-  token_type: "bearer",
-  expires_in: 3600,
-  expires_at: 1_800_000_000,
-  refresh_token: "refresh-token",
-  user: {
-    id: "11111111-1111-4111-8111-111111111111",
-    app_metadata: {},
-    user_metadata: {},
-    aud: "authenticated",
-    created_at: "2026-08-14T00:00:00Z",
-  },
-} as Session;
-
 const currentUser = {
-  id: session.user.id,
-  email: "designer@example.com",
-  display_name: "Demo Designer",
-  role: "DESIGNER" as const,
-  is_active: true,
+  id: "11111111-1111-4111-8111-111111111111", email: "designer@example.com",
+  display_name: "Demo Designer", role: "DESIGNER" as const, is_active: true,
 };
 
 function AuthProbe() {
-  const { user, isLoading, logout } = useAuth();
+  const { user, isLoading, login, logout } = useAuth();
   if (isLoading) return <span>loading</span>;
-  return (
-    <div>
-      <span>{user?.display_name ?? "signed-out"}</span>
-      <button type="button" onClick={() => void logout()}>logout</button>
-    </div>
-  );
+  return <div>
+    <span>{user?.display_name ?? "signed-out"}</span>
+    <button type="button" onClick={() => void login("designer@example.com", "password")}>login</button>
+    <button type="button" onClick={() => void logout()}>logout</button>
+  </div>;
 }
 
 describe("AuthProvider", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getSession.mockResolvedValue({ data: { session }, error: null });
-    mocks.getCurrentUser.mockResolvedValue(currentUser);
-    mocks.signOut.mockResolvedValue({ error: null });
+    sessionStorage.clear();
+    mocks.login.mockResolvedValue({ access_token: "backend-access-token", token_type: "bearer", expires_at: 1_800_000_000, user: currentUser });
+    mocks.logout.mockResolvedValue(undefined);
   });
 
-  it("restores the cookie session and loads the trusted backend profile", async () => {
+  it("signs in through the backend and stores the token for this tab", async () => {
     render(<AuthProvider><AuthProbe /></AuthProvider>);
-
+    await screen.findByText("signed-out");
+    fireEvent.click(screen.getByRole("button", { name: "login" }));
     expect(await screen.findByText("Demo Designer")).toBeInTheDocument();
-    expect(mocks.setApiAccessToken).toHaveBeenCalledWith(session.access_token);
-    expect(mocks.setApiUnauthorizedHandler).toHaveBeenCalledWith(expect.any(Function));
-    expect(mocks.getCurrentUser).toHaveBeenCalledOnce();
+    expect(sessionStorage.getItem("ev-twin-access-token")).toBe("backend-access-token");
   });
 
-  it("clears the token and returns to login on logout", async () => {
+  it("restores a backend token and loads the trusted profile", async () => {
+    sessionStorage.setItem("ev-twin-access-token", "restored-token");
+    mocks.getCurrentUser.mockResolvedValue(currentUser);
+    render(<AuthProvider><AuthProbe /></AuthProvider>);
+    expect(await screen.findByText("Demo Designer")).toBeInTheDocument();
+    expect(mocks.setApiAccessToken).toHaveBeenCalledWith("restored-token");
+  });
+
+  it("clears local auth even if the stateless logout request fails", async () => {
+    sessionStorage.setItem("ev-twin-access-token", "restored-token");
+    mocks.getCurrentUser.mockResolvedValue(currentUser);
+    mocks.logout.mockRejectedValue(new Error("offline"));
     render(<AuthProvider><AuthProbe /></AuthProvider>);
     await screen.findByText("Demo Designer");
     fireEvent.click(screen.getByRole("button", { name: "logout" }));
-
-    await waitFor(() => expect(mocks.signOut).toHaveBeenCalledWith({ scope: "local" }));
-    expect(mocks.setApiAccessToken).toHaveBeenLastCalledWith(null);
-    expect(mocks.replace).toHaveBeenCalledWith("/login");
-    expect(mocks.refresh).toHaveBeenCalledOnce();
-  });
-
-  it("marks an API 401 as an expired session and preserves the current route", async () => {
-    render(<AuthProvider><AuthProbe /></AuthProvider>);
-    await screen.findByText("Demo Designer");
-    const handlerCall = mocks.setApiUnauthorizedHandler.mock.calls.find(
-      ([handler]) => typeof handler === "function",
-    );
-    const handler = handlerCall?.[0] as (() => void) | undefined;
-
-    expect(handler).toBeTypeOf("function");
-    handler?.();
-
-    await waitFor(() => {
-      expect(mocks.replace).toHaveBeenCalledWith(
-        "/login?reason=session_expired&returnTo=%2Ffactory",
-      );
-    });
-    expect(mocks.setApiAccessToken).toHaveBeenLastCalledWith(null);
-  });
-
-  it("signs out locally and redirects when /auth/me reports an inactive profile", async () => {
-    mocks.getCurrentUser.mockRejectedValue(new mocks.ApiError(403));
-
-    render(<AuthProvider><AuthProbe /></AuthProvider>);
-
-    expect(await screen.findByText("signed-out")).toBeInTheDocument();
-    await waitFor(() => expect(mocks.signOut).toHaveBeenCalledWith({ scope: "local" }));
-    expect(mocks.setApiAccessToken).toHaveBeenLastCalledWith(null);
-    expect(mocks.replace).toHaveBeenCalledWith(
-      "/login?reason=access_revoked&returnTo=%2Ffactory",
-    );
+    await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith("/login"));
+    expect(sessionStorage.getItem("ev-twin-access-token")).toBeNull();
   });
 });

@@ -2,7 +2,7 @@
 
 ## MVP decision
 
-The target database is Supabase PostgreSQL 17.6.1.155. The MVP persists the
+The target database is Cloud SQL PostgreSQL 17. The MVP persists the
 telemetry history needed for stale detection, incident investigation and KPI
 calculation; it does not promise indefinite raw 10 Hz retention or a complete
 incident-replay UI.
@@ -31,7 +31,7 @@ finalizing the telemetry sampling cadence.
 
 ## pg_partman decision
 
-The hosted Supabase PostgreSQL 17.6 project was verified to provide pg_partman
+The Cloud SQL PostgreSQL 17 instance must enable pg_cron and install pg_partman
 5.3.1 and pg_cron 1.6.4. M8 uses time-based PostgreSQL partitions managed by
 pg_partman for robot telemetry. Deployment must still verify:
 

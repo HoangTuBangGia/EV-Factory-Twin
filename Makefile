@@ -1,6 +1,6 @@
 ROS_DISTRO ?= jazzy
 
-.PHONY: sync lint format format-check migration-check integration postgres-smoke test test-cov typecheck check backend frontend-sync frontend frontend-lint frontend-typecheck frontend-test frontend-build frontend-check frontend-browser-install frontend-smoke frontend-e2e-list frontend-e2e docker-build supabase-start supabase-status supabase-reset supabase-stop ros-deps ros-build ros-test ros-check
+.PHONY: sync lint format format-check migration-check postgres-migrate integration postgres-smoke test test-cov typecheck check backend user-create frontend-sync frontend frontend-lint frontend-typecheck frontend-test frontend-build frontend-check frontend-browser-install frontend-smoke frontend-e2e-list frontend-e2e docker-build ros-deps ros-build ros-test ros-check
 
 sync:
 	uv sync --all-packages --dev
@@ -18,7 +18,14 @@ typecheck:
 	uv run mypy packages/twin-core/src apps/backend/src services/simulation/src evaluation/src
 
 migration-check:
-	PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -p pytest_asyncio.plugin tests/integration/test_supabase_migrations.py
+	PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -p pytest_asyncio.plugin tests/integration/test_postgres_migrations.py
+
+postgres-migrate:
+	@test -n "$(MIGRATION_DATABASE_URL)" || (echo "MIGRATION_DATABASE_URL is required" >&2; exit 2)
+	@for migration in postgres/migrations/*.sql; do \
+		echo "Applying $$migration"; \
+		psql "$(MIGRATION_DATABASE_URL)" -v ON_ERROR_STOP=1 -f "$$migration" || exit 1; \
+	done
 
 integration:
 	APP_ENV=test DATABASE_URL= PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -p pytest_asyncio.plugin tests/integration
@@ -47,6 +54,10 @@ backend:
 		uvicorn ev_twin_api.main:app \
 		--app-dir apps/backend/src \
 		--reload
+
+user-create:
+	uv run --package ev-twin-api python -m ev_twin_api.cli.create_user \
+		--email "$(EMAIL)" --display-name "$(DISPLAY_NAME)" --role "$(ROLE)"
 
 frontend-sync:
 	npm --prefix apps/frontend ci
@@ -82,18 +93,6 @@ frontend-e2e:
 
 docker-build:
 	docker build --file apps/backend/Dockerfile --tag ev-factory-twin-api:local .
-
-supabase-start:
-	supabase start
-
-supabase-status:
-	supabase status
-
-supabase-reset:
-	supabase db reset
-
-supabase-stop:
-	supabase stop
 
 ros-deps:
 	python3 -c "from colcon_ros.task.ament_python.build import AmentPythonBuildTask"

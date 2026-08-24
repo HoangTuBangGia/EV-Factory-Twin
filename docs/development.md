@@ -9,7 +9,7 @@ Ubuntu 24.04
 - Python 3.12
 - uv
 - Node.js 22
-- Docker and Supabase CLI for the local database/auth stack
+- Docker and PostgreSQL 17 for the local database/auth stack
 - ROS 2 Jazzy
 - Gazebo Harmonic
 
@@ -57,42 +57,26 @@ Có thể chạy từng gate bằng `make frontend-lint`, `make frontend-typeche
 `make frontend-browser-install`, `make frontend-smoke`, `make frontend-e2e-list`
 và `make frontend-e2e`.
 
-## Local Supabase
+## Local PostgreSQL and authentication
 
-Development uses the local Supabase stack rather than a separately configured
-host PostgreSQL installation. From the repository root:
+Use a PostgreSQL 17 database, then copy the Backend and Frontend example env
+files. Set `DATABASE_URL`, a random `AUTH_JWT_SECRET` of at least 64 characters,
+and matching local API/WebSocket URLs. Apply the schema with:
 
 ```bash
-make supabase-start
-make supabase-status
+make postgres-migrate MIGRATION_DATABASE_URL='postgresql://...'
+make user-create EMAIL=designer@example.com DISPLAY_NAME='Demo Designer' ROLE=DESIGNER
+make user-create EMAIL=monitor@example.com DISPLAY_NAME='Demo Monitor' ROLE=MONITOR
 ```
-
-Copy `apps/backend/.env.example` to the backend environment and
-`apps/frontend/.env.example` to `apps/frontend/.env.local`. Replace the frontend
-publishable key with the local key printed by `make supabase-status`.
 
 `COMMAND_TIMEOUT_SWEEP_SECONDS` điều khiển cadence phát hiện command attempt hết
 lease; mặc định 1 giây và không cần browser hoặc edge gọi API để kích hoạt timeout.
 
-Sau khi local Supabase đã chạy và migrations/seed đã sẵn sàng, kiểm tra repository
-PostgreSQL thật bằng:
+Kiểm tra repository PostgreSQL thật bằng:
 
 ```bash
-TEST_DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:54322/postgres \
+TEST_DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/postgres \
 make postgres-smoke
-```
-
-Replay all migrations against the local database with:
-
-```bash
-make supabase-reset
-```
-
-`supabase-reset` deletes local Supabase data before replaying migrations. Never
-run a linked reset against staging or production. Stop the local stack with:
-
-```bash
-make supabase-stop
 ```
 
 ## ROS multi-AMR MVP slice

@@ -25,7 +25,7 @@ from ev_twin_api.api.websocket import router as websocket_router
 from ev_twin_api.core.config import get_settings
 from ev_twin_api.core.database import Database
 from ev_twin_api.core.logging_config import configure_logging
-from ev_twin_api.core.security import JwtVerifier
+from ev_twin_api.core.security import LocalJwtManager
 from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.services.audit_service import (
     AuditRepository,
@@ -33,7 +33,7 @@ from ev_twin_api.services.audit_service import (
     InMemoryAuditRepository,
     SqlAlchemyAuditRepository,
 )
-from ev_twin_api.services.auth_service import AuthService, SqlAlchemyProfileRepository
+from ev_twin_api.services.auth_service import AuthService, SqlAlchemyUserRepository
 from ev_twin_api.services.command_service import (
     CommandRepository,
     CommandService,
@@ -84,32 +84,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if database.configured
         else InMemoryRuntimeHistoryRepository()
     )
-    issuer = settings.effective_supabase_jwt_issuer
-    jwks_url = settings.effective_supabase_jwks_url
-    jwt_verifier = (
-        JwtVerifier(
-            issuer=issuer,
-            audience=settings.supabase_jwt_audience,
-            jwks_url=jwks_url,
-            jwks_cache_ttl_seconds=settings.supabase_jwks_cache_ttl_seconds,
-            jwks_request_timeout_seconds=settings.supabase_jwks_request_timeout_seconds,
-            unknown_kid_refresh_cooldown_seconds=(
-                settings.supabase_jwks_unknown_kid_cooldown_seconds
-            ),
-            leeway_seconds=settings.supabase_jwt_leeway_seconds,
-            verification_max_workers=settings.supabase_jwt_verification_max_workers,
-            verification_max_in_flight=(settings.supabase_jwt_verification_max_in_flight),
+    jwt_manager = (
+        LocalJwtManager(
+            secret=settings.auth_jwt_secret.get_secret_value(),
+            issuer=settings.auth_jwt_issuer,
+            audience=settings.auth_jwt_audience,
+            ttl_seconds=settings.auth_access_token_ttl_seconds,
+            leeway_seconds=settings.auth_jwt_leeway_seconds,
         )
-        if issuer and jwks_url
+        if settings.auth_jwt_secret
         else None
     )
     app.state.database = database
     app.state.auth_service = AuthService(
-        verifier=jwt_verifier,
-        profiles=SqlAlchemyProfileRepository(database),
+        verifier=jwt_manager,
+        users=SqlAlchemyUserRepository(database),
+        token_issuer=jwt_manager,
     )
-    if jwt_verifier is None:
-        logger.warning("authentication enabled but Supabase issuer/JWKS are not configured")
+    if jwt_manager is None:
+        logger.warning("authentication enabled but AUTH_JWT_SECRET is not configured")
 
     mock_config = MockFactoryConfig(
         robot_count=settings.mock_robot_count,
@@ -220,8 +213,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await mock_factory.stop()
         await telemetry_persistence.stop()
         await runtime_health.stop()
-        if jwt_verifier is not None:
-            jwt_verifier.close()
         await database.dispose()
         logger.info("backend stopped")
 

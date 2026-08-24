@@ -82,6 +82,10 @@ class FixedProfiles:
         del user_id
         return self._profile
 
+    async def get_by_email(self, email: str):
+        del email
+        return None
+
 
 async def request(
     client: AsyncClient,
@@ -205,7 +209,7 @@ async def test_missing_or_inactive_database_profile_returns_403(
     )
     app.state.auth_service = AuthService(
         verifier=FixedVerifier(),
-        profiles=FixedProfiles(profile),
+        users=FixedProfiles(profile),
     )
 
     response = await client.get(
@@ -221,7 +225,7 @@ async def test_missing_server_auth_configuration_returns_503(client: AsyncClient
     app.dependency_overrides.pop(get_current_user, None)
     app.state.auth_service = AuthService(
         verifier=None,
-        profiles=FixedProfiles(None),
+        users=FixedProfiles(None),
     )
 
     response = await client.get(
@@ -243,16 +247,16 @@ def test_openapi_declares_bearer_security_for_all_non_health_rest_operations() -
     }
     schema = app.openapi()
     schemes = schema["components"]["securitySchemes"]
-    assert schemes["SupabaseAccessToken"]["scheme"] == "bearer"
-    assert schemes["SupabaseAccessToken"]["bearerFormat"] == "JWT"
+    assert schemes["FactoryTwinAccessToken"]["scheme"] == "bearer"
+    assert schemes["FactoryTwinAccessToken"]["bearerFormat"] == "JWT"
 
     for path, path_item in schema["paths"].items():
         for method, operation in path_item.items():
             if method not in {"get", "post", "put", "patch", "delete"}:
                 continue
-            if path == "/health":
+            if path in {"/health", "/api/v1/auth/login", "/api/v1/auth/logout"}:
                 assert "security" not in operation
             elif path in edge_paths:
                 assert {"EdgeTelemetrySecret": []} in operation["security"]
             else:
-                assert {"SupabaseAccessToken": []} in operation["security"]
+                assert {"FactoryTwinAccessToken": []} in operation["security"]
