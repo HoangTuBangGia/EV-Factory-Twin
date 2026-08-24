@@ -367,7 +367,8 @@ export default function ScenariosPage() {
                 <div className="field field-wide">
                   <label htmlFor="scenario-route">Route</label>
                   <select id="scenario-route" name="route_id" required disabled={!selectedLayout}>
-                    {selectedLayout?.routes.map((route) => <option value={route.id} key={route.id}>
+                    {selectedLayout?.routes.filter((route) => route.kind === "DELIVERY")
+                      .map((route) => <option value={route.id} key={route.id}>
                       {route.id} · {route.start_station_id} → {route.end_station_id}
                     </option>)}
                   </select>

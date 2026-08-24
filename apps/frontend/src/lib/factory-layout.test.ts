@@ -14,7 +14,13 @@ describe("factory layout", () => {
     expect(defaultFactoryLayout.stations.map(({ type, x, y }) => [type, x, y])).toEqual([
       ["BATTERY_BUFFER", 32, 29],
       ["MARRIAGE_STATION", 52, 6],
+      ["MARRIAGE_STATION", 82, 8],
       ["CHARGING_STATION", 32, 11],
+    ]);
+    expect(defaultFactoryLayout.routes.map(({ id, kind }) => [id, kind])).toEqual([
+      ["BATTERY_DELIVERY", "DELIVERY"],
+      ["BATTERY_DELIVERY_LONG", "DELIVERY"],
+      ["CHARGER_LINK", "SUPPORT"],
     ]);
     expect(defaultFactoryLayout.routes[0].waypoints.map(({ x, y }) => [x, y])).toEqual([
       [32, 29], [32, 20], [40, 20], [52, 20], [52, 6],

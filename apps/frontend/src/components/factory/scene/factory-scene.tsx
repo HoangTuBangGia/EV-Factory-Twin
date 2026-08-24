@@ -13,7 +13,7 @@ import { BatteryBuffer } from "./battery-buffer";
 import { ChargingStation } from "./charging-station";
 import { MarriageStation } from "./marriage-station";
 import { NoGoZone } from "./no-go-zone";
-import { ChargerApproach, RouteLanes } from "./route-lanes";
+import { RouteLanes } from "./route-lanes";
 import { EvFactoryEnvironment } from "./ev-factory-environment";
 
 const LOW_POWER_FRAME_INTERVAL_MS = 1_000 / 30;
@@ -70,11 +70,12 @@ export function FactoryScene({
   robots, selectedRobotId, onSelect, bufferStock, resetSignal, layers, layout,
 }: FactorySceneProps) {
   const batteryBuffer = stationByType(layout, "BATTERY_BUFFER");
-  const marriageStation = stationByType(layout, "MARRIAGE_STATION");
+  const marriageStations = layout.stations.filter(
+    (station) => station.type === "MARRIAGE_STATION",
+  );
   const chargingStation = stationByType(layout, "CHARGING_STATION");
   const chargingCount = robots.filter((robot) => robot.status === "CHARGING").length;
   const joining = robots.some((robot) => robot.status === "DROPPING");
-  const approaching = robots.filter((robot) => robot.status === "MOVING_TO_CHARGER");
 
   const homePosition: [number, number, number] = [-8, 58, 82];
 
@@ -93,19 +94,15 @@ export function FactoryScene({
     {layers.routes && <RouteLanes routes={layout.routes} layout={layout}/>}
     {layers.stations && <>
       <BatteryBuffer stockLevel={bufferStock} station={batteryBuffer} layout={layout}/>
-      <MarriageStation joining={joining} station={marriageStation} layout={layout}/>
+      {marriageStations.map((station) => <MarriageStation
+        key={station.id} joining={joining} station={station} layout={layout}
+      />)}
       <ChargingStation occupied={chargingCount} station={chargingStation} layout={layout}/>
     </>}
     {layers.noGoZones && layout.no_go_zones.map((zone) => (
       <NoGoZone key={zone.id} zone={zone} layout={layout}/>
     ))}
 
-    {layers.routes && approaching.map((robot) => (
-      <ChargerApproach
-        key={`approach-${robot.id}`} from={robot.pose}
-        charger={chargingStation} layout={layout}
-      />
-    ))}
     {robots.map((robot) => <Amr
       key={robot.id} robot={robot}
       selected={selectedRobotId === robot.id} onSelect={onSelect} layout={layout}

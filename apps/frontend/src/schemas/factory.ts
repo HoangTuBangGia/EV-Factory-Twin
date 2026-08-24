@@ -18,6 +18,9 @@ export const factoryStationSchema = worldPointSchema.extend({
 
 export const factoryRouteSchema = z.object({
   id: z.string().trim().min(1),
+  kind: z.enum(["DELIVERY", "SUPPORT"]).default("DELIVERY"),
+  start_station_id: z.string().trim().min(1).optional(),
+  end_station_id: z.string().trim().min(1).optional(),
   waypoints: z.array(worldPointSchema).min(2),
 });
 

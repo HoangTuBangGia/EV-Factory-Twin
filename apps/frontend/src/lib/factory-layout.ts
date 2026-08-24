@@ -5,24 +5,44 @@ export interface WorldRect { x0: number; y0: number; x1: number; y1: number }
 export const defaultFactoryLayout = factoryLayoutSchema.parse({
   id: "LAYOUT-DEFAULT",
   name: "EV battery intralogistics plant",
-  version: 2,
+  version: 3,
   width: 120,
   height: 40,
   stations: [
     { id: "BATTERY_BUFFER", type: "BATTERY_BUFFER", x: 32, y: 29 },
     { id: "MARRIAGE_STATION", type: "MARRIAGE_STATION", x: 52, y: 6 },
+    { id: "MARRIAGE_STATION_2", type: "MARRIAGE_STATION", x: 82, y: 8 },
     { id: "CHARGING_STATION", type: "CHARGING_STATION", x: 32, y: 11 },
   ],
-  routes: [{
-    id: "BATTERY_DELIVERY",
-    waypoints: [
-      { x: 32, y: 29 },
-      { x: 32, y: 20 },
-      { x: 40, y: 20 },
-      { x: 52, y: 20 },
-      { x: 52, y: 6 },
-    ],
-  }],
+  routes: [
+    {
+      id: "BATTERY_DELIVERY",
+      kind: "DELIVERY",
+      start_station_id: "BATTERY_BUFFER",
+      end_station_id: "MARRIAGE_STATION",
+      waypoints: [
+        { x: 32, y: 29 }, { x: 32, y: 20 }, { x: 40, y: 20 },
+        { x: 52, y: 20 }, { x: 52, y: 6 },
+      ],
+    },
+    {
+      id: "BATTERY_DELIVERY_LONG",
+      kind: "DELIVERY",
+      start_station_id: "BATTERY_BUFFER",
+      end_station_id: "MARRIAGE_STATION_2",
+      waypoints: [
+        { x: 32, y: 29 }, { x: 32, y: 20 }, { x: 40, y: 20 },
+        { x: 60, y: 20 }, { x: 82, y: 20 }, { x: 82, y: 8 },
+      ],
+    },
+    {
+      id: "CHARGER_LINK",
+      kind: "SUPPORT",
+      start_station_id: "CHARGING_STATION",
+      end_station_id: "BATTERY_BUFFER",
+      waypoints: [{ x: 32, y: 11 }, { x: 32, y: 20 }, { x: 32, y: 29 }],
+    },
+  ],
   no_go_zones: [{
     id: "GIGA_PRESS_CLEARANCE",
     points: [{ x: 44, y: 27 }, { x: 58, y: 27 }, { x: 58, y: 37 }, { x: 44, y: 37 }],
