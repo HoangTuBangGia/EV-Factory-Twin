@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import { AuthActionError, useAuth } from "@/components/auth/auth-provider";
 import { defaultRouteForRole, safeReturnTo } from "@/lib/auth/return-to";
 
+const DEMO_ACCOUNTS = [
+  { role: "Designer", email: "designer@example.com", password: "Designer123!" },
+  { role: "Monitor", email: "monitor@example.com", password: "Monitor123!" },
+] as const;
+
 export function LoginForm({
   returnTo,
   reason,
@@ -16,6 +21,9 @@ export function LoginForm({
   const { user, login, isLoading, error: authError } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [copied, setCopied] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -48,6 +56,11 @@ export function LoginForm({
 
   const disabled = submitting || isLoading;
 
+  async function copyCredential(label: string, value: string) {
+    await navigator.clipboard.writeText(value);
+    setCopied(label);
+  }
+
   return (
     <main className="login-page">
       <section className="login-card" aria-labelledby="login-title">
@@ -60,7 +73,33 @@ export function LoginForm({
         </div>
         <div className="eyebrow">Secure operations workspace</div>
         <h1 id="login-title">Sign in</h1>
-        <p>Use the account assigned by your Factory Twin administrator.</p>
+
+        <section className="demo-accounts" aria-labelledby="demo-accounts-title">
+          <div className="demo-accounts-head">
+            <h2 id="demo-accounts-title">Demo accounts</h2>
+            <span>For evaluator access</span>
+          </div>
+          {DEMO_ACCOUNTS.map((account) => <article className="demo-account" key={account.role}>
+            <div className="demo-account-title">
+              <strong>{account.role}</strong>
+              <button type="button" aria-label={`Use ${account.role} account`} onClick={() => {
+                setEmail(account.email);
+                setPassword(account.password);
+              }}>Use this account</button>
+            </div>
+            {(["email", "password"] as const).map((field) => {
+              const label = `${account.role} ${field}`;
+              return <div className="demo-credential" key={field}>
+                <span>{field}</span>
+                <code>{account[field]}</code>
+                <button type="button" aria-label={`Copy ${label}`}
+                  onClick={() => void copyCredential(label, account[field])}>
+                  {copied === label ? "Copied" : "Copy"}
+                </button>
+              </div>;
+            })}
+          </article>)}
+        </section>
 
         {reason === "session_expired" && (
           <div className="login-notice">Your session expired. Sign in again to continue.</div>
@@ -80,6 +119,8 @@ export function LoginForm({
               name="email"
               type="email"
               autoComplete="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
               required
               disabled={disabled}
             />
@@ -91,6 +132,8 @@ export function LoginForm({
               name="password"
               type="password"
               autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
               required
               disabled={disabled}
             />
