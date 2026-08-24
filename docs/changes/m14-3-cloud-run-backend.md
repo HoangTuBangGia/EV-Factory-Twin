@@ -38,6 +38,8 @@ The MVP stays at one maximum instance because realtime fleet state is in-memory.
 - Enabled Cloud Run, Artifact Registry, Cloud Build, and Secret Manager APIs.
 - Created the `ev-twin` Artifact Registry repository, `ev-twin-api` runtime
   service account with Cloud SQL Client, and three empty Backend secrets.
+- Added the explicit Cloud Build Builder binding required because this project
+  resolves builds to its Compute Engine default service account.
 - Migration apply, image build, Cloud Run deploy, and hosted acceptance remain pending.
 
 ## CI / Build Impact

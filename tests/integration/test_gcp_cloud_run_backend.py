@@ -32,6 +32,8 @@ def test_cloud_build_uses_backend_dockerfile_and_immutable_image_input() -> None
 def test_cloud_run_target_preserves_mvp_runtime_boundaries() -> None:
     makefile = MAKEFILE.read_text(encoding="utf-8")
 
+    assert "gcp-cloud-build-access:" in makefile
+    assert "--role=roles/cloudbuild.builds.builder" in makefile
     assert '--service-account="$(GCP_BACKEND_SERVICE_ACCOUNT_EMAIL)"' in makefile
     assert '--add-cloudsql-instances="$(GCP_CLOUD_SQL_CONNECTION_NAME)"' in makefile
     assert "--max-instances=1" in makefile

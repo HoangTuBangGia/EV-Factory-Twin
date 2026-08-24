@@ -9,6 +9,7 @@ GCP_ARTIFACT_REPOSITORY ?= ev-twin
 GCP_BACKEND_SERVICE ?= ev-twin-api
 GCP_BACKEND_SERVICE_ACCOUNT ?= ev-twin-api
 GCP_BACKEND_SERVICE_ACCOUNT_EMAIL = $(GCP_BACKEND_SERVICE_ACCOUNT)@$(GCP_PROJECT).iam.gserviceaccount.com
+GCP_CLOUD_BUILD_SERVICE_ACCOUNT ?= 849232336681-compute@developer.gserviceaccount.com
 GCP_CLOUD_SQL_INSTANCE ?= ev-twin-postgres-01
 GCP_CLOUD_SQL_CONNECTION_NAME = $(GCP_PROJECT):$(GCP_REGION):$(GCP_CLOUD_SQL_INSTANCE)
 GCP_BACKEND_IMAGE_TAG ?= $(shell git rev-parse --short HEAD)
@@ -18,7 +19,7 @@ GCP_DATABASE_URL_SECRET ?= ev-twin-database-url
 GCP_AUTH_JWT_SECRET ?= ev-twin-auth-jwt-secret
 GCP_EDGE_SECRET ?= ev-twin-edge-telemetry-secret
 
-.PHONY: sync lint format format-check migration-check postgres-migrate postgres-migrate-docker postgres-migrations-baseline-docker postgres-seed-docker integration postgres-smoke test test-cov typecheck check backend user-create frontend-sync frontend frontend-lint frontend-typecheck frontend-test frontend-build frontend-check frontend-browser-install frontend-smoke frontend-e2e-list frontend-e2e docker-build gcp-backend-check gcp-backend-apis gcp-artifact-repository-create gcp-backend-service-account-create gcp-backend-cloudsql-access gcp-backend-secrets-create gcp-backend-database-user-create gcp-secret-version-add gcp-backend-secret-access gcp-backend-build gcp-backend-deploy ros-deps ros-build ros-test ros-check
+.PHONY: sync lint format format-check migration-check postgres-migrate postgres-migrate-docker postgres-migrations-baseline-docker postgres-seed-docker integration postgres-smoke test test-cov typecheck check backend user-create frontend-sync frontend frontend-lint frontend-typecheck frontend-test frontend-build frontend-check frontend-browser-install frontend-smoke frontend-e2e-list frontend-e2e docker-build gcp-backend-check gcp-backend-apis gcp-artifact-repository-create gcp-cloud-build-access gcp-backend-service-account-create gcp-backend-cloudsql-access gcp-backend-secrets-create gcp-backend-database-user-create gcp-secret-version-add gcp-backend-secret-access gcp-backend-build gcp-backend-deploy ros-deps ros-build ros-test ros-check
 
 sync:
 	uv sync --all-packages --dev
@@ -161,6 +162,11 @@ gcp-artifact-repository-create:
 	gcloud artifacts repositories create "$(GCP_ARTIFACT_REPOSITORY)" \
 		--project="$(GCP_PROJECT)" --location="$(GCP_REGION)" \
 		--repository-format=docker --description="EV Factory Twin container images"
+
+gcp-cloud-build-access:
+	gcloud projects add-iam-policy-binding "$(GCP_PROJECT)" \
+		--member="serviceAccount:$(GCP_CLOUD_BUILD_SERVICE_ACCOUNT)" \
+		--role=roles/cloudbuild.builds.builder
 
 gcp-backend-service-account-create:
 	gcloud iam service-accounts create "$(GCP_BACKEND_SERVICE_ACCOUNT)" \

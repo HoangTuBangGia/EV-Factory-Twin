@@ -14,11 +14,18 @@ Run each Make target only after human review:
 ```bash
 make gcp-backend-apis
 make gcp-artifact-repository-create
+make gcp-cloud-build-access
 make gcp-backend-service-account-create
 make gcp-backend-cloudsql-access
 make gcp-backend-secrets-create
 make gcp-backend-database-user-create
 ```
+
+This project uses its Compute Engine default service account as the effective
+Cloud Build execution identity. `gcp-cloud-build-access` grants that identity
+the predefined Cloud Build Builder role required to read staged source and push
+the reviewed image. Override `GCP_CLOUD_BUILD_SERVICE_ACCOUNT` if the project's
+Cloud Build default identity changes.
 
 The database-user target prompts twice without echo, creates `ev_twin_app`, and
 stores its Unix-socket `DATABASE_URL` as the first version of
