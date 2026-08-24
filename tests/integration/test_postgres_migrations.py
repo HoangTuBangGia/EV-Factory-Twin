@@ -7,6 +7,7 @@ from pglast import parse_sql
 ROOT = Path(__file__).parents[2]
 MIGRATIONS = ROOT / "postgres" / "migrations"
 SEED = ROOT / "postgres" / "seed.sql"
+RUNNER = ROOT / "scripts" / "postgres_migrate.sh"
 
 
 def migration_files() -> list[Path]:
@@ -53,3 +54,15 @@ def test_updated_at_trigger_preserves_explicit_domain_time() -> None:
     normalized = " ".join(sql.lower().split())
     assert "new.updated_at is not distinct from old.updated_at" in normalized
     assert "new.updated_at := now()" in normalized
+
+
+def test_migration_runner_tracks_checksum_and_interrupted_state() -> None:
+    script = RUNNER.read_text(encoding="utf-8")
+    assert "schema_migrations" in script
+    assert "sha256sum" in script
+    assert "checksum mismatch" in script
+    assert "APPLYING" in script
+    assert "operator recovery" in script
+    assert "psql_run --file" in script
+    assert "--command=" not in script
+    assert script.index("ledger_records=$(psql_run") < script.index("for migration in")

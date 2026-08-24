@@ -38,7 +38,8 @@ skipped locally after proxy credential cleanup.
 ## CI / Build Impact
 
 No CI dependency added. `postgres-migrate-docker` applies the fresh ordered chain;
-`postgres-migrate-file-docker` applies one reviewed forward migration by basename.
+The original one-file migration target was superseded by the checksum-verified
+ledger runner in M14.2.1.
 Both use the pinned PostgreSQL 17 client image.
 
 ## Follow-up

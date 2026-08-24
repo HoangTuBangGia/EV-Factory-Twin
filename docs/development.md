@@ -64,10 +64,15 @@ files. Set `DATABASE_URL`, a random `AUTH_JWT_SECRET` of at least 64 characters,
 and matching local API/WebSocket URLs. Apply the schema with:
 
 ```bash
+make migration-check
 make postgres-migrate MIGRATION_DATABASE_URL='postgresql://...'
 make user-create EMAIL=designer@example.com DISPLAY_NAME='Demo Designer' ROLE=DESIGNER
 make user-create EMAIL=monitor@example.com DISPLAY_NAME='Demo Monitor' ROLE=MONITOR
 ```
+
+`postgres-migrate` records each SQL file in `public.schema_migrations`, verifies
+its SHA-256 checksum, and skips files already marked `APPLIED`. Never edit an
+applied migration; add the next ordered file instead.
 
 `COMMAND_TIMEOUT_SWEEP_SECONDS` điều khiển cadence phát hiện command attempt hết
 lease; mặc định 1 giây và không cần browser hoặc edge gọi API để kích hoạt timeout.

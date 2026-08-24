@@ -64,6 +64,21 @@ make postgres-seed-docker
 an active Designer exists; it contains reference layout data and no credentials.
 M14.1 migration scripts target the fresh database explicitly approved for this deployment.
 
+Migration execution is ledger-backed. `public.schema_migrations` stores the
+version, filename, SHA-256 checksum, status, and applied time. A checksum change
+or an interrupted `APPLYING` row stops deployment for operator review.
+
+For the existing Cloud SQL database that already has migrations `0001` through
+`0009`, create ledger entries once without replaying DDL:
+
+```bash
+make postgres-migrations-baseline-docker
+make postgres-migrate-docker
+```
+
+The second command must report every migration as already applied. Do not use
+the baseline target for a new or partially migrated database.
+
 ## Edge and acceptance
 
 The GCE bridge uses `EDGE_TELEMETRY_SHARED_SECRET`; ROS DDS stays private. Verify

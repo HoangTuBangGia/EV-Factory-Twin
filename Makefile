@@ -4,7 +4,7 @@ CLOUD_SQL_PGPASSFILE ?= /tmp/ev-twin-cloudsql.pgpass
 CLOUD_SQL_PROXY_HOST ?= 127.0.0.1
 CLOUD_SQL_PROXY_PORT ?= 5433
 
-.PHONY: sync lint format format-check migration-check postgres-migrate postgres-migrate-docker postgres-migrate-file-docker postgres-seed-docker integration postgres-smoke test test-cov typecheck check backend user-create frontend-sync frontend frontend-lint frontend-typecheck frontend-test frontend-build frontend-check frontend-browser-install frontend-smoke frontend-e2e-list frontend-e2e docker-build ros-deps ros-build ros-test ros-check
+.PHONY: sync lint format format-check migration-check postgres-migrate postgres-migrate-docker postgres-migrations-baseline-docker postgres-seed-docker integration postgres-smoke test test-cov typecheck check backend user-create frontend-sync frontend frontend-lint frontend-typecheck frontend-test frontend-build frontend-check frontend-browser-install frontend-smoke frontend-e2e-list frontend-e2e docker-build ros-deps ros-build ros-test ros-check
 
 sync:
 	uv sync --all-packages --dev
@@ -22,44 +22,38 @@ typecheck:
 	uv run mypy packages/twin-core/src apps/backend/src services/simulation/src evaluation/src
 
 migration-check:
+	sh -n scripts/postgres_migrate.sh
 	PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -p pytest_asyncio.plugin tests/integration/test_postgres_migrations.py
 
 postgres-migrate:
 	@test -n "$(MIGRATION_DATABASE_URL)" || (echo "MIGRATION_DATABASE_URL is required" >&2; exit 2)
-	@for migration in postgres/migrations/*.sql; do \
-		echo "Applying $$migration"; \
-		psql "$(MIGRATION_DATABASE_URL)" -v ON_ERROR_STOP=1 -f "$$migration" || exit 1; \
-	done
+	DATABASE_URL="$(MIGRATION_DATABASE_URL)" \
+		MIGRATION_DIRECTORY="$(CURDIR)/postgres/migrations" \
+		sh scripts/postgres_migrate.sh apply
 
 postgres-migrate-docker:
 	@test -f "$(CLOUD_SQL_PGPASSFILE)" || \
 		(echo "CLOUD_SQL_PGPASSFILE does not exist: $(CLOUD_SQL_PGPASSFILE)" >&2; exit 2)
 	docker run --rm --network host \
 		--env PGPASSFILE=/run/secrets/pgpass \
+		--env PGHOST="$(CLOUD_SQL_PROXY_HOST)" --env PGPORT="$(CLOUD_SQL_PROXY_PORT)" \
+		--env PGUSER=postgres --env PGDATABASE=postgres \
 		--volume "$(CLOUD_SQL_PGPASSFILE):/run/secrets/pgpass:ro" \
 		--volume "$(CURDIR)/postgres/migrations:/migrations:ro" \
-		"$(POSTGRES_IMAGE)" sh -eu -c 'for migration in /migrations/*.sql; do \
-			echo "Applying $$migration"; \
-			psql --host="$(CLOUD_SQL_PROXY_HOST)" --port="$(CLOUD_SQL_PROXY_PORT)" \
-				--username=postgres --dbname=postgres --set=ON_ERROR_STOP=1 \
-				--file="$$migration"; \
-		done'
+		--volume "$(CURDIR)/scripts/postgres_migrate.sh:/postgres_migrate.sh:ro" \
+		"$(POSTGRES_IMAGE)" sh /postgres_migrate.sh apply
 
-postgres-migrate-file-docker:
-	@test -n "$(MIGRATION_FILE)" || (echo "MIGRATION_FILE is required" >&2; exit 2)
-	@case "$(MIGRATION_FILE)" in */*) echo "MIGRATION_FILE must be a basename" >&2; exit 2;; esac
-	@test -f "postgres/migrations/$(MIGRATION_FILE)" || \
-		(echo "migration does not exist: $(MIGRATION_FILE)" >&2; exit 2)
+postgres-migrations-baseline-docker:
 	@test -f "$(CLOUD_SQL_PGPASSFILE)" || \
 		(echo "CLOUD_SQL_PGPASSFILE does not exist: $(CLOUD_SQL_PGPASSFILE)" >&2; exit 2)
 	docker run --rm --network host \
 		--env PGPASSFILE=/run/secrets/pgpass \
+		--env PGHOST="$(CLOUD_SQL_PROXY_HOST)" --env PGPORT="$(CLOUD_SQL_PROXY_PORT)" \
+		--env PGUSER=postgres --env PGDATABASE=postgres \
 		--volume "$(CLOUD_SQL_PGPASSFILE):/run/secrets/pgpass:ro" \
 		--volume "$(CURDIR)/postgres/migrations:/migrations:ro" \
-		"$(POSTGRES_IMAGE)" psql \
-			--host="$(CLOUD_SQL_PROXY_HOST)" --port="$(CLOUD_SQL_PROXY_PORT)" \
-			--username=postgres --dbname=postgres --set=ON_ERROR_STOP=1 \
-			--file="/migrations/$(MIGRATION_FILE)"
+		--volume "$(CURDIR)/scripts/postgres_migrate.sh:/postgres_migrate.sh:ro" \
+		"$(POSTGRES_IMAGE)" sh /postgres_migrate.sh baseline
 
 postgres-seed-docker:
 	@test -f "$(CLOUD_SQL_PGPASSFILE)" || \
