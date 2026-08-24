@@ -221,14 +221,14 @@ def test_migration_names_are_unique_and_ordered() -> None:
 
 
 def test_default_layout_repair_creates_parent_before_version() -> None:
-    migration = (
-        MIGRATION_DIRECTORY / "20260824000300_ensure_default_layout.sql"
-    ).read_text()
+    migration = (MIGRATION_DIRECTORY / "20260824000300_ensure_default_layout.sql").read_text()
 
     parent_insert = migration.index("insert into public.layouts")
     version_insert = migration.index("insert into public.layout_versions")
     assert parent_insert < version_insert
-    assert "no active DESIGNER profile exists" in migration
+    assert "if default_owner is not null then" in migration
+    assert "raise exception" not in migration
+    assert "Skipping LAYOUT-DEFAULT repair" in migration
     assert "on conflict (layout_id, version) do nothing" in migration
 
 

@@ -21,24 +21,20 @@ begin
         limit 1;
     end if;
 
-    if default_owner is null then
-        raise exception 'Cannot create LAYOUT-DEFAULT: no active DESIGNER profile exists'
-            using errcode = '23503';
-    end if;
+    if default_owner is not null then
+        insert into public.layouts (id, name, latest_version, created_by)
+        values (
+            'LAYOUT-DEFAULT',
+            'EV battery intralogistics plant',
+            3,
+            default_owner
+        )
+        on conflict (id) do update
+        set name = excluded.name,
+            latest_version = greatest(public.layouts.latest_version, excluded.latest_version);
 
-    insert into public.layouts (id, name, latest_version, created_by)
-    values (
-        'LAYOUT-DEFAULT',
-        'EV battery intralogistics plant',
-        3,
-        default_owner
-    )
-    on conflict (id) do update
-    set name = excluded.name,
-        latest_version = greatest(public.layouts.latest_version, excluded.latest_version);
-
-    insert into public.layout_versions (layout_id, version, content, created_by)
-    values (
+        insert into public.layout_versions (layout_id, version, content, created_by)
+        values (
         'LAYOUT-DEFAULT',
         3,
         '{
@@ -77,8 +73,11 @@ begin
           }],
           "config":{"robot_count":5,"demand_interval_seconds":8,"robot_speed_mps":1.2,"charger_count":2}
         }'::jsonb,
-        default_owner
-    )
-    on conflict (layout_id, version) do nothing;
+            default_owner
+        )
+        on conflict (layout_id, version) do nothing;
+    else
+        raise notice 'Skipping LAYOUT-DEFAULT repair: no active DESIGNER profile exists';
+    end if;
 end
 $$;

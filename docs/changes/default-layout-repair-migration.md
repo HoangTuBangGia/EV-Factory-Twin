@@ -15,15 +15,15 @@ error but inserted zero rows, causing the scenario baseline endpoint to fail.
 
 - The migration reuses an existing default-layout owner when available.
 - If the parent is absent, the earliest active Designer becomes `created_by`.
-- Absence of an active Designer is a hard migration error instead of a silent
-  no-op.
+- On a clean database where seed data has not run yet, absence of an active
+  Designer emits a notice and defers default-layout creation to `seed.sql`.
 - The repair is idempotent and does not update immutable version content.
 
 ## Files Changed
 
 - Added `20260824000300_ensure_default_layout.sql`.
 - Added an offline regression assertion for parent-before-version ordering and
-  explicit owner validation.
+  clean-database compatibility.
 
 ## Verification
 
