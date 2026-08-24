@@ -31,9 +31,9 @@ finalizing the telemetry sampling cadence.
 
 ## pg_partman decision
 
-The Cloud SQL PostgreSQL 17 instance must enable pg_cron and install pg_partman
-5.3.1 and pg_cron 1.6.4. M8 uses time-based PostgreSQL partitions managed by
-pg_partman for robot telemetry. Deployment must still verify:
+The provisioned Cloud SQL PostgreSQL 17 instance uses pg_cron 1.6.7 and
+pg_partman 5.4.3. M8 uses time-based PostgreSQL partitions managed by pg_partman
+for robot telemetry. Deployment must still verify:
 
 1. the migration role can create/configure both extensions;
 2. scheduled maintenance succeeds and remains observable;

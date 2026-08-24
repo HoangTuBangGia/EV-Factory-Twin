@@ -57,10 +57,12 @@ authorized private client, then run:
 make postgres-migrate MIGRATION_DATABASE_URL='postgresql://...'
 make user-create EMAIL=designer@example.com DISPLAY_NAME='Demo Designer' ROLE=DESIGNER
 make user-create EMAIL=monitor@example.com DISPLAY_NAME='Demo Monitor' ROLE=MONITOR
+make postgres-seed-docker
 ```
 
-`user-create` prompts twice for a password. M14.1 migration scripts target the
-fresh database explicitly approved for this deployment.
+`user-create` prompts twice for a password. Apply `postgres/seed.sql` only after
+an active Designer exists; it contains reference layout data and no credentials.
+M14.1 migration scripts target the fresh database explicitly approved for this deployment.
 
 ## Edge and acceptance
 
