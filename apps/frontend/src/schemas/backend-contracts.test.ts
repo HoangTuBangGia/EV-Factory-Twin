@@ -41,6 +41,7 @@ describe("advanced MVP backend contracts", () => {
       created_at: "2026-08-24T00:00:00.000Z", archived_at: null,
     });
     expect(layout.congestion_zones[0].delay_multiplier).toBe(1.25);
+    expect(layout.routes[0].kind).toBe("DELIVERY");
   });
 
   it("parses command.updated without dropping command lifecycle data", () => {

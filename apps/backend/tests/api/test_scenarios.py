@@ -114,7 +114,7 @@ async def test_baseline_uses_repository_scenario() -> None:
     assert baseline.config.num_tasks == 500
     assert baseline.config.task_arrival_interval == 5.0
     assert baseline.config.layout_id == "LAYOUT-DEFAULT"
-    assert baseline.config.layout_version == 2
+    assert baseline.config.layout_version == 3
     assert baseline.config.route_id == "BATTERY_DELIVERY"
     assert baseline.config.travel_time != 30.0
     assert baseline.metrics.completed_tasks + baseline.metrics.unfinished_tasks == 500
@@ -212,11 +212,11 @@ async def test_apply_waits_for_positive_command_result() -> None:
     assert mock_factory.config.task_interval_seconds == 6.0
     assert len(state.list_robots()) == 4
     assert [(layout.layout_id, layout.version) for layout in projected_layouts] == [
-        ("LAYOUT-DEFAULT", 2)
+        ("LAYOUT-DEFAULT", 3)
     ]
     restored_layout = await service.get_applied_layout()
     assert restored_layout is not None
-    assert (restored_layout.layout_id, restored_layout.version) == ("LAYOUT-DEFAULT", 2)
+    assert (restored_layout.layout_id, restored_layout.version) == ("LAYOUT-DEFAULT", 3)
     assert any(
         call.args[0] == {"type": "factory.reset", "data": None}
         for call in broadcast.await_args_list
@@ -245,7 +245,11 @@ async def test_apply_projects_selected_layout_geometry_into_mock_runtime() -> No
     layout_service = LayoutService(layout_repository)
     content = default_layout_content().model_dump(mode="json")
     content["stations"][0].update({"x": 28, "y": 28})
-    content["routes"][0]["waypoints"][0] = {"x": 28, "y": 28}
+    for route in content["routes"]:
+        if route["start_station_id"] == "BATTERY_BUFFER":
+            route["waypoints"][0] = {"x": 28, "y": 28}
+        if route["end_station_id"] == "BATTERY_BUFFER":
+            route["waypoints"][-1] = {"x": 28, "y": 28}
     created_layout = await layout_service.create(
         CreateLayoutRequest(name="Moved buffer", content=content),
         DESIGNER,

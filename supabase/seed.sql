@@ -118,7 +118,7 @@ begin
   -- 3. Default immutable layout version
   -----------------------------------------------------------------------------
   insert into public.layouts (id, name, latest_version, created_by)
-  values ('LAYOUT-DEFAULT', 'EV battery intralogistics plant', 2, designer_id)
+  values ('LAYOUT-DEFAULT', 'EV battery intralogistics plant', 3, designer_id)
   on conflict (id) do update
   set name = excluded.name,
       latest_version = greatest(public.layouts.latest_version, excluded.latest_version);
@@ -126,21 +126,33 @@ begin
   insert into public.layout_versions (layout_id, version, content, created_by)
   values (
     'LAYOUT-DEFAULT',
-    2,
+    3,
     '{
       "width": 120,
       "height": 40,
       "stations": [
         {"id":"BATTERY_BUFFER","type":"BATTERY_BUFFER","x":32,"y":29},
         {"id":"MARRIAGE_STATION","type":"MARRIAGE_STATION","x":52,"y":6},
+        {"id":"MARRIAGE_STATION_2","type":"MARRIAGE_STATION","x":82,"y":8},
         {"id":"CHARGING_STATION","type":"CHARGING_STATION","x":32,"y":11}
       ],
-      "routes": [{
-        "id":"BATTERY_DELIVERY",
-        "start_station_id":"BATTERY_BUFFER",
-        "end_station_id":"MARRIAGE_STATION",
-        "waypoints":[{"x":32,"y":29},{"x":32,"y":20},{"x":40,"y":20},{"x":52,"y":20},{"x":52,"y":6}]
-      }],
+      "routes": [
+        {
+          "id":"BATTERY_DELIVERY","kind":"DELIVERY",
+          "start_station_id":"BATTERY_BUFFER","end_station_id":"MARRIAGE_STATION",
+          "waypoints":[{"x":32,"y":29},{"x":32,"y":20},{"x":40,"y":20},{"x":52,"y":20},{"x":52,"y":6}]
+        },
+        {
+          "id":"BATTERY_DELIVERY_LONG","kind":"DELIVERY",
+          "start_station_id":"BATTERY_BUFFER","end_station_id":"MARRIAGE_STATION_2",
+          "waypoints":[{"x":32,"y":29},{"x":32,"y":20},{"x":40,"y":20},{"x":60,"y":20},{"x":82,"y":20},{"x":82,"y":8}]
+        },
+        {
+          "id":"CHARGER_LINK","kind":"SUPPORT",
+          "start_station_id":"CHARGING_STATION","end_station_id":"BATTERY_BUFFER",
+          "waypoints":[{"x":32,"y":11},{"x":32,"y":20},{"x":32,"y":29}]
+        }
+      ],
       "no_go_zones": [{
         "id":"GIGA_PRESS_CLEARANCE",
         "points":[{"x":44,"y":27},{"x":58,"y":27},{"x":58,"y":37},{"x":44,"y":37}]

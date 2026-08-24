@@ -14,6 +14,7 @@ class RouteProgress:
 
     waypoints: tuple[tuple[float, float], ...]
     waypoint_index: int = 0
+    pickup_waypoint_index: int | None = None
 
 
 def advance_along_route(

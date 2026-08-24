@@ -10,7 +10,9 @@ export function projectLayoutVersion(layout: LayoutVersion): FactoryLayout {
     width: layout.width,
     height: layout.height,
     stations: layout.stations,
-    routes: layout.routes.map(({ id, waypoints }) => ({ id, waypoints })),
+    routes: layout.routes.map(({
+      id, kind, start_station_id, end_station_id, waypoints,
+    }) => ({ id, kind, start_station_id, end_station_id, waypoints })),
     no_go_zones: layout.no_go_zones,
   });
 }

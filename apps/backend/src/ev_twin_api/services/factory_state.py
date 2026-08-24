@@ -5,7 +5,8 @@ from typing import Annotated, cast
 
 from fastapi import Depends, Request
 from twin_core.default_layout import DEFAULT_ROUTE_ID, default_layout_content
-from twin_core.models.layout import LayoutRoute, LayoutVersionContent, StationType
+from twin_core.models.layout import LayoutRoute, LayoutVersionContent, RouteKind, StationType
+from twin_core.routing import shortest_station_path
 
 from ev_twin_api.schemas.alert import FactoryAlert
 from ev_twin_api.schemas.factory import FactoryLayout, MockFactoryConfig, Station
@@ -73,6 +74,15 @@ def _initial_robots(robot_count: int, layout: LayoutVersionContent) -> dict[str,
             last_seen_at=now,
         )
     return robots
+
+
+def _join_paths(
+    first: tuple[tuple[float, float], ...],
+    second: tuple[tuple[float, float], ...],
+) -> tuple[tuple[float, float], ...]:
+    if first and second and first[-1] == second[0]:
+        return (*first, *second[1:])
+    return (*first, *second)
 
 
 class FactoryState:
@@ -147,11 +157,16 @@ class FactoryState:
         )
         if route is None:
             raise ValueError(f"Route '{self._route_id}' not found in active layout")
+        if route.kind != RouteKind.DELIVERY:
+            raise ValueError(f"Route '{self._route_id}' is not a delivery route")
         return route.model_copy(deep=True)
 
     def apply_layout(self, layout: LayoutVersionContent, route_id: str) -> None:
-        if not any(route.id == route_id for route in layout.routes):
+        route = next((candidate for candidate in layout.routes if candidate.id == route_id), None)
+        if route is None:
             raise ValueError(f"Route '{route_id}' not found in applied layout")
+        if route.kind != RouteKind.DELIVERY:
+            raise ValueError(f"Route '{route_id}' is not a delivery route")
         self._layout = layout.model_copy(deep=True)
         self._route_id = route_id
 
@@ -175,6 +190,59 @@ class FactoryState:
         if route is None:
             raise ValueError(f"Unknown route: {route_key}")
         return tuple((point.x, point.y) for point in route.waypoints)
+
+    def task_route_waypoints(
+        self,
+        pose: Pose,
+        pickup_station_id: str,
+        dropoff_station_id: str,
+    ) -> tuple[tuple[tuple[float, float], ...], int]:
+        route = self.delivery_route
+        if (route.start_station_id, route.end_station_id) != (
+            pickup_station_id,
+            dropoff_station_id,
+        ):
+            raise ValueError(
+                f"Applied route '{route.id}' does not serve "
+                f"{pickup_station_id} -> {dropoff_station_id}"
+            )
+        origin = min(
+            self._layout.stations,
+            key=lambda station: math.hypot(pose.x - station.x, pose.y - station.y),
+        )
+        approach = self._network_path(origin.id, pickup_station_id)
+        delivery = tuple((point.x, point.y) for point in route.waypoints)
+        return _join_paths(approach, delivery), len(approach)
+
+    def charging_route_waypoints(self, pose: Pose) -> tuple[tuple[float, float], ...]:
+        charger = next(
+            station
+            for station in self._layout.stations
+            if station.type == StationType.CHARGING_STATION
+        )
+        origin = min(
+            self._layout.stations,
+            key=lambda station: math.hypot(pose.x - station.x, pose.y - station.y),
+        )
+        return self._network_path(origin.id, charger.id)
+
+    def _network_path(
+        self, start_station_id: str, end_station_id: str
+    ) -> tuple[tuple[float, float], ...]:
+        try:
+            return shortest_station_path(self._layout, start_station_id, end_station_id)
+        except ValueError:
+            # Legacy v1/v2 layouts did not model support links. Preserve their
+            # runtime behavior while v3+ layouts remain constrained to the network.
+            target = next(
+                station for station in self._layout.stations if station.id == end_station_id
+            )
+            logger.warning(
+                "layout route network is disconnected; using legacy direct path %s -> %s",
+                start_station_id,
+                end_station_id,
+            )
+            return ((target.x, target.y),)
 
     def list_robots(self) -> list[Robot]:
         return [robot.model_copy(deep=True) for robot in self.robots.values()]

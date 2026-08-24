@@ -97,8 +97,13 @@ describe("FactoryMap without WebGL", () => {
       version: 2,
       width: 70,
       height: 40,
-      stations: defaultFactoryLayout.stations.map((station) => (
-        station.type === "BATTERY_BUFFER" ? { ...station, x: 4, y: 5 } : station
+      stations: defaultFactoryLayout.stations
+        .filter((station) => station.x <= 70)
+        .map((station) => (
+          station.type === "BATTERY_BUFFER" ? { ...station, x: 4, y: 5 } : station
+        )),
+      routes: defaultFactoryLayout.routes.filter((route) => (
+        route.waypoints.every((point) => point.x <= 70)
       )),
     });
     const { container } = render(<FactoryMap view="2d" layout={layout}/>);

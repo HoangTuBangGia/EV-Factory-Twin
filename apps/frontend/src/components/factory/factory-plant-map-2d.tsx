@@ -37,6 +37,7 @@ type ViewPreset = "full" | "zone-a" | "zone-b" | "zone-c" | "u-line" | "robot";
 export interface FactoryPlantMapEditor {
   routeDrawing: boolean;
   routeDraft: WorldPoint[];
+  selectedRouteId: string;
   onStationMove: (stationId: string, point: WorldPoint) => void;
   onRoutePoint: (point: WorldPoint) => void;
   onRouteStation: (stationId: string) => void;
@@ -385,7 +386,12 @@ export function FactoryPlantMap2D({
             const mapped = livePoint(point, layout);
             return `${index ? "L" : "M"}${mapped.x} ${mapped.z}`;
           }).join(" ")}
-          fill="none" stroke="#7fe9dc" strokeWidth=".42" strokeDasharray=".8 .35"
+          fill="none"
+          stroke={route.id === editor?.selectedRouteId
+            ? "#facc15"
+            : route.kind === "SUPPORT" ? "#60a5fa" : "#7fe9dc"}
+          strokeWidth={route.id === editor?.selectedRouteId ? ".62" : ".42"}
+          strokeDasharray={route.kind === "SUPPORT" ? ".35 .3" : ".8 .35"}
           markerEnd={showFlow ? "url(#plant-flow-arrow)" : undefined}
         />)}
         {editor?.routeDrawing && editor.routeDraft.length > 0 && <path

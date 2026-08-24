@@ -2,7 +2,7 @@ from uuid import uuid4
 
 from ev_twin_api.schemas.alert import AlertCode, AlertSeverity, FactoryAlert
 from ev_twin_api.schemas.factory import MockFactoryConfig
-from ev_twin_api.schemas.robot import RobotStatus
+from ev_twin_api.schemas.robot import Pose, RobotStatus
 from ev_twin_api.schemas.task import Task, TaskStatus
 from ev_twin_api.services.factory_state import FactoryState
 from twin_core.default_layout import default_layout_content
@@ -57,6 +57,7 @@ def test_layout_uses_canonical_plant_coordinates() -> None:
     expected = {
         "BATTERY_BUFFER": (32, 29),
         "MARRIAGE_STATION": (52, 6),
+        "MARRIAGE_STATION_2": (82, 8),
         "CHARGING_STATION": (32, 11),
     }
     assert {station.id: (station.x, station.y) for station in layout.stations} == expected
@@ -93,6 +94,35 @@ def test_applied_layout_controls_runtime_route_and_station_geometry() -> None:
     assert next(station for station in state.stations if station.id == "CHARGING_STATION").x == 35
     assert state.route_waypoints(("BATTERY_BUFFER", "MARRIAGE_STATION")) == tuple(
         (point.x, point.y) for point in moved.routes[0].waypoints
+    )
+
+
+def test_task_route_repositions_on_network_before_pickup() -> None:
+    state = _new_state(robot_count=2)
+    marriage = next(station for station in state.stations if station.id == "MARRIAGE_STATION")
+
+    waypoints, pickup_index = state.task_route_waypoints(
+        Pose(x=marriage.x, y=marriage.y, yaw=0),
+        "BATTERY_BUFFER",
+        "MARRIAGE_STATION",
+    )
+
+    assert waypoints[:pickup_index] == tuple(
+        reversed(tuple((point.x, point.y) for point in LAYOUT.routes[0].waypoints))
+    )
+    assert waypoints[pickup_index - 1] == (32, 29)
+    assert waypoints[-1] == (52, 6)
+
+
+def test_charging_route_uses_support_network() -> None:
+    state = _new_state(robot_count=2)
+
+    assert state.charging_route_waypoints(Pose(x=52, y=6, yaw=0)) == (
+        (52.0, 6.0),
+        (52.0, 20.0),
+        (40.0, 20.0),
+        (32.0, 20.0),
+        (32.0, 11.0),
     )
 
 
