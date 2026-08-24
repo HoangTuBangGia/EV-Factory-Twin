@@ -220,6 +220,18 @@ def test_migration_names_are_unique_and_ordered() -> None:
     assert len(versions) == len(set(versions)), "migration timestamps must be unique"
 
 
+def test_default_layout_repair_creates_parent_before_version() -> None:
+    migration = (
+        MIGRATION_DIRECTORY / "20260824000300_ensure_default_layout.sql"
+    ).read_text()
+
+    parent_insert = migration.index("insert into public.layouts")
+    version_insert = migration.index("insert into public.layout_versions")
+    assert parent_insert < version_insert
+    assert "no active DESIGNER profile exists" in migration
+    assert "on conflict (layout_id, version) do nothing" in migration
+
+
 @pytest.mark.parametrize("migration", _migration_files(), ids=lambda path: path.name)
 def test_migration_is_valid_postgresql_syntax(migration: Path) -> None:
     # parse_sql raises ParseError with a line/column when PostgreSQL syntax is invalid.
