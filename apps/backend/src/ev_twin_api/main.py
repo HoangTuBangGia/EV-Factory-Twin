@@ -64,6 +64,7 @@ from ev_twin_api.services.scenario_repository import (
 )
 from ev_twin_api.services.scenario_service import ScenarioService
 from ev_twin_api.services.telemetry_ingress import TelemetryIngressService
+from ev_twin_api.services.telemetry_persistence import TelemetryPersistenceWorker
 from ev_twin_api.services.websocket_manager import WebSocketManager
 
 configure_logging()
@@ -137,6 +138,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     mock_factory.set_alert_sink(runtime_health.record_existing, runtime_health.clear_existing)
     app.state.runtime_health_service = runtime_health
     app.state.mock_factory = mock_factory
+    telemetry_persistence = TelemetryPersistenceWorker(
+        runtime_repository,
+        runtime_health,
+        flush_seconds=settings.telemetry_history_flush_seconds,
+    )
+    app.state.telemetry_persistence_worker = telemetry_persistence
     app.state.telemetry_ingress_service = TelemetryIngressService(
         factory_state=factory_state,
         websocket_manager=websocket_manager,
@@ -144,6 +151,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         max_future_skew_seconds=settings.edge_telemetry_max_future_skew_seconds,
         history_repository=runtime_repository,
         runtime_health=runtime_health,
+        persistence_worker=telemetry_persistence,
     )
     app.state.edge_runtime_service = EdgeRuntimeService(
         factory_state, websocket_manager, runtime_repository, runtime_health
@@ -198,6 +206,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     await mock_factory.start()
     await runtime_health.start()
+    await telemetry_persistence.start()
     await app.state.command_service.start()
     if kpi_snapshot_writer is not None:
         await kpi_snapshot_writer.start()
@@ -209,6 +218,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if kpi_snapshot_writer is not None:
             await kpi_snapshot_writer.stop()
         await mock_factory.stop()
+        await telemetry_persistence.stop()
         await runtime_health.stop()
         if jwt_verifier is not None:
             jwt_verifier.close()

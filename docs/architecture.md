@@ -1323,6 +1323,10 @@ does not seed mock robots: the authenticated bridge-health `robot_ids` list is
 the authoritative registry for the current single trusted bridge. The bridge
 retains the latest odometry until that registration succeeds, and registry
 changes trigger `factory.reset` so browser clients reload the REST snapshot.
+Backend realtime ingress acknowledges after ordering, state mutation and
+WebSocket broadcast. PostgreSQL history and telemetry-derived health evaluation
+run through a bounded latest-per-robot worker, preventing cross-region database
+latency from backpressuring ROS telemetry while retaining sampled history.
 
 The M2 edge runtime adds one namespaced `amr_navigation` action server per robot.
 It translates typed station goals into bounded planar velocity commands and

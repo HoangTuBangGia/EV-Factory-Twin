@@ -173,6 +173,13 @@ the same robot namespace. One process loads the fleet JSON and maintains a
 separate latest-value worker per robot, so a slow robot delivery cannot overwrite
 another robot's pending sample.
 
+Accepted telemetry updates the in-memory snapshot and broadcasts
+`robot.telemetry` before durable history I/O. A bounded latest-value worker keeps
+one accepted and one late sample per robot, then persists them at
+`TELEMETRY_HISTORY_FLUSH_SECONDS` cadence (one second by default). Failed writes
+retain the newest sample for retry. This downsampling applies only to historical
+storage; REST/WebSocket continue to use every accepted realtime sample.
+
 Response `200`:
 
 ```json

@@ -14,6 +14,7 @@ from ev_twin_api.services.telemetry_ingress import (
     TelemetryIngressService,
     UnknownRobotError,
 )
+from ev_twin_api.services.telemetry_persistence import TelemetryPersistenceWorker
 from ev_twin_api.services.websocket_manager import WebSocketManager
 
 
@@ -186,3 +187,26 @@ async def test_stale_ordering_is_independent_per_robot() -> None:
     assert stale.status == TelemetryIngressStatus.IGNORED_STALE
     assert accepted.status == TelemetryIngressStatus.ACCEPTED
     assert state.get_robot("AMR-02").last_seen_at == amr_02.timestamp
+
+
+@pytest.mark.asyncio
+async def test_buffered_ingress_does_not_wait_for_history_persistence() -> None:
+    service, state, manager, mock_factory = make_service()
+    history = InMemoryRuntimeHistoryRepository()
+    history.record_telemetry = AsyncMock()  # type: ignore[method-assign]
+    worker = TelemetryPersistenceWorker(history, None, flush_seconds=1)
+    service = TelemetryIngressService(
+        state,
+        manager,
+        mock_factory,
+        5,
+        history,
+        persistence_worker=worker,
+    )
+
+    result = await service.ingest(make_telemetry(state))
+
+    assert result.status == TelemetryIngressStatus.ACCEPTED
+    history.record_telemetry.assert_not_awaited()
+    await worker.flush()
+    history.record_telemetry.assert_awaited_once()

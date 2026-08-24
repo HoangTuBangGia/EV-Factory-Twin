@@ -52,10 +52,16 @@ class RuntimeHealthService:
         self._bridge_seen: dict[str, tuple[BridgeHealth, datetime]] = {}
         self._applied_layout: LayoutVersion | None = None
         self._congestion_keys: set[str] = set()
+        self._active_condition_keys: set[str] = set()
         self._task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
         if self._task is None:
+            self._active_condition_keys = {
+                alert.dedupe_key
+                for alert in await self._repository.list_alerts()
+                if alert.status == "ACTIVE"
+            }
             self._task = asyncio.create_task(self._run(), name="runtime-health-sweep")
 
     async def stop(self) -> None:
@@ -117,9 +123,11 @@ class RuntimeHealthService:
 
     async def record_existing(self, alert: FactoryAlert) -> None:
         await self._repository.activate_alert(alert)
+        self._active_condition_keys.add(alert.dedupe_key)
 
     async def clear_existing(self, dedupe_key: str) -> None:
         await self._clear(dedupe_key, self._clock())
+        self._active_condition_keys.discard(dedupe_key)
 
     async def sweep(self) -> None:
         now = self._clock()
@@ -185,9 +193,13 @@ class RuntimeHealthService:
         task_id: str | None = None,
         operation_id: UUID | None = None,
     ) -> None:
+        was_active = dedupe_key in self._active_condition_keys
+        if active == was_active:
+            return
         now = self._clock()
         if not active:
             await self._clear(dedupe_key, now)
+            self._active_condition_keys.discard(dedupe_key)
             return
         alert = FactoryAlert(
             id=uuid4(),
@@ -201,7 +213,9 @@ class RuntimeHealthService:
             timestamp=now,
             last_seen_at=now,
         )
-        if await self._repository.activate_alert(alert):
+        created = await self._repository.activate_alert(alert)
+        self._active_condition_keys.add(dedupe_key)
+        if created:
             self._state.add_alert(alert)
             await self._websockets.broadcast(alert_created_event(alert))
 
