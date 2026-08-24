@@ -22,9 +22,10 @@ export function EvFactoryEnvironment({ layers }: { layers: FactoryMapLayers }) {
   useEffect(() => {
     factory.setAmrRoutesVisible(false);
     factory.setLabelsVisible(layers.stations);
-    factory.setSafetyZonesVisible(layers.noGoZones);
+    // Operational safety geometry comes from the applied layout version.
+    factory.setSafetyZonesVisible(false);
     factory.setGridVisible(true);
-  }, [factory, layers.noGoZones, layers.stations]);
+  }, [factory, layers.stations]);
 
   useEffect(() => () => factory.dispose(), [factory]);
 

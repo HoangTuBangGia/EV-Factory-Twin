@@ -13,7 +13,7 @@ from pydantic import ValidationError
 def request(**updates: object) -> OptimizationRequest:
     values: dict[str, object] = {
         "name_prefix": "flow",
-        "layouts": [LayoutCandidate(layout_id="LAYOUT-DEFAULT", layout_version=1)],
+        "layouts": [LayoutCandidate(layout_id="LAYOUT-DEFAULT", layout_version=2)],
         "route_ids": ["BATTERY_DELIVERY"],
         "robot_counts": [2, 3],
         "robot_speeds_mps": [1.0],

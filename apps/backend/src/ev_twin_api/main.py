@@ -202,7 +202,26 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
     app.state.kpi_snapshot_writer = kpi_snapshot_writer
 
-    runtime_health.set_applied_layout(await app.state.scenario_service.get_applied_layout())
+    applied_scenario = await app.state.scenario_service.get_applied_scenario()
+    applied_layout = None
+    if applied_scenario is not None:
+        applied_layout = await app.state.layout_service.get(
+            applied_scenario.config.layout_id,
+            applied_scenario.config.layout_version,
+        )
+        if settings.mock_factory_enabled:
+            mock_factory.apply_layout(applied_layout, applied_scenario.config.route_id)
+            mock_factory.apply_config(
+                MockFactoryConfig(
+                    robot_count=applied_scenario.config.num_robots,
+                    task_interval_seconds=applied_scenario.config.task_arrival_interval,
+                    robot_speed_mps=applied_scenario.config.robot_speed_mps,
+                    simulation_speed=mock_config.simulation_speed,
+                    low_battery_threshold=mock_config.low_battery_threshold,
+                )
+            )
+            factory_state.reset()
+    runtime_health.set_applied_layout(applied_layout)
 
     await mock_factory.start()
     await runtime_health.start()

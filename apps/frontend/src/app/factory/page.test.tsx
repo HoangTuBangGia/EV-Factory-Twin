@@ -8,6 +8,10 @@ const apiMocks = vi.hoisted(() => ({
   getLayoutVersion: vi.fn(),
 }));
 
+vi.mock("@/components/auth/auth-provider", () => ({
+  useAuth: () => ({ user: { role: "DESIGNER" } }),
+}));
+
 vi.mock("@/lib/api-client", () => ({ apiClient: apiMocks }));
 
 vi.mock("@/components/factory/factory-map", async (importOriginal) => {

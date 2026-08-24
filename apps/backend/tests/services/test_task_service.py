@@ -78,12 +78,12 @@ def test_task_sequence_restarts_after_state_reset() -> None:
 
 
 def test_select_assignment_picks_nearest_eligible_robot() -> None:
-    # exact scenario from the guide: BATTERY_BUFFER is at (2, 4), so an offset
+    # BATTERY_BUFFER is at (32, 29), so an offset
     # along +x gives a simple, exact Euclidean distance from it.
     service, state = _new_service(robot_count=3)
-    _place_robot(state, "AMR-01", x=7.0, y=4.0, battery=80.0)  # distance 5m
-    _place_robot(state, "AMR-02", x=4.0, y=4.0, battery=10.0)  # distance 2m, but low battery
-    _place_robot(state, "AMR-03", x=6.0, y=4.0, battery=70.0)  # distance 4m
+    _place_robot(state, "AMR-01", x=37.0, y=29.0, battery=80.0)  # distance 5m
+    _place_robot(state, "AMR-02", x=34.0, y=29.0, battery=10.0)  # 2m, but low battery
+    _place_robot(state, "AMR-03", x=36.0, y=29.0, battery=70.0)  # distance 4m
     task = service.generate_task()
 
     result = service.select_assignment(low_battery_threshold=20.0)

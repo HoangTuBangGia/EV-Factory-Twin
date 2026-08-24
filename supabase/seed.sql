@@ -118,7 +118,7 @@ begin
   -- 3. Default immutable layout version
   -----------------------------------------------------------------------------
   insert into public.layouts (id, name, latest_version, created_by)
-  values ('LAYOUT-DEFAULT', 'Battery transfer zone', 1, designer_id)
+  values ('LAYOUT-DEFAULT', 'EV battery intralogistics plant', 2, designer_id)
   on conflict (id) do update
   set name = excluded.name,
       latest_version = greatest(public.layouts.latest_version, excluded.latest_version);
@@ -126,31 +126,31 @@ begin
   insert into public.layout_versions (layout_id, version, content, created_by)
   values (
     'LAYOUT-DEFAULT',
-    1,
+    2,
     '{
-      "width": 20,
-      "height": 15,
+      "width": 120,
+      "height": 40,
       "stations": [
-        {"id":"BATTERY_BUFFER","type":"BATTERY_BUFFER","x":2,"y":4},
-        {"id":"MARRIAGE_STATION","type":"MARRIAGE_STATION","x":16,"y":8},
-        {"id":"CHARGING_STATION","type":"CHARGING_STATION","x":2,"y":12}
+        {"id":"BATTERY_BUFFER","type":"BATTERY_BUFFER","x":32,"y":29},
+        {"id":"MARRIAGE_STATION","type":"MARRIAGE_STATION","x":52,"y":6},
+        {"id":"CHARGING_STATION","type":"CHARGING_STATION","x":32,"y":11}
       ],
       "routes": [{
         "id":"BATTERY_DELIVERY",
         "start_station_id":"BATTERY_BUFFER",
         "end_station_id":"MARRIAGE_STATION",
-        "waypoints":[{"x":2,"y":4},{"x":8,"y":4},{"x":12,"y":8},{"x":16,"y":8}]
+        "waypoints":[{"x":32,"y":29},{"x":32,"y":20},{"x":40,"y":20},{"x":52,"y":20},{"x":52,"y":6}]
       }],
       "no_go_zones": [{
-        "id":"NO_GO_01",
-        "points":[{"x":8.4,"y":10.8},{"x":12.8,"y":10.8},{"x":12.8,"y":13.6},{"x":8.4,"y":13.6}]
+        "id":"GIGA_PRESS_CLEARANCE",
+        "points":[{"x":44,"y":27},{"x":58,"y":27},{"x":58,"y":37},{"x":44,"y":37}]
       }],
       "congestion_zones": [{
-        "id":"CONGESTION_01",
+        "id":"WAREHOUSE_PRODUCTION_DOOR",
         "delay_multiplier":1.25,
-        "points":[{"x":10,"y":6},{"x":13,"y":6},{"x":13,"y":9},{"x":10,"y":9}]
+        "points":[{"x":38,"y":17.5},{"x":42,"y":17.5},{"x":42,"y":22.5},{"x":38,"y":22.5}]
       }],
-      "config":{"robot_count":2,"demand_interval_seconds":8,"robot_speed_mps":1,"charger_count":1}
+      "config":{"robot_count":5,"demand_interval_seconds":8,"robot_speed_mps":1.2,"charger_count":2}
     }'::jsonb,
     designer_id
   )

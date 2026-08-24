@@ -50,9 +50,23 @@ describe("LayoutsPage", () => {
     await waitFor(() => expect(api.createLayout).toHaveBeenCalledOnce());
     expect(api.createLayout.mock.calls[0]?.[0]).toMatchObject({
       name: "Battery logistics candidate",
-      content: { config: { robot_count: 2 }, congestion_zones: [] },
+      content: {
+        config: { robot_count: 5 },
+        congestion_zones: [{ id: "WAREHOUSE_PRODUCTION_DOOR" }],
+      },
     });
     expect(await screen.findByText("Created LAYOUT-0001.")).toBeInTheDocument();
+  });
+
+  it("draws the battery route by selecting its endpoint stations", () => {
+    render(<LayoutsPage/>);
+
+    fireEvent.click(screen.getByRole("button", { name: "Draw route on map" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Route station BATTERY_BUFFER" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Route station MARRIAGE_STATION" }));
+
+    expect(screen.getByRole("status")).toHaveTextContent("Battery-delivery route updated");
+    expect(screen.getAllByLabelText(/BATTERY_DELIVERY waypoint/)).toHaveLength(4);
   });
 
   it("blocks non-Designer roles", () => {

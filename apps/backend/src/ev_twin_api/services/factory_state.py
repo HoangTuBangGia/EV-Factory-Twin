@@ -1,17 +1,12 @@
 import logging
+import math
 from datetime import UTC, datetime
 from typing import Annotated, cast
 
 from fastapi import Depends, Request
+from twin_core.default_layout import DEFAULT_ROUTE_ID, default_layout_content
+from twin_core.models.layout import LayoutRoute, LayoutVersionContent, StationType
 
-from ev_twin_api.core.layout import (
-    FACTORY_HEIGHT_M,
-    FACTORY_WIDTH_M,
-    IDLE_ZONE_X,
-    IDLE_ZONE_Y,
-    ROBOT_SPAWN_SPACING_M,
-    STATIONS,
-)
 from ev_twin_api.schemas.alert import FactoryAlert
 from ev_twin_api.schemas.factory import FactoryLayout, MockFactoryConfig, Station
 from ev_twin_api.schemas.metrics import FactoryMetrics
@@ -33,16 +28,46 @@ def _empty_metrics() -> FactoryMetrics:
     )
 
 
-def _initial_robots(robot_count: int) -> dict[str, Robot]:
+STATION_RUNTIME_TYPES = {
+    StationType.BATTERY_BUFFER: "BUFFER",
+    StationType.MARRIAGE_STATION: "MARRIAGE",
+    StationType.CHARGING_STATION: "CHARGER",
+}
+
+
+def _station_name(station_type: StationType) -> str:
+    return station_type.value.replace("_", " ").title()
+
+
+def _spawn_points(layout: LayoutVersionContent, robot_count: int) -> list[tuple[float, float]]:
+    charger = next(
+        station for station in layout.stations if station.type == StationType.CHARGING_STATION
+    )
+    columns = min(10, robot_count)
+    rows = math.ceil(robot_count / columns)
+    spacing_x = min(1.2, layout.width / max(columns - 1, 1))
+    spacing_y = min(1.2, layout.height / max(rows - 1, 1)) if rows > 1 else 0.0
+    grid_width = (columns - 1) * spacing_x
+    grid_height = (rows - 1) * spacing_y
+    start_x = min(max(charger.x - grid_width / 2, 0.0), layout.width - grid_width)
+    preferred_y = charger.y + 2.0
+    start_y = min(max(preferred_y, 0.0), layout.height - grid_height)
+    return [
+        (start_x + index % columns * spacing_x, start_y + index // columns * spacing_y)
+        for index in range(robot_count)
+    ]
+
+
+def _initial_robots(robot_count: int, layout: LayoutVersionContent) -> dict[str, Robot]:
     now = datetime.now(UTC)
     robots: dict[str, Robot] = {}
-    for index in range(robot_count):
+    for index, (x, y) in enumerate(_spawn_points(layout, robot_count)):
         robot_id = f"AMR-{index + 1:02d}"
         robots[robot_id] = Robot(
             id=robot_id,
             name=robot_id,
             status=RobotStatus.IDLE,
-            pose=Pose(x=IDLE_ZONE_X + index * ROBOT_SPAWN_SPACING_M, y=IDLE_ZONE_Y, yaw=0.0),
+            pose=Pose(x=x, y=y, yaw=0.0),
             velocity=Velocity(linear=0.0, angular=0.0),
             battery=100.0,
             last_seen_at=now,
@@ -57,9 +82,18 @@ class FactoryState:
     everything. Durable (PostgreSQL/TimescaleDB) persistence is a later phase.
     """
 
-    def __init__(self, config: MockFactoryConfig, *, seed_mock_robots: bool = True) -> None:
+    def __init__(
+        self,
+        config: MockFactoryConfig,
+        *,
+        seed_mock_robots: bool = True,
+        layout: LayoutVersionContent | None = None,
+        route_id: str = DEFAULT_ROUTE_ID,
+    ) -> None:
         self.config = config
         self._seed_mock_robots = seed_mock_robots
+        self._layout = (layout or default_layout_content()).model_copy(deep=True)
+        self._route_id = route_id
         self.robots: dict[str, Robot] = {}
         self.stations: list[Station] = []
         self.tasks: dict[str, Task] = {}
@@ -68,8 +102,19 @@ class FactoryState:
         self.initialize()
 
     def initialize(self) -> None:
-        self.robots = _initial_robots(self.config.robot_count) if self._seed_mock_robots else {}
-        self.stations = list(STATIONS)
+        self.robots = (
+            _initial_robots(self.config.robot_count, self._layout) if self._seed_mock_robots else {}
+        )
+        self.stations = [
+            Station(
+                id=station.id,
+                name=_station_name(station.type),
+                type=STATION_RUNTIME_TYPES[station.type],
+                x=station.x,
+                y=station.y,
+            )
+            for station in self._layout.stations
+        ]
         self.tasks = {}
         self.alerts = []
         self.metrics = _empty_metrics()
@@ -81,10 +126,55 @@ class FactoryState:
 
     def get_layout(self) -> FactoryLayout:
         return FactoryLayout(
-            width_m=FACTORY_WIDTH_M,
-            height_m=FACTORY_HEIGHT_M,
+            width_m=self._layout.width,
+            height_m=self._layout.height,
             stations=[station.model_copy(deep=True) for station in self.stations],
         )
+
+    @property
+    def layout(self) -> LayoutVersionContent:
+        return self._layout.model_copy(deep=True)
+
+    @property
+    def route_id(self) -> str:
+        return self._route_id
+
+    @property
+    def delivery_route(self) -> LayoutRoute:
+        route = next(
+            (candidate for candidate in self._layout.routes if candidate.id == self._route_id),
+            None,
+        )
+        if route is None:
+            raise ValueError(f"Route '{self._route_id}' not found in active layout")
+        return route.model_copy(deep=True)
+
+    def apply_layout(self, layout: LayoutVersionContent, route_id: str) -> None:
+        if not any(route.id == route_id for route in layout.routes):
+            raise ValueError(f"Route '{route_id}' not found in applied layout")
+        self._layout = layout.model_copy(deep=True)
+        self._route_id = route_id
+
+    def route_waypoints(self, route_key: tuple[str, str]) -> tuple[tuple[float, float], ...]:
+        if route_key[0] == "ANY":
+            charger = next(
+                station
+                for station in self._layout.stations
+                if station.type == StationType.CHARGING_STATION
+            )
+            return ((charger.x, charger.y),)
+        route = next(
+            (
+                candidate
+                for candidate in self._layout.routes
+                if candidate.start_station_id == route_key[0]
+                and candidate.end_station_id == route_key[1]
+            ),
+            None,
+        )
+        if route is None:
+            raise ValueError(f"Unknown route: {route_key}")
+        return tuple((point.x, point.y) for point in route.waypoints)
 
     def list_robots(self) -> list[Robot]:
         return [robot.model_copy(deep=True) for robot in self.robots.values()]
@@ -107,13 +197,14 @@ class FactoryState:
             return False
 
         epoch = datetime(1970, 1, 1, tzinfo=UTC)
+        spawn_x, spawn_y = _spawn_points(self._layout, 1)[0]
         self.robots = {
             robot_id: self.robots.get(robot_id)
             or Robot(
                 id=robot_id,
                 name=robot_id,
                 status=RobotStatus.OFFLINE,
-                pose=Pose(x=IDLE_ZONE_X, y=IDLE_ZONE_Y, yaw=0.0),
+                pose=Pose(x=spawn_x, y=spawn_y, yaw=0.0),
                 velocity=Velocity(linear=0.0, angular=0.0),
                 battery=0.0,
                 last_seen_at=epoch,

@@ -8,9 +8,6 @@ from ev_twin_api.services.factory_state import FactoryState
 
 logger = logging.getLogger("ev_twin_api")
 
-PICKUP_STATION_ID = "BATTERY_BUFFER"
-DROPOFF_STATION_ID = "MARRIAGE_STATION"
-
 
 class TaskService:
     """Generates and drives battery-delivery tasks against FactoryState.
@@ -32,11 +29,12 @@ class TaskService:
 
     def generate_task(self) -> Task:
         sequence_number = len(self._state.tasks) + 1
+        route = self._state.delivery_route
         task = Task(
             task_id=f"TASK-{sequence_number:04d}",
             payload_id=f"BP-{sequence_number:04d}",
-            pickup=PICKUP_STATION_ID,
-            dropoff=DROPOFF_STATION_ID,
+            pickup=route.start_station_id,
+            dropoff=route.end_station_id,
             status=TaskStatus.QUEUED,
             created_at=datetime.now(UTC),
         )
@@ -61,8 +59,9 @@ class TaskService:
         if not candidates:
             return None
 
+        oldest_task = queued_tasks[0]
         pickup_station = next(
-            station for station in self._state.stations if station.id == PICKUP_STATION_ID
+            station for station in self._state.stations if station.id == oldest_task.pickup
         )
         selected_robot = min(
             candidates,
@@ -70,7 +69,7 @@ class TaskService:
                 robot.pose.x - pickup_station.x, robot.pose.y - pickup_station.y
             ),
         )
-        return selected_robot, queued_tasks[0]
+        return selected_robot, oldest_task
 
     def assign(self, robot: Robot, task: Task) -> Task:
         now = datetime.now(UTC)

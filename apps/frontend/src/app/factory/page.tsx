@@ -1,46 +1,37 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import LayoutsPage from "@/app/layouts/page";
 import { AlertList } from "@/components/alerts/alert-list";
+import { useAuth } from "@/components/auth/auth-provider";
 import {
   DEFAULT_FACTORY_MAP_LAYERS,
   FactoryMap,
   type FactoryMapLayers,
 } from "@/components/factory/factory-map";
 import { RobotDrawer } from "@/components/fleet/robot-drawer";
-import { apiClient } from "@/lib/api-client";
-import { defaultFactoryLayout } from "@/lib/factory-layout";
-import { latestAppliedScenario, projectLayoutVersion } from "@/lib/layout-projection";
-import type { FactoryLayout } from "@/schemas/factory";
-import { useFactoryStore } from "@/stores/factory-store";
+import { useAppliedFactoryLayout } from "@/hooks/use-applied-factory-layout";
+import { can } from "@/lib/auth/permissions";
 
 export default function FactoryPage() {
+  const { user } = useAuth();
   const [layers, setLayers] = useState<FactoryMapLayers>(DEFAULT_FACTORY_MAP_LAYERS);
-  const [layout, setLayout] = useState<FactoryLayout>(defaultFactoryLayout);
-  const factoryRevision = useFactoryStore((state) => state.factoryRevision);
+  const layout = useAppliedFactoryLayout();
+  const [editing, setEditing] = useState(false);
   const allLayersVisible = Object.values(layers).every(Boolean);
-
-  useEffect(() => {
-    let active = true;
-    void apiClient.getScenarios()
-      .then(async (scenarios) => {
-        const applied = latestAppliedScenario(scenarios);
-        if (!applied) return;
-        const version = await apiClient.getLayoutVersion(
-          applied.config.layout_id,
-          applied.config.layout_version,
-        );
-        if (active) setLayout(projectLayoutVersion(version));
-      })
-      .catch(() => {
-        // Runtime telemetry remains usable with the documented default layout.
-      });
-    return () => { active = false; };
-  }, [factoryRevision]);
 
   function toggleLayer(layer: keyof FactoryMapLayers) {
     setLayers((current) => ({ ...current, [layer]: !current[layer] }));
   }
+
+  if (editing) return <>
+    <div className="factory-editor-return">
+      <button className="button" type="button" onClick={() => setEditing(false)}>
+        Return to live view
+      </button>
+    </div>
+    <LayoutsPage/>
+  </>;
 
   return <>
     <header className="page-head">
@@ -49,6 +40,9 @@ export default function FactoryPage() {
         <p>Realtime 2D visualization using factory-meter coordinates.</p>
       </div>
       <div className="toolbar" aria-label="Factory map layers">
+        {can(user?.role, "layout:edit") && <button
+          type="button" className="filter" onClick={() => setEditing(true)}
+        >Edit layout</button>}
         <button
           type="button"
           className={`filter ${allLayersVisible ? "active" : ""}`}
