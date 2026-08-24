@@ -1,6 +1,18 @@
 import pytest
 from pydantic import ValidationError
+from twin_core.default_layout import default_layout_content
 from twin_core.models.layout import LayoutVersionContent
+
+
+def test_canonical_layout_matches_full_factory_footprint() -> None:
+    layout = default_layout_content()
+
+    assert (layout.width, layout.height) == (120, 40)
+    assert layout.config.robot_count == 5
+    assert (
+        layout.routes[0].waypoints[0].x,
+        layout.routes[0].waypoints[0].y,
+    ) == (layout.stations[0].x, layout.stations[0].y)
 
 
 def valid_layout() -> dict[str, object]:

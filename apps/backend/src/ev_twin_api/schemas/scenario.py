@@ -3,6 +3,7 @@ from enum import StrEnum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from twin_core.default_layout import DEFAULT_LAYOUT_ID, DEFAULT_LAYOUT_VERSION, DEFAULT_ROUTE_ID
 
 from ev_twin_api.schemas.base import UtcDatetime
 
@@ -32,9 +33,9 @@ class ScenarioConfig(BaseModel):
     travel_time: float = Field(gt=0.0, le=86_400.0)
     loading_time: float = Field(gt=0.0, le=86_400.0)
     simulation_time: float = Field(gt=0.0, le=86_400.0)
-    layout_id: str = Field(default="LAYOUT-DEFAULT", min_length=1, max_length=80)
-    layout_version: int = Field(default=1, ge=1)
-    route_id: str = Field(default="BATTERY_DELIVERY", min_length=1, max_length=80)
+    layout_id: str = Field(default=DEFAULT_LAYOUT_ID, min_length=1, max_length=80)
+    layout_version: int = Field(default=DEFAULT_LAYOUT_VERSION, ge=1)
+    route_id: str = Field(default=DEFAULT_ROUTE_ID, min_length=1, max_length=80)
     robot_speed_mps: float = Field(default=1.0, gt=0.0, le=10.0)
     charger_count: int = Field(default=1, ge=1, le=20)
     route_distance_m: float = Field(default=30.0, gt=0.0, le=100_000.0)

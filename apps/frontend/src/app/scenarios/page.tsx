@@ -151,8 +151,17 @@ export default function ScenariosPage() {
       ]);
       setBaseline(loadedBaseline);
       setLayouts(loadedLayouts);
-      if (loadedLayouts[0]) {
-        setSelectedLayout(await apiClient.getLayout(loadedLayouts[0].id));
+      const query = new URLSearchParams(window.location.search);
+      const requestedId = query.get("layout");
+      const requestedVersion = Number(query.get("version"));
+      const requested = loadedLayouts.find((layout) => layout.id === requestedId);
+      const initial = requested ?? loadedLayouts[0];
+      if (initial) {
+        setSelectedLayout(
+          requested && Number.isInteger(requestedVersion) && requestedVersion > 0
+            ? await apiClient.getLayoutVersion(requested.id, requestedVersion)
+            : await apiClient.getLayout(initial.id),
+        );
       }
       setLoadState("ready");
     } catch (error) {
