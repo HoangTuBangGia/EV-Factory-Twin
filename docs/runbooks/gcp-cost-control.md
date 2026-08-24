@@ -6,6 +6,9 @@ This runbook inventories the billable resources created for the GCP-native MVP
 in project `ev-factory-twin`. Use it to monitor costs during acceptance and to
 remove the temporary stack before 2026-09-05.
 
+For SSH, deployment, Cloud SQL Proxy, service operation, acceptance, and
+teardown commands, see the [GCP operations runbook](gcp-operations.md).
+
 Never paste database passwords, JWT secrets, edge shared secrets, or service
 account credentials into tickets, screenshots, shell history, or this document.
 
