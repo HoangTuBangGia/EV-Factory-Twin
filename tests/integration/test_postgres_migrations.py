@@ -16,7 +16,7 @@ def migration_files() -> list[Path]:
 
 def test_migrations_are_ordered_and_parseable() -> None:
     files = migration_files()
-    assert [path.name[:4] for path in files] == [f"{index:04d}" for index in range(1, 10)]
+    assert [path.name[:4] for path in files] == [f"{index:04d}" for index in range(1, 11)]
     for path in files:
         assert parse_sql(path.read_text(encoding="utf-8")), path.name
 

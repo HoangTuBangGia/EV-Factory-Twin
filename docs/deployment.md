@@ -37,6 +37,13 @@ MOCK_FACTORY_ENABLED=false
 Store secrets in Secret Manager. Never put database passwords, JWT secrets, or
 edge secrets in Git or frontend variables.
 
+The Cloud Run Backend uses the dedicated `ev-twin-api` service account with
+Cloud SQL Client and secret-level Secret Accessor grants. PostgreSQL connections
+use the non-administrator `ev_twin_app` role provisioned before migration `0010`.
+The reproducible operator flow is documented in
+`docs/runbooks/gcp-cloud-run-backend.md`; use the root Make targets rather than
+ad-hoc console configuration.
+
 ## Frontend environment
 
 ```dotenv
@@ -77,7 +84,9 @@ make postgres-migrate-docker
 ```
 
 The second command must report every migration as already applied. Do not use
-the baseline target for a new or partially migrated database.
+the baseline target for a new or partially migrated database. After creating
+the `ev_twin_app` Cloud SQL user, normal migration execution applies `0010` to
+grant only runtime table and sequence access.
 
 ## Edge and acceptance
 
