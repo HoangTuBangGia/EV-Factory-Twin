@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 
 script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repository_root="${EV_TWIN_ROOT:-$(CDPATH= cd -- "${script_dir}/../.." && pwd)}"
@@ -15,8 +15,8 @@ done
 
 source "${ros_setup}"
 source "${workspace_setup}"
+set -u
 
 exec ros2 launch amr_gazebo sim.launch.py \
   gz_args:="${GZ_SIM_ARGS:--s -r}" \
   robots_config:="${ROBOTS_CONFIG:-${repository_root}/ros2_ws/src/amr_gazebo/config/robots.json}"
-
