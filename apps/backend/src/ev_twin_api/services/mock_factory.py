@@ -7,8 +7,8 @@ from datetime import UTC, datetime
 from typing import Annotated, cast
 
 from fastapi import Depends, Request
+from twin_core.models.layout import LayoutVersionContent
 
-from ev_twin_api.core.routes import CHARGER_ROUTE_KEY, ROUTES
 from ev_twin_api.schemas.alert import FactoryAlert
 from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.schemas.robot import RobotStatus
@@ -29,6 +29,7 @@ from ev_twin_api.services.task_service import TaskService
 from ev_twin_api.services.websocket_manager import WebSocketManager
 
 logger = logging.getLogger("ev_twin_api")
+CHARGER_ROUTE_KEY: tuple[str, str] = ("ANY", "CHARGING_STATION")
 
 
 class MockFactory:
@@ -94,9 +95,9 @@ class MockFactory:
             yield
 
     def assign_route(self, robot_id: str, route_key: tuple[str, str]) -> None:
-        if route_key not in ROUTES:
-            raise ValueError(f"Unknown route: {route_key}")
-        self._active_movements[robot_id] = RouteProgress(route_key=route_key)
+        self._active_movements[robot_id] = RouteProgress(
+            waypoints=self._state.route_waypoints(route_key)
+        )
 
     def clear_route(self, robot_id: str) -> None:
         self._active_movements.pop(robot_id, None)
@@ -112,6 +113,17 @@ class MockFactory:
         """
         for field_name in MockFactoryConfig.model_fields:
             setattr(self.config, field_name, getattr(new_config, field_name))
+
+    @property
+    def layout(self) -> LayoutVersionContent:
+        return self._state.layout
+
+    @property
+    def route_id(self) -> str:
+        return self._state.route_id
+
+    def apply_layout(self, layout: LayoutVersionContent, route_id: str) -> None:
+        self._state.apply_layout(layout, route_id)
 
     async def start(self) -> None:
         if self._task is not None and not self._task.done():

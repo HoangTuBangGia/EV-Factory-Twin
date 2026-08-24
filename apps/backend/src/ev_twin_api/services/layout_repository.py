@@ -5,6 +5,11 @@ from typing import Any, Protocol
 from uuid import UUID
 
 from sqlalchemy import text
+from twin_core.default_layout import (
+    DEFAULT_LAYOUT_ID,
+    DEFAULT_LAYOUT_VERSION,
+    default_layout_content,
+)
 from twin_core.models.layout import LayoutSummary, LayoutVersion, LayoutVersionContent
 
 from ev_twin_api.core.database import Database
@@ -148,63 +153,13 @@ class InMemoryLayoutRepository:
     def _seed_default(self) -> None:
         created_by = UUID("00000000-0000-0000-0000-000000000001")
         created_at = datetime(2026, 8, 22, tzinfo=UTC)
-        version = LayoutVersion.model_validate(
-            {
-                "layout_id": "LAYOUT-DEFAULT",
-                "name": "Battery transfer zone",
-                "version": 1,
-                "created_by": created_by,
-                "created_at": created_at,
-                "width": 20,
-                "height": 15,
-                "stations": [
-                    {"id": "BATTERY_BUFFER", "type": "BATTERY_BUFFER", "x": 2, "y": 4},
-                    {"id": "MARRIAGE_STATION", "type": "MARRIAGE_STATION", "x": 16, "y": 8},
-                    {"id": "CHARGING_STATION", "type": "CHARGING_STATION", "x": 2, "y": 12},
-                ],
-                "routes": [
-                    {
-                        "id": "BATTERY_DELIVERY",
-                        "start_station_id": "BATTERY_BUFFER",
-                        "end_station_id": "MARRIAGE_STATION",
-                        "waypoints": [
-                            {"x": 2, "y": 4},
-                            {"x": 8, "y": 4},
-                            {"x": 12, "y": 8},
-                            {"x": 16, "y": 8},
-                        ],
-                    }
-                ],
-                "no_go_zones": [
-                    {
-                        "id": "NO_GO_01",
-                        "points": [
-                            {"x": 8.4, "y": 10.8},
-                            {"x": 12.8, "y": 10.8},
-                            {"x": 12.8, "y": 13.6},
-                            {"x": 8.4, "y": 13.6},
-                        ],
-                    }
-                ],
-                "congestion_zones": [
-                    {
-                        "id": "CONGESTION_01",
-                        "delay_multiplier": 1.25,
-                        "points": [
-                            {"x": 10, "y": 6},
-                            {"x": 13, "y": 6},
-                            {"x": 13, "y": 9},
-                            {"x": 10, "y": 9},
-                        ],
-                    }
-                ],
-                "config": {
-                    "robot_count": 2,
-                    "demand_interval_seconds": 8,
-                    "robot_speed_mps": 1,
-                    "charger_count": 1,
-                },
-            }
+        version = LayoutVersion(
+            layout_id=DEFAULT_LAYOUT_ID,
+            name="EV battery intralogistics plant",
+            version=DEFAULT_LAYOUT_VERSION,
+            created_by=created_by,
+            created_at=created_at,
+            **default_layout_content().model_dump(),
         )
         self._layouts[version.layout_id] = LayoutSummary(
             id=version.layout_id,
