@@ -14,6 +14,17 @@ def test_edge_shell_wrappers_have_valid_bash_syntax() -> None:
         subprocess.run(["bash", "-n", script], check=True)
 
 
+def test_edge_shell_wrappers_enable_nounset_after_ros_setup() -> None:
+    for script in (SIMULATION_SCRIPT, BRIDGE_SCRIPT):
+        lines = script.read_text().splitlines()
+        nounset_line = lines.index("set -u")
+        source_lines = [index for index, line in enumerate(lines) if line.startswith("source ")]
+
+        assert lines[1] == "set -eo pipefail"
+        assert source_lines
+        assert nounset_line > max(source_lines)
+
+
 def test_gcp_edge_files_do_not_contain_developer_home_paths() -> None:
     paths = (
         SIMULATION_SCRIPT,
