@@ -46,7 +46,7 @@ describe("FactoryMap without WebGL", () => {
     expect(container.querySelectorAll(".robot-marker")).toHaveLength(fixtureRobots.length);
     expect(container.querySelector('[data-robot-id="AMR-01"]')).toHaveAttribute(
       "transform",
-      "translate(11.5 -1.7) rotate(0)",
+      "translate(40 0) rotate(0)",
     );
     expect(container.querySelector(".map-hud")).not.toBeInTheDocument();
 
@@ -95,8 +95,8 @@ describe("FactoryMap without WebGL", () => {
       ...defaultFactoryLayout,
       id: "LAYOUT-WIDE",
       version: 2,
-      width: 30,
-      height: 20,
+      width: 70,
+      height: 40,
       stations: defaultFactoryLayout.stations.map((station) => (
         station.type === "BATTERY_BUFFER" ? { ...station, x: 4, y: 5 } : station
       )),
@@ -105,9 +105,9 @@ describe("FactoryMap without WebGL", () => {
 
     expect(screen.getByRole("img", { name: "2D factory map" })).toHaveAttribute(
       "viewBox",
-      "0 0 30 20",
+      "0 0 70 40",
     );
-    expect(container.querySelector('.fm-zone circle[cx="4"][cy="15"]')).toBeInTheDocument();
-    expect(container.querySelector(".map-scale")).toHaveTextContent("30 × 20 m");
+    expect(container.querySelector('.fm-zone circle[cx="4"][cy="35"]')).toBeInTheDocument();
+    expect(container.querySelector(".map-scale")).toHaveTextContent("70 × 40 m");
   });
 });

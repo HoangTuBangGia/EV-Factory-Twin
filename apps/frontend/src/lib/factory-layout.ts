@@ -4,22 +4,28 @@ export interface WorldRect { x0: number; y0: number; x1: number; y1: number }
 
 export const defaultFactoryLayout = factoryLayoutSchema.parse({
   id: "LAYOUT-DEFAULT",
-  name: "Battery transfer zone",
-  version: 1,
-  width: 20,
-  height: 15,
+  name: "EV battery intralogistics plant",
+  version: 2,
+  width: 120,
+  height: 40,
   stations: [
-    { id: "BATTERY_BUFFER", type: "BATTERY_BUFFER", x: 2, y: 4 },
-    { id: "MARRIAGE_STATION", type: "MARRIAGE_STATION", x: 16, y: 8 },
-    { id: "CHARGING_STATION", type: "CHARGING_STATION", x: 2, y: 12 },
+    { id: "BATTERY_BUFFER", type: "BATTERY_BUFFER", x: 32, y: 29 },
+    { id: "MARRIAGE_STATION", type: "MARRIAGE_STATION", x: 52, y: 6 },
+    { id: "CHARGING_STATION", type: "CHARGING_STATION", x: 32, y: 11 },
   ],
   routes: [{
     id: "BATTERY_DELIVERY",
-    waypoints: [{ x: 2, y: 4 }, { x: 8, y: 4 }, { x: 12, y: 8 }, { x: 16, y: 8 }],
+    waypoints: [
+      { x: 32, y: 29 },
+      { x: 32, y: 20 },
+      { x: 40, y: 20 },
+      { x: 52, y: 20 },
+      { x: 52, y: 6 },
+    ],
   }],
   no_go_zones: [{
-    id: "NO_GO_01",
-    points: [{ x: 8.4, y: 10.8 }, { x: 12.8, y: 10.8 }, { x: 12.8, y: 13.6 }, { x: 8.4, y: 13.6 }],
+    id: "GIGA_PRESS_CLEARANCE",
+    points: [{ x: 44, y: 27 }, { x: 58, y: 27 }, { x: 58, y: 37 }, { x: 44, y: 37 }],
   }],
 });
 

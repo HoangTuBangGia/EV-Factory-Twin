@@ -6,11 +6,11 @@ import type { Task } from "@/schemas/task";
 const now = "2026-08-11T04:00:00.000Z";
 
 export const fixtureRobots: Robot[] = [
-  { id: "AMR-01", name: "Atlas 01", status: "DELIVERING", battery: 82, pose: { x: 11.5, y: 9.2, yaw: 0 }, velocity: { linear: 1.1, angular: 0 }, task_id: "TASK-101", payload_id: "BP-101", last_seen_at: now },
-  { id: "AMR-02", name: "Atlas 02", status: "MOVING_TO_PICKUP", battery: 64, pose: { x: 6.2, y: 11.4, yaw: -0.4 }, velocity: { linear: 0.9, angular: 0.1 }, task_id: "TASK-102", payload_id: null, last_seen_at: now },
-  { id: "AMR-03", name: "Atlas 03", status: "IDLE", battery: 96, pose: { x: 9.1, y: 4.5, yaw: 1.57 }, velocity: { linear: 0, angular: 0 }, task_id: null, payload_id: null, last_seen_at: now },
-  { id: "AMR-04", name: "Atlas 04", status: "PICKING", battery: 47, pose: { x: 3.2, y: 10.5, yaw: 0 }, velocity: { linear: 0, angular: 0 }, task_id: "TASK-103", payload_id: "BP-103", last_seen_at: now },
-  { id: "AMR-05", name: "Atlas 05", status: "CHARGING", battery: 16, pose: { x: 3.1, y: 2.1, yaw: 3.14 }, velocity: { linear: 0, angular: 0 }, task_id: null, payload_id: null, last_seen_at: now },
+  { id: "AMR-01", name: "Atlas 01", status: "DELIVERING", battery: 82, pose: { x: 40, y: 20, yaw: 0 }, velocity: { linear: 1.1, angular: 0 }, task_id: "TASK-101", payload_id: "BP-101", last_seen_at: now },
+  { id: "AMR-02", name: "Atlas 02", status: "MOVING_TO_PICKUP", battery: 64, pose: { x: 32, y: 24, yaw: -1.57 }, velocity: { linear: 0.9, angular: 0.1 }, task_id: "TASK-102", payload_id: null, last_seen_at: now },
+  { id: "AMR-03", name: "Atlas 03", status: "IDLE", battery: 96, pose: { x: 30.8, y: 13, yaw: 0 }, velocity: { linear: 0, angular: 0 }, task_id: null, payload_id: null, last_seen_at: now },
+  { id: "AMR-04", name: "Atlas 04", status: "PICKING", battery: 47, pose: { x: 32, y: 29, yaw: 0 }, velocity: { linear: 0, angular: 0 }, task_id: "TASK-103", payload_id: "BP-103", last_seen_at: now },
+  { id: "AMR-05", name: "Atlas 05", status: "CHARGING", battery: 16, pose: { x: 32, y: 11, yaw: 3.14 }, velocity: { linear: 0, angular: 0 }, task_id: null, payload_id: null, last_seen_at: now },
 ];
 
 export const fixtureTasks: Task[] = [

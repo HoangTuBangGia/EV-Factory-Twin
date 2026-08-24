@@ -12,7 +12,6 @@ import type { FactoryLayout, WorldPoint } from "@/schemas/factory";
 import type { Robot } from "@/schemas/robot";
 import type { FactoryMapLayers } from "./factory-map";
 import {
-  AMR_FLEET_DATA,
   FACTORY_EQUIPMENT_DATA,
   FACTORY_ZONES,
   type MachineEquipment,
@@ -34,6 +33,14 @@ interface HoveredItem {
 }
 
 type ViewPreset = "full" | "zone-a" | "zone-b" | "zone-c" | "u-line" | "robot";
+
+export interface FactoryPlantMapEditor {
+  routeDrawing: boolean;
+  routeDraft: WorldPoint[];
+  onStationMove: (stationId: string, point: WorldPoint) => void;
+  onRoutePoint: (point: WorldPoint) => void;
+  onRouteStation: (stationId: string) => void;
+}
 
 const FULL_VIEW: ViewBox = { x: -10, y: -26, width: 140, height: 52 };
 
@@ -72,12 +79,15 @@ function equipmentLabel(equipment: MachineEquipment) {
   }
 }
 
-export function FactoryPlantMap2D({ robots, selectedRobotId, onSelect, layers, layout }: {
+export function FactoryPlantMap2D({
+  robots, selectedRobotId, onSelect, layers, layout, editor,
+}: {
   robots: Robot[];
   selectedRobotId: string | null;
   onSelect: (id: string | null) => void;
   layers: FactoryMapLayers;
   layout: FactoryLayout;
+  editor?: FactoryPlantMapEditor;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [viewBox, setViewBox] = useState<ViewBox>(FULL_VIEW);
@@ -92,6 +102,7 @@ export function FactoryPlantMap2D({ robots, selectedRobotId, onSelect, layers, l
   const [measureCurrent, setMeasureCurrent] = useState<{ x: number; z: number } | null>(null);
   const [measureEnd, setMeasureEnd] = useState<{ x: number; z: number } | null>(null);
   const [hoveredItem, setHoveredItem] = useState<HoveredItem | null>(null);
+  const [draggingStationId, setDraggingStationId] = useState<string | null>(null);
 
   const trackedRobot = robots[0] ?? null;
   const trackedPoint = useMemo(
@@ -110,6 +121,15 @@ export function FactoryPlantMap2D({ robots, selectedRobotId, onSelect, layers, l
     const world = point.matrixTransform(matrix.inverse());
     return { x: world.x, z: world.y };
   }, []);
+
+  const screenToLayout = useCallback((clientX: number, clientY: number) => {
+    const point = screenToWorld(clientX, clientY);
+    const snap = (value: number) => Math.round(value * 2) / 2;
+    return {
+      x: Math.min(layout.width, Math.max(0, snap(point.x))),
+      y: Math.min(layout.height, Math.max(0, snap(layout.height / 2 - point.z))),
+    };
+  }, [layout.height, layout.width, screenToWorld]);
 
   function setPreset(preset: ViewPreset) {
     setActivePreset(preset);
@@ -135,6 +155,10 @@ export function FactoryPlantMap2D({ robots, selectedRobotId, onSelect, layers, l
 
   function handlePointerDown(event: ReactPointerEvent<SVGSVGElement>) {
     if (event.button !== 0) return;
+    if (editor?.routeDrawing) {
+      editor.onRoutePoint(screenToLayout(event.clientX, event.clientY));
+      return;
+    }
     if (isMeasuring) {
       const point = screenToWorld(event.clientX, event.clientY);
       if (!measureStart || measureEnd) {
@@ -153,6 +177,13 @@ export function FactoryPlantMap2D({ robots, selectedRobotId, onSelect, layers, l
   }
 
   function handlePointerMove(event: ReactPointerEvent<SVGSVGElement>) {
+    if (draggingStationId && editor) {
+      editor.onStationMove(
+        draggingStationId,
+        screenToLayout(event.clientX, event.clientY),
+      );
+      return;
+    }
     if (isMeasuring && measureStart && !measureEnd) {
       setMeasureCurrent(screenToWorld(event.clientX, event.clientY));
       return;
@@ -170,6 +201,7 @@ export function FactoryPlantMap2D({ robots, selectedRobotId, onSelect, layers, l
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
     setIsPanning(false);
+    setDraggingStationId(null);
   }
 
   function handleWheel(event: ReactWheelEvent<SVGSVGElement>) {
@@ -336,9 +368,6 @@ export function FactoryPlantMap2D({ robots, selectedRobotId, onSelect, layers, l
       </g>
 
       {layers.noGoZones && <g className="plant-no-go">
-        <rect x="44" y="-17" width="14" height="10" fill="url(#plant-hazard)" fillOpacity=".22" stroke="#f97316" strokeWidth=".15"/>
-        <rect x="65" y="-17" width="20" height="10" fill="url(#plant-hazard)" fillOpacity=".25" stroke="#ef4444" strokeWidth=".15"/>
-        <rect x="94" y="-10" width="8" height="20" fill="url(#plant-hazard)" fillOpacity=".2" stroke="#ef4444" strokeWidth=".15"/>
         {layout.no_go_zones.map((zone) => <polygon
           key={zone.id}
           points={zone.points.map((point) => {
@@ -350,16 +379,6 @@ export function FactoryPlantMap2D({ robots, selectedRobotId, onSelect, layers, l
       </g>}
 
       {layers.routes && <g className="plant-routes">
-        {AMR_FLEET_DATA.map((route) => <g key={route.id} className="plant-design-route">
-          <path
-            d={route.path.map((point, index) => `${index ? "L" : "M"}${point.x} ${point.z}`).join(" ")}
-            fill="none" stroke={route.color} strokeWidth=".22" strokeDasharray=".8 .4" opacity=".62"
-          />
-          {route.path.map((point, index) => <circle
-            key={`${route.id}-${index}`} cx={point.x} cy={point.z} r=".27"
-            fill="#0f172a" stroke={route.color} strokeWidth=".1"
-          />)}
-        </g>)}
         {layout.routes.map((route) => <path
           key={route.id} className="fm-lane plant-live-route"
           d={route.waypoints.map((point, index) => {
@@ -367,13 +386,16 @@ export function FactoryPlantMap2D({ robots, selectedRobotId, onSelect, layers, l
             return `${index ? "L" : "M"}${mapped.x} ${mapped.z}`;
           }).join(" ")}
           fill="none" stroke="#7fe9dc" strokeWidth=".42" strokeDasharray=".8 .35"
+          markerEnd={showFlow ? "url(#plant-flow-arrow)" : undefined}
         />)}
-      </g>}
-
-      {showFlow && layers.routes && <g className="plant-flow" fill="none" stroke="#34d399" strokeWidth=".32" markerEnd="url(#plant-flow-arrow)">
-        <path d="M6 -6H18"/><path d="M32 0H48"/><path d="M58 -11H68"/>
-        <path d="M52 14H62"/><path d="M62 14H74"/><path d="M74 14L82 8"/>
-        <path d="M82 8L70 4"/><path d="M70 4H86"/><path d="M86 0H96"/><path d="M104 -5H116"/>
+        {editor?.routeDrawing && editor.routeDraft.length > 0 && <path
+          className="plant-route-draft"
+          d={editor.routeDraft.map((point, index) => {
+            const mapped = livePoint(point, layout);
+            return `${index ? "L" : "M"}${mapped.x} ${mapped.z}`;
+          }).join(" ")}
+          fill="none" stroke="#facc15" strokeWidth=".55" strokeDasharray=".65 .3"
+        />}
       </g>}
 
       {layers.stations && <g className="plant-equipment-layer">
@@ -410,17 +432,32 @@ export function FactoryPlantMap2D({ robots, selectedRobotId, onSelect, layers, l
 
         {layout.stations.map((station) => {
           const point = livePoint(station, layout);
-          return <g key={station.id} className="fm-zone plant-live-station">
+          return <g
+            key={station.id}
+            className={`fm-zone plant-live-station${editor ? " editable" : ""}`}
+            role={editor ? "button" : undefined}
+            tabIndex={editor ? 0 : undefined}
+            aria-label={editor ? `Route station ${station.id}` : undefined}
+            onPointerDown={(event) => {
+              if (!editor) return;
+              event.stopPropagation();
+              if (editor.routeDrawing) {
+                editor.onRouteStation(station.id);
+                return;
+              }
+              svgRef.current?.setPointerCapture(event.pointerId);
+              setDraggingStationId(station.id);
+            }}
+            onKeyDown={(event) => {
+              if (!editor?.routeDrawing || (event.key !== "Enter" && event.key !== " ")) return;
+              editor.onRouteStation(station.id);
+            }}
+          >
             <circle cx={point.x} cy={point.z} r=".75"/>
             <text x={point.x + 1} y={point.z - .65}>{station.type.replaceAll("_", " ")}</text>
           </g>;
         })}
       </g>}
-
-      <g className="plant-live-layout">
-        <rect x="0" y={-layout.height / 2} width={layout.width} height={layout.height}/>
-        <text x=".6" y={-layout.height / 2 + 1.2}>LIVE LAYOUT · {layout.width} × {layout.height} m</text>
-      </g>
 
       <g id="live-amr-fleet-2d">
         {robots.map((robot) => {
