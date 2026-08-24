@@ -40,7 +40,13 @@ The MVP stays at one maximum instance because realtime fleet state is in-memory.
   service account with Cloud SQL Client, and three empty Backend secrets.
 - Added the explicit Cloud Build Builder binding required because this project
   resolves builds to its Compute Engine default service account.
-- Migration apply, image build, Cloud Run deploy, and hosted acceptance remain pending.
+- Applied migration `0010` and verified the `ev_twin_app` runtime identity and
+  table privileges.
+- Cloud Build `af15361d-28d1-49a9-bbd8-8b7b861fc0cd` published image `93ffb17`
+  with digest `sha256:fb3ab4650673156f42cdfacca9ef0d4e99c46136280f920990a432a9e0d4b1a9`.
+- Cloud Run revision `ev-twin-api-00003-lkf` serves 100 percent of traffic.
+  Health, unauthenticated rejection, login, and exact CORS preflight for both
+  Vercel origins passed.
 
 ## CI / Build Impact
 

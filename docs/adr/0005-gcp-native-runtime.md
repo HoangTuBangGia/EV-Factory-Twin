@@ -7,7 +7,8 @@ ADR-0004 Supabase authentication choices.
 
 ## Decision
 
-- Cloud Run hosts Next.js and FastAPI as separate services.
+- Vercel hosts Next.js; Cloud Run hosts FastAPI. Two isolated Vercel projects
+  allow the team Render stack and the GCP acceptance stack to coexist.
 - Cloud SQL for PostgreSQL 17 is the only application database.
 - The existing GCE VM hosts ROS 2 Jazzy, Gazebo Harmonic, and the trusted bridge.
 - FastAPI owns authentication and issues HS256 JWT access tokens valid for eight hours.

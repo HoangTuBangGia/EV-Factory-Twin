@@ -32,6 +32,7 @@ def test_cloud_build_uses_backend_dockerfile_and_immutable_image_input() -> None
 def test_cloud_run_target_preserves_mvp_runtime_boundaries() -> None:
     makefile = MAKEFILE.read_text(encoding="utf-8")
 
+    assert "https://c3-app-078.vercel.app,https://ev-factory-twin-gcp.vercel.app" in makefile
     assert "gcp-cloud-build-access:" in makefile
     assert "--role=roles/cloudbuild.builds.builder" in makefile
     assert '--service-account="$(GCP_BACKEND_SERVICE_ACCOUNT_EMAIL)"' in makefile

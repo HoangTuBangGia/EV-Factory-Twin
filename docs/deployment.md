@@ -3,21 +3,22 @@
 The authoritative MVP deployment is GCP-native:
 
 ```text
-Browser → Cloud Run Next.js → Cloud Run FastAPI → Cloud SQL PostgreSQL 17
-                                  ↑
-                         HTTPS trusted bridge
-                                  ↑
-                    GCE ROS 2 Jazzy + Gazebo Harmonic
+Browser → Vercel Next.js → Cloud Run FastAPI → Cloud SQL PostgreSQL 17
+                              ↑
+                     HTTPS trusted bridge
+                              ↑
+                GCE ROS 2 Jazzy + Gazebo Harmonic
 ```
 
 ## Runtime services
 
-- `ev-twin-web`: public Cloud Run frontend.
+- `c3-app-078` and `ev-factory-twin-gcp`: isolated Vercel frontend projects.
 - `ev-twin-api`: public Cloud Run API with explicit CORS for the frontend URL.
 - Cloud SQL PostgreSQL 17: private persistence; no browser access.
 - `ev-twin-edge-01`: GCE ROS/Gazebo and telemetry/command bridge.
 
-Use generated `*.run.app` URLs for the MVP; a custom domain is not required.
+Use generated `*.run.app` and `*.vercel.app` URLs for the MVP; a custom domain
+is not required.
 
 ## Backend environment
 
@@ -30,7 +31,7 @@ AUTH_JWT_ISSUER=ev-factory-twin-api
 AUTH_JWT_AUDIENCE=ev-factory-twin-browser
 AUTH_ACCESS_TOKEN_TTL_SECONDS=28800
 EDGE_TELEMETRY_SHARED_SECRET=<independent-random-secret>
-CORS_ORIGINS=https://EV_TWIN_WEB.run.app
+CORS_ORIGINS=https://c3-app-078.vercel.app,https://ev-factory-twin-gcp.vercel.app
 MOCK_FACTORY_ENABLED=false
 ```
 
@@ -98,4 +99,5 @@ Cloud SQL version, and GCE services.
 ## Teardown
 
 Before 2026-09-05 teardown, export required audit/results. Delete Cloud Run,
-Cloud SQL, GCE, static IP, and unused firewall resources, then confirm billing stops.
+Cloud SQL, GCE, static IP, and unused firewall resources, then remove the
+temporary Vercel GCP project and confirm billing stops.

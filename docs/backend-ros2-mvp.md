@@ -12,7 +12,7 @@ The acceptance path is:
 ```
 
 ROS 2 Jazzy and Gazebo Harmonic run at the edge in Distrobox `ros-jazzy`.
-Cloud Run hosts FastAPI and Next.js, while Cloud SQL PostgreSQL 17
+Cloud Run hosts FastAPI, Vercel hosts Next.js, and Cloud SQL PostgreSQL 17
 stores durable state. The browser never connects to ROS DDS.
 
 ## Roles
