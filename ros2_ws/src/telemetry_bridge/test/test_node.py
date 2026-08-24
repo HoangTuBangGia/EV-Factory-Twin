@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from nav_msgs.msg import Odometry
 from telemetry_bridge.node import (
+    HTTP_TIMEOUT_SECONDS,
     LatestWorker,
     QueueWorker,
     RejectRedirectHandler,
@@ -155,6 +156,7 @@ def test_http_client_rejects_redirect_without_forwarding_secret():
 
 
 def test_retry_classification():
+    assert HTTP_TIMEOUT_SECONDS >= 5
     assert is_retryable_status(429)
     assert is_retryable_status(500)
     assert not is_retryable_status(400)

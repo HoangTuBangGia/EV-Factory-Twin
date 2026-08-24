@@ -38,6 +38,7 @@ STATUSES = {
 RETRYABLE_STATUSES = {429}
 MAX_ATTEMPTS = 4
 MAX_BACKOFF_SECONDS = 1.0
+HTTP_TIMEOUT_SECONDS = 5.0
 
 
 @dataclass
@@ -278,7 +279,7 @@ class TelemetryBridge(Node):
                     {"Content-Type": "application/json", "Authorization": "Bearer " + secret},
                 )
                 try:
-                    with opener.open(request, timeout=2) as response:
+                    with opener.open(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
                         return response.status
                 except urllib.error.HTTPError as error:
                     return error.code
@@ -357,7 +358,7 @@ class TelemetryBridge(Node):
             endpoint, headers={"Authorization": "Bearer " + self._secret}
         )
         try:
-            with self._opener.open(request, timeout=2) as response:
+            with self._opener.open(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
                 payload = json.loads(response.read())
         except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError):
             return
@@ -420,7 +421,7 @@ class TelemetryBridge(Node):
             {"Content-Type": "application/json", "Authorization": "Bearer " + self._secret},
         )
         try:
-            with self._opener.open(request, timeout=2) as response:
+            with self._opener.open(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
                 return response.status < 300
         except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError):
             return False

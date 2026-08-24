@@ -91,6 +91,19 @@ async def test_bridge_degraded_and_disconnect_share_one_condition() -> None:
 
 
 @pytest.mark.asyncio
+async def test_normal_telemetry_does_not_repeat_database_alert_clears() -> None:
+    now = datetime.now(UTC)
+    service, state, repository, _ = await setup(now)
+    repository.clear_alert = AsyncMock(wraps=repository.clear_alert)  # type: ignore[method-assign]
+    telemetry = robot_to_telemetry(state.get_robot("AMR-01"))
+
+    await service.note_telemetry(telemetry, now)
+    await service.note_telemetry(telemetry, now)
+
+    repository.clear_alert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_congestion_uses_applied_layout_zone_and_clears_on_exit() -> None:
     now = datetime.now(UTC)
     service, state, repository, _ = await setup(now)
