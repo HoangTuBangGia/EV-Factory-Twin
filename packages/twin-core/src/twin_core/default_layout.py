@@ -1,7 +1,7 @@
 from .models.layout import LayoutVersionContent
 
 DEFAULT_LAYOUT_ID = "LAYOUT-DEFAULT"
-DEFAULT_LAYOUT_VERSION = 2
+DEFAULT_LAYOUT_VERSION = 3
 DEFAULT_ROUTE_ID = "BATTERY_DELIVERY"
 
 
@@ -26,6 +26,12 @@ def default_layout_content() -> LayoutVersionContent:
                     "y": 6,
                 },
                 {
+                    "id": "MARRIAGE_STATION_2",
+                    "type": "MARRIAGE_STATION",
+                    "x": 82,
+                    "y": 8,
+                },
+                {
                     "id": "CHARGING_STATION",
                     "type": "CHARGING_STATION",
                     "x": 32,
@@ -35,6 +41,7 @@ def default_layout_content() -> LayoutVersionContent:
             "routes": [
                 {
                     "id": DEFAULT_ROUTE_ID,
+                    "kind": "DELIVERY",
                     "start_station_id": "BATTERY_BUFFER",
                     "end_station_id": "MARRIAGE_STATION",
                     "waypoints": [
@@ -44,7 +51,32 @@ def default_layout_content() -> LayoutVersionContent:
                         {"x": 52, "y": 20},
                         {"x": 52, "y": 6},
                     ],
-                }
+                },
+                {
+                    "id": "BATTERY_DELIVERY_LONG",
+                    "kind": "DELIVERY",
+                    "start_station_id": "BATTERY_BUFFER",
+                    "end_station_id": "MARRIAGE_STATION_2",
+                    "waypoints": [
+                        {"x": 32, "y": 29},
+                        {"x": 32, "y": 20},
+                        {"x": 40, "y": 20},
+                        {"x": 60, "y": 20},
+                        {"x": 82, "y": 20},
+                        {"x": 82, "y": 8},
+                    ],
+                },
+                {
+                    "id": "CHARGER_LINK",
+                    "kind": "SUPPORT",
+                    "start_station_id": "CHARGING_STATION",
+                    "end_station_id": "BATTERY_BUFFER",
+                    "waypoints": [
+                        {"x": 32, "y": 11},
+                        {"x": 32, "y": 20},
+                        {"x": 32, "y": 29},
+                    ],
+                },
             ],
             "no_go_zones": [
                 {

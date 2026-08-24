@@ -16,6 +16,7 @@ const layout = {
   ],
   routes: [{
     id: "DELIVERY",
+    kind: "DELIVERY",
     start_station_id: "BUFFER",
     end_station_id: "MARRIAGE",
     waypoints: [{ x: 2, y: 4 }, { x: 16, y: 8 }],
@@ -37,7 +38,7 @@ it("projects the immutable API layout into the shared map contract", () => {
   expect(projectLayoutVersion(layout)).toMatchObject({
     id: "LAYOUT-A",
     version: 2,
-    routes: [{ id: "DELIVERY", waypoints: layout.routes[0].waypoints }],
+    routes: [{ id: "DELIVERY", kind: "DELIVERY", waypoints: layout.routes[0].waypoints }],
   });
 });
 

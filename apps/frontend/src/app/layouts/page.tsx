@@ -25,8 +25,8 @@ function initialContent(): LayoutVersionContent {
     stations: defaultFactoryLayout.stations,
     routes: defaultFactoryLayout.routes.map((route) => ({
       ...route,
-      start_station_id: "BATTERY_BUFFER",
-      end_station_id: "MARRIAGE_STATION",
+      start_station_id: route.start_station_id ?? "BATTERY_BUFFER",
+      end_station_id: route.end_station_id ?? "MARRIAGE_STATION",
     })),
     no_go_zones: defaultFactoryLayout.no_go_zones,
     congestion_zones: [{
@@ -79,6 +79,7 @@ function LayoutWorkspace() {
   const [zoneError, setZoneError] = useState<string | null>(null);
   const [routeDrawing, setRouteDrawing] = useState(false);
   const [routeDraft, setRouteDraft] = useState<WorldPoint[]>([]);
+  const [selectedRouteId, setSelectedRouteId] = useState("BATTERY_DELIVERY");
   const parsed = layoutVersionContentSchema.safeParse(draft);
   const preview = useMemo<FactoryLayout | null>(() => parsed.success
     ? contentToMap(
@@ -103,6 +104,7 @@ function LayoutWorkspace() {
       setSelected(loaded);
       setName(loaded.name);
       setDraft(layoutVersionContentSchema.parse(loaded));
+      setSelectedRouteId(loaded.routes[0]?.id ?? "");
       setRouteDrawing(false);
       setRouteDraft([]);
     } catch (error) {
@@ -135,6 +137,7 @@ function LayoutWorkspace() {
     setZoneError(null);
     setRouteDrawing(false);
     setRouteDraft([]);
+    setSelectedRouteId("BATTERY_DELIVERY");
   }
 
   function moveStation(id: string, point: WorldPoint) {
@@ -160,21 +163,23 @@ function LayoutWorkspace() {
   }
 
   function startRouteDrawing() {
+    const route = draft.routes.find((candidate) => candidate.id === selectedRouteId);
+    if (!route) return;
     setRouteDrawing(true);
     setRouteDraft([]);
-    setNotice("Select Battery Buffer, add optional waypoints, then select Marriage Station.");
+    setNotice(`Select ${route.start_station_id}, add waypoints, then select ${route.end_station_id}.`);
   }
 
   function addRoutePoint(point: WorldPoint) {
     if (routeDraft.length === 0) {
-      setNotice("The route must start at Battery Buffer.");
+      setNotice("Select the configured start station before adding waypoints.");
       return;
     }
     setRouteDraft((current) => [...current, point]);
   }
 
   function selectRouteStation(stationId: string) {
-    const route = draft.routes[0];
+    const route = draft.routes.find((candidate) => candidate.id === selectedRouteId);
     const station = draft.stations.find((candidate) => candidate.id === stationId);
     if (!route || !station) return;
     if (routeDraft.length === 0) {
@@ -183,7 +188,7 @@ function LayoutWorkspace() {
         return;
       }
       setRouteDraft([{ x: station.x, y: station.y }]);
-      setNotice("Add waypoints on the floor, then select Marriage Station.");
+      setNotice(`Add waypoints on the floor, then select ${route.end_station_id}.`);
       return;
     }
     if (stationId !== route.end_station_id) {
@@ -193,13 +198,85 @@ function LayoutWorkspace() {
     const waypoints = [...routeDraft, { x: station.x, y: station.y }];
     setDraft((current) => ({
       ...current,
-      routes: current.routes.map((candidate, index) => (
-        index === 0 ? { ...candidate, waypoints } : candidate
+      routes: current.routes.map((candidate) => (
+        candidate.id === selectedRouteId ? { ...candidate, waypoints } : candidate
       )),
     }));
     setRouteDraft([]);
     setRouteDrawing(false);
-    setNotice("Battery-delivery route updated. Save it as an immutable version.");
+    setNotice(`${route.id} updated. Save it as an immutable version.`);
+  }
+
+  function addRoute(kind: "DELIVERY" | "SUPPORT") {
+    const start = draft.stations.find((station) => station.type === (
+      kind === "DELIVERY" ? "BATTERY_BUFFER" : "CHARGING_STATION"
+    ));
+    const destinations = draft.stations.filter((station) => station.type === (
+      kind === "DELIVERY" ? "MARRIAGE_STATION" : "BATTERY_BUFFER"
+    ));
+    if (!start || destinations.length === 0) return;
+    const usedDestinations = new Set(
+      draft.routes.filter((route) => route.kind === kind)
+        .map((route) => route.end_station_id),
+    );
+    const end = destinations.find((station) => !usedDestinations.has(station.id))
+      ?? destinations[0];
+    const prefix = kind === "DELIVERY" ? "BATTERY_DELIVERY" : "SUPPORT_ROUTE";
+    let suffix = draft.routes.filter((route) => route.kind === kind).length + 1;
+    while (draft.routes.some((route) => route.id === `${prefix}_${suffix}`)) suffix += 1;
+    const id = `${prefix}_${suffix}`;
+    setDraft((current) => ({
+      ...current,
+      routes: [...current.routes, {
+        id,
+        kind,
+        start_station_id: start.id,
+        end_station_id: end.id,
+        waypoints: [{ x: start.x, y: start.y }, { x: end.x, y: end.y }],
+      }],
+    }));
+    setSelectedRouteId(id);
+    setRouteDrawing(false);
+    setRouteDraft([]);
+    setNotice(`${id} added. Draw its safe path on the map.`);
+  }
+
+  function removeSelectedRoute() {
+    const route = draft.routes.find((candidate) => candidate.id === selectedRouteId);
+    if (!route) return;
+    const remaining = draft.routes.filter((candidate) => candidate.id !== route.id);
+    if (!remaining.some((candidate) => candidate.kind === "DELIVERY")) {
+      setNotice("A layout must keep at least one delivery route.");
+      return;
+    }
+    setDraft((current) => ({ ...current, routes: remaining }));
+    setSelectedRouteId(remaining[0]?.id ?? "");
+    setRouteDrawing(false);
+    setRouteDraft([]);
+    setNotice(`${route.id} removed from the draft.`);
+  }
+
+  function updateRouteEndpoint(
+    routeIndex: number,
+    field: "start_station_id" | "end_station_id",
+    stationId: string,
+  ) {
+    const station = draft.stations.find((candidate) => candidate.id === stationId);
+    if (!station) return;
+    setDraft((current) => ({
+      ...current,
+      routes: current.routes.map((route, index) => {
+        if (index !== routeIndex) return route;
+        const waypointIndex = field === "start_station_id" ? 0 : route.waypoints.length - 1;
+        return {
+          ...route,
+          [field]: stationId,
+          waypoints: route.waypoints.map((point, pointIndex) => (
+            pointIndex === waypointIndex ? { x: station.x, y: station.y } : point
+          )),
+        };
+      }),
+    }));
   }
 
   function updateWaypoint(routeIndex: number, pointIndex: number, field: "x" | "y", value: number) {
@@ -341,8 +418,17 @@ function LayoutWorkspace() {
 
           <h4 className="editor-section-title">Routes</h4>
           <div className="button-row layout-route-tools">
+            <button className="button" type="button" onClick={() => addRoute("DELIVERY")}>
+              Add delivery route
+            </button>
+            <button className="button" type="button" onClick={() => addRoute("SUPPORT")}>
+              Add support route
+            </button>
             <button className="button" type="button" onClick={startRouteDrawing}>
-              {routeDrawing ? "Restart route" : "Draw route on map"}
+              {routeDrawing ? "Restart selected route" : "Draw selected route"}
+            </button>
+            <button className="button danger" type="button" onClick={removeSelectedRoute}>
+              Remove selected route
             </button>
             {routeDrawing && <button className="button" type="button" onClick={() => {
               setRouteDrawing(false);
@@ -350,8 +436,29 @@ function LayoutWorkspace() {
               setNotice(null);
             }}>Cancel drawing</button>}
           </div>
-          <div className="layout-editor-items">{draft.routes.map((route, routeIndex) => <fieldset key={route.id}>
-            <legend>{route.id} · {route.start_station_id} → {route.end_station_id}</legend>
+          <div className="layout-editor-items">{draft.routes.map((route, routeIndex) => <fieldset
+            key={route.id} className={route.id === selectedRouteId ? "selected-route" : ""}
+            onClick={() => setSelectedRouteId(route.id)}
+          >
+            <legend><label>
+              <input type="radio" name="selected-route" value={route.id}
+                checked={route.id === selectedRouteId}
+                onChange={() => setSelectedRouteId(route.id)}/>
+              {route.id} · {route.kind}
+            </label></legend>
+            <div className="form-grid route-endpoints">
+              {(["start_station_id", "end_station_id"] as const).map((field) => <div
+                className="field" key={field}
+              >
+                <label htmlFor={`${route.id}-${field}`}>{field === "start_station_id" ? "Start" : "End"}</label>
+                <select id={`${route.id}-${field}`} value={route[field]}
+                  onChange={(event) => updateRouteEndpoint(routeIndex, field, event.target.value)}>
+                  {draft.stations.map((station) => <option key={station.id} value={station.id}>
+                    {station.id}
+                  </option>)}
+                </select>
+              </div>)}
+            </div>
             <div className="waypoint-list">{route.waypoints.map((point, pointIndex) => <div className="waypoint-row" key={`${route.id}-${pointIndex}`}>
               <strong>#{pointIndex + 1}</strong>
               {(["x", "y"] as const).map((field) => <label key={field}><span>{field.toUpperCase()}</span>
@@ -398,6 +505,7 @@ function LayoutWorkspace() {
               editor={{
                 routeDrawing,
                 routeDraft,
+                selectedRouteId,
                 onStationMove: moveStation,
                 onRoutePoint: addRoutePoint,
                 onRouteStation: selectRouteStation,

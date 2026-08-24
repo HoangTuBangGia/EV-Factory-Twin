@@ -15,6 +15,7 @@ const layout = {
   stations: [],
   routes: [{
     id: "BATTERY_DELIVERY",
+    kind: "DELIVERY",
     start_station_id: "BATTERY_BUFFER",
     end_station_id: "MARRIAGE_STATION",
     waypoints: [{ x: 2, y: 4 }, { x: 16, y: 8 }],

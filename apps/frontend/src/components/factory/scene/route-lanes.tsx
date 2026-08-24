@@ -1,12 +1,10 @@
 "use client";
 
-import { Line } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 import * as THREE from "three";
-import type { Line2 } from "three-stdlib";
 import { LANE_WIDTH, toScene } from "@/lib/factory-layout";
-import type { FactoryLayout, FactoryRoute, WorldPoint } from "@/schemas/factory";
+import type { FactoryLayout, FactoryRoute } from "@/schemas/factory";
 import { laneChevronTexture } from "./textures";
 
 interface Segment {
@@ -27,12 +25,16 @@ export function RouteLanes({ routes, layout }: {
   const segments = useMemo<Segment[]>(() => {
     const base = laneChevronTexture();
     const built: Segment[] = [];
+    const seen = new Set<string>();
     for (const route of routes) {
       for (let i = 0; i < route.waypoints.length - 1; i += 1) {
         const [ax, , az] = toScene(route.waypoints[i], layout);
         const [bx, , bz] = toScene(route.waypoints[i + 1], layout);
         const dx = bx - ax, dz = bz - az;
         const length = Math.hypot(dx, dz);
+        const key = [`${ax}:${az}`, `${bx}:${bz}`].sort().join("|");
+        if (seen.has(key)) continue;
+        seen.add(key);
         const chevrons = base.clone();
         chevrons.needsUpdate = true;
         chevrons.repeat.set(length / 1.5, 1);
@@ -88,43 +90,4 @@ export function RouteLanes({ routes, layout }: {
       </group>;
     }))}
   </group>;
-}
-
-/**
- * The simulator sends a charging robot straight to the charger from wherever it
- * stands (CHARGER_ROUTE_KEY), so this corridor is drawn live per robot instead
- * of being painted on the slab.
- */
-export function ChargerApproach({ from, charger, layout }: {
-  from: WorldPoint;
-  charger: WorldPoint;
-  layout: FactoryLayout;
-}) {
-  const line = useRef<Line2>(null);
-  const target = useRef(from);
-  target.current = from;
-  const drawn = useRef({ x: Number.NaN, y: Number.NaN });
-
-  // Held stable so drei keeps one LineGeometry for the corridor's lifetime; the
-  // endpoints are rewritten in place whenever a new pose actually arrives.
-  const points = useMemo(() => [new THREE.Vector3(), new THREE.Vector3()], []);
-
-  useFrame((_, delta) => {
-    const object = line.current;
-    if (!object) return;
-    const pose = target.current;
-    if (pose.x !== drawn.current.x || pose.y !== drawn.current.y) {
-      const [ax, , az] = toScene(pose, layout, 0.06);
-      const [bx, , bz] = toScene(charger, layout, 0.06);
-      object.geometry.setPositions([ax, 0.06, az, bx, 0.06, bz]);
-      object.computeLineDistances();
-      drawn.current = { x: pose.x, y: pose.y };
-    }
-    object.material.dashOffset -= delta * 0.45;
-  });
-
-  return <Line
-    ref={line} points={points} color="#fbbf24" lineWidth={2}
-    dashed dashSize={0.32} gapSize={0.22} transparent opacity={0.7}
-  />;
 }

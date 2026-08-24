@@ -15,6 +15,7 @@ export const layoutStationSchema = pointSchema.extend({
 
 export const layoutRouteSchema = z.object({
   id: identifierSchema,
+  kind: z.enum(["DELIVERY", "SUPPORT"]).default("DELIVERY"),
   start_station_id: z.string().min(1).max(80),
   end_station_id: z.string().min(1).max(80),
   waypoints: z.array(pointSchema).min(2).max(200),

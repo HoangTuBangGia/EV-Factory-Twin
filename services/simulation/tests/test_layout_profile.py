@@ -36,3 +36,14 @@ def test_route_geometry_and_congestion_change_simulation_profile() -> None:
 
     assert candidate_profile.distance_m > baseline_profile.distance_m
     assert baseline_profile.congestion_multiplier > 1.0
+
+
+def test_support_route_cannot_be_used_as_simulation_flow() -> None:
+    layout = _layout()
+
+    try:
+        route_profile(layout, "CHARGER_LINK")
+    except ValueError as error:
+        assert str(error) == "Route 'CHARGER_LINK' is not a delivery route"
+    else:
+        raise AssertionError("support route was accepted as a delivery flow")

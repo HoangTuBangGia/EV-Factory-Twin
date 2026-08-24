@@ -119,19 +119,33 @@ layout vừa APPLIED xuất hiện mà không cần reload trang.
 {
   "layout_id": "LAYOUT-DEFAULT",
   "name": "EV battery intralogistics plant",
-  "version": 2,
+  "version": 3,
   "width": 120.0,
   "height": 40.0,
   "stations": [
     {"id": "BATTERY_BUFFER", "type": "BATTERY_BUFFER", "x": 32.0, "y": 29.0},
     {"id": "MARRIAGE_STATION", "type": "MARRIAGE_STATION", "x": 52.0, "y": 6.0},
+    {"id": "MARRIAGE_STATION_2", "type": "MARRIAGE_STATION", "x": 82.0, "y": 8.0},
     {"id": "CHARGING_STATION", "type": "CHARGING_STATION", "x": 32.0, "y": 11.0}
   ],
   "routes": [{
     "id": "BATTERY_DELIVERY",
+    "kind": "DELIVERY",
     "start_station_id": "BATTERY_BUFFER",
     "end_station_id": "MARRIAGE_STATION",
     "waypoints": [{"x": 32.0, "y": 29.0}, {"x": 32.0, "y": 20.0}, {"x": 40.0, "y": 20.0}, {"x": 52.0, "y": 20.0}, {"x": 52.0, "y": 6.0}]
+  }, {
+    "id": "BATTERY_DELIVERY_LONG",
+    "kind": "DELIVERY",
+    "start_station_id": "BATTERY_BUFFER",
+    "end_station_id": "MARRIAGE_STATION_2",
+    "waypoints": [{"x": 32.0, "y": 29.0}, {"x": 32.0, "y": 20.0}, {"x": 40.0, "y": 20.0}, {"x": 60.0, "y": 20.0}, {"x": 82.0, "y": 20.0}, {"x": 82.0, "y": 8.0}]
+  }, {
+    "id": "CHARGER_LINK",
+    "kind": "SUPPORT",
+    "start_station_id": "CHARGING_STATION",
+    "end_station_id": "BATTERY_BUFFER",
+    "waypoints": [{"x": 32.0, "y": 11.0}, {"x": 32.0, "y": 20.0}, {"x": 32.0, "y": 29.0}]
   }],
   "no_go_zones": [],
   "congestion_zones": [{
@@ -155,8 +169,8 @@ Create body là `{ "name": string, "content": <geometry/config> }`; create-versi
 body là `{ "content": <geometry/config> }`. `layout_id`, `version`, actor và
 timestamps luôn do Backend/PostgreSQL tạo. Validation từ chối coordinate không
 hữu hạn/out-of-bounds, ID trùng, thiếu station type bắt buộc, polygon suy biến/tự
-cắt, route tham chiếu station lạ, endpoint không khớp station và route/station
-đi vào no-go zone. Congestion zone không cấm route và dùng
+cắt, thiếu route `DELIVERY`, route tham chiếu station lạ, endpoint không khớp
+station và route/station đi vào no-go zone. Congestion zone không cấm route và dùng
 `delay_multiplier` trong `[1, 10]`.
 
 ## Edge telemetry ingress
@@ -356,8 +370,8 @@ này. Payload của WebSocket event `task.updated`.
 
 `GET /api/v1/factory` trả về `FactoryLayout`.
 
-Response phản ánh active immutable layout. Với default version 2, footprint là
-120 m × 40 m và có ba operational station:
+Response phản ánh active immutable layout. Với default version 3, footprint là
+120 m × 40 m và có bốn operational station:
 
 ```json
 {
@@ -366,6 +380,7 @@ Response phản ánh active immutable layout. Với default version 2, footprint
   "stations": [
     { "id": "BATTERY_BUFFER", "name": "Battery Buffer", "type": "BUFFER", "x": 32, "y": 29 },
     { "id": "MARRIAGE_STATION", "name": "Marriage Station", "type": "MARRIAGE", "x": 52, "y": 6 },
+    { "id": "MARRIAGE_STATION_2", "name": "Marriage Station", "type": "MARRIAGE", "x": 82, "y": 8 },
     { "id": "CHARGING_STATION", "name": "Charging Station", "type": "CHARGER", "x": 32, "y": 11 }
   ]
 }
@@ -475,7 +490,7 @@ vẫn còn sau khi backend restart. Chế độ local/test không cấu hình da
 dùng repository in-memory và sẽ mất dữ liệu khi process dừng. Baseline được đọc
 từ scenario chuẩn trong repository mã nguồn, có id `baseline`, không nằm trong
 `GET /api/v1/scenarios` và chỉ dùng để so sánh. Baseline resolve
-`LAYOUT-DEFAULT` version 2, route `BATTERY_DELIVERY` và chạy cùng logistics engine
+`LAYOUT-DEFAULT` version 3, route `BATTERY_DELIVERY` và chạy cùng logistics engine
 cùng chín KPI authoritative như candidate; khác biệt chỉ nằm ở input scenario.
 
 ### ScenarioRunRequest
@@ -487,7 +502,7 @@ Body của `POST /api/v1/scenarios/run`. Mỗi run bắt buộc tham chiếu đ�
 {
   "name": "more-robots",
   "layout_id": "LAYOUT-DEFAULT",
-  "layout_version": 2,
+  "layout_version": 3,
   "route_id": "BATTERY_DELIVERY",
   "num_robots": 6,
   "num_tasks": 500,
@@ -595,7 +610,7 @@ Tất cả endpoint scenario trả về schema này (endpoint list trả về m�
     "loading_time": 10.0,
     "simulation_time": 3600.0,
     "layout_id": "LAYOUT-DEFAULT",
-    "layout_version": 2,
+    "layout_version": 3,
     "route_id": "BATTERY_DELIVERY",
     "robot_speed_mps": 1.2,
     "charger_count": 2,
