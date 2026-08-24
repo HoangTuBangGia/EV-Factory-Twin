@@ -92,7 +92,12 @@ secret trong frontend, Supabase client hoặc Git.
    SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
     EDGE_TELEMETRY_SHARED_SECRET=GENERATE_AT_LEAST_32_RANDOM_CHARACTERS
     EDGE_TELEMETRY_MAX_FUTURE_SKEW_SECONDS=5
+    TELEMETRY_HISTORY_FLUSH_SECONDS=1
    ```
+
+   Telemetry history is downsampled through a latest-per-robot background worker;
+   this value does not reduce live REST/WebSocket update frequency. Keep the MVP
+   default unless database throughput measurements justify a different cadence.
 
    `SUPABASE_JWT_ISSUER` và `SUPABASE_JWKS_URL` được suy ra từ `SUPABASE_URL`.
    Backend MVP không dùng service-role key; team tạo account trong Supabase Dashboard. Sau khi

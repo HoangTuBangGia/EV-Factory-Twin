@@ -65,6 +65,13 @@ def test_edge_telemetry_future_skew_is_bounded() -> None:
             )
 
 
+def test_telemetry_history_flush_cadence_is_bounded() -> None:
+    assert Settings(_env_file=None).telemetry_history_flush_seconds == 1
+    for invalid_value in (0, 61):
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, telemetry_history_flush_seconds=invalid_value)
+
+
 def test_production_requires_durable_authenticated_runtime() -> None:
     with pytest.raises(
         ValidationError,
