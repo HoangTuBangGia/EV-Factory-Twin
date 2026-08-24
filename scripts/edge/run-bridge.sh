@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 
 script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repository_root="${EV_TWIN_ROOT:-$(CDPATH= cd -- "${script_dir}/../.." && pwd)}"
@@ -24,6 +24,7 @@ done
 
 source "${ros_setup}"
 source "${workspace_setup}"
+set -u
 
 exec ros2 launch telemetry_bridge telemetry_bridge.launch.py \
   backend_url:="${TELEMETRY_BACKEND_URL}" \
