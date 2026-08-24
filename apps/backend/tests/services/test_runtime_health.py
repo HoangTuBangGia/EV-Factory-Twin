@@ -29,7 +29,7 @@ async def setup(now: datetime):
         clock=lambda: now,
     )
     service.set_applied_layout(
-        await LayoutService(InMemoryLayoutRepository(include_default=True)).get("LAYOUT-DEFAULT", 2)
+        await LayoutService(InMemoryLayoutRepository(include_default=True)).get("LAYOUT-DEFAULT", 3)
     )
     return service, state, repository, websockets
 
@@ -127,7 +127,7 @@ async def test_congestion_uses_applied_layout_zone_and_clears_on_exit() -> None:
     await service.note_telemetry(robot_to_telemetry(second), now)
     assert (await repository.list_alerts())[0].code == "CONGESTION"
     assert (await repository.list_alerts())[0].dedupe_key == (
-        "CONGESTION:LAYOUT-DEFAULT:2:WAREHOUSE_PRODUCTION_DOOR"
+        "CONGESTION:LAYOUT-DEFAULT:3:WAREHOUSE_PRODUCTION_DOOR"
     )
 
     second.pose.x = 1

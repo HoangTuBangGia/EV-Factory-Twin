@@ -16,6 +16,11 @@ class StationType(StrEnum):
     CHARGING_STATION = "CHARGING_STATION"
 
 
+class RouteKind(StrEnum):
+    DELIVERY = "DELIVERY"
+    SUPPORT = "SUPPORT"
+
+
 class Point(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -38,6 +43,7 @@ class LayoutRoute(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: str = Field(min_length=1, max_length=80, pattern=r"^[A-Z][A-Z0-9_-]*$")
+    kind: RouteKind = RouteKind.DELIVERY
     start_station_id: str = Field(min_length=1, max_length=80)
     end_station_id: str = Field(min_length=1, max_length=80)
     waypoints: list[Point] = Field(min_length=2, max_length=200)
@@ -183,6 +189,8 @@ class LayoutVersionContent(BaseModel):
         missing_types = set(StationType) - present_types
         if missing_types:
             raise ValueError(f"missing required station types: {sorted(missing_types)}")
+        if not any(route.kind == RouteKind.DELIVERY for route in self.routes):
+            raise ValueError("at least one delivery route is required")
 
         stations = {station.id: station for station in self.stations}
         for zone in [*self.no_go_zones, *self.congestion_zones]:

@@ -278,6 +278,27 @@ async def test_robot_state_machine_progresses_through_full_task_cycle() -> None:
 
 
 @pytest.mark.asyncio
+async def test_reposition_waypoint_does_not_trigger_pickup_early() -> None:
+    factory = _make_factory(task_interval_seconds=60.0, robot_speed_mps=3.0)
+    robot = factory._state.get_robot("AMR-01")
+    assert robot is not None
+    factory._state.update_robot(
+        robot.model_copy(update={"pose": robot.pose.model_copy(update={"x": 52, "y": 6})})
+    )
+    factory._task_service.generate_task()
+
+    await factory.tick(0.1)  # assign task and snapshot the reposition + delivery path
+    await factory.tick(0.1)  # reach the first reposition waypoint at Marriage Station
+
+    moving = factory._state.get_robot("AMR-01")
+    assert moving is not None
+    assert moving.status == RobotStatus.MOVING_TO_PICKUP
+    progress = factory._active_movements["AMR-01"]
+    assert progress.waypoint_index == 1
+    assert progress.pickup_waypoint_index == 5
+
+
+@pytest.mark.asyncio
 async def test_task_completes_end_to_end_through_the_real_engine_loop() -> None:
     # acceptance criterion (guide BE-5): "A battery delivery task completes
     # end-to-end and the AMR returns to IDLE" — exercised through start()/stop(),

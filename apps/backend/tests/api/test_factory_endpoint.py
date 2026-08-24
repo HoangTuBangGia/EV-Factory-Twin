@@ -12,9 +12,10 @@ async def test_get_factory_returns_valid_layout(client: AsyncClient) -> None:
     layout = FactoryLayout.model_validate(response.json())
     assert layout.width_m == 120
     assert layout.height_m == 40
-    assert len(layout.stations) == 3
+    assert len(layout.stations) == 4
     assert {station.id for station in layout.stations} == {
         "BATTERY_BUFFER",
         "MARRIAGE_STATION",
+        "MARRIAGE_STATION_2",
         "CHARGING_STATION",
     }
