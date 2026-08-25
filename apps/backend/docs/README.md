@@ -58,7 +58,8 @@ uv run --package ev-twin-api \
 ```
 
 Mở http://localhost:8000/docs — đây là trang tài liệu API tự sinh. `/health` là
-public; mọi endpoint nghiệp vụ cần Supabase access token. Bấm **Authorize** và
+public; mọi endpoint nghiệp vụ cần access token do Backend phát hành. Gọi
+`POST /api/v1/auth/login`, sau đó bấm **Authorize** và
 nhập token của tài khoản demo để gọi thử.
 
 Thử vài lệnh:

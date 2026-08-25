@@ -1,9 +1,0 @@
-# Local Supabase CLI state. Project links, downloaded metadata, and branch
-# worktrees are machine-specific and must not be committed.
-.temp/
-.branches/
-
-# Local-only secrets used by optional seed/bootstrap tooling.
-.env
-.env.*
-!.env.example

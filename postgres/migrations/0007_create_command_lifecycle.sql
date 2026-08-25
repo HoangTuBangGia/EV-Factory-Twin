@@ -3,8 +3,6 @@
 create type public.command_status as enum (
     'PENDING', 'ACKNOWLEDGED', 'COMPLETED', 'FAILED', 'TIMED_OUT'
 );
-grant usage on type public.command_status to authenticated, service_role;
-
 create table public.scenario_reviews (
     id bigint generated always as identity primary key,
     scenario_id text not null references public.scenarios (id) on delete restrict,
@@ -79,7 +77,7 @@ begin
     return new;
 end;
 $$;
-revoke all on function private.record_scenario_review() from public, anon, authenticated;
+revoke all on function private.record_scenario_review() from public;
 create trigger scenarios_record_review after update of status on public.scenarios
 for each row execute function private.record_scenario_review();
 
@@ -94,29 +92,6 @@ create index command_ack_operation_idx
 
 create trigger commands_set_updated_at before update on public.commands
 for each row execute function private.set_updated_at();
-
-alter table public.scenario_reviews enable row level security;
-alter table public.commands enable row level security;
-alter table public.command_attempts enable row level security;
-alter table public.command_acknowledgements enable row level security;
-
-revoke all on table public.scenario_reviews, public.commands, public.command_attempts,
-    public.command_acknowledgements from anon, authenticated;
-grant select on public.scenario_reviews, public.commands, public.command_attempts,
-    public.command_acknowledgements to authenticated;
-grant select, insert, update on public.scenario_reviews, public.commands,
-    public.command_attempts, public.command_acknowledgements to service_role;
-grant usage, select on sequence public.scenario_reviews_id_seq,
-    public.command_acknowledgements_id_seq to service_role;
-
-create policy scenario_reviews_read on public.scenario_reviews for select to authenticated
-using ((select private.is_active_user()));
-create policy commands_read on public.commands for select to authenticated
-using ((select private.is_active_user()));
-create policy command_attempts_read on public.command_attempts for select to authenticated
-using ((select private.is_active_user()));
-create policy command_ack_read on public.command_acknowledgements for select to authenticated
-using ((select private.is_active_user()));
 
 -- Replace the pre-M7 projection constraint with the submitted lifecycle.
 alter table public.scenarios drop constraint scenarios_workflow_actor_timestamps;

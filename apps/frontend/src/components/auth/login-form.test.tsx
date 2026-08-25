@@ -36,12 +36,19 @@ const designer = {
   is_active: true,
 };
 
+const writeText = vi.fn();
+
 describe("LoginForm", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.authState.user = null;
     mocks.authState.isLoading = false;
     mocks.authState.error = null;
+    writeText.mockReset();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
   });
 
   it("asks only for email and password, never a role", () => {
@@ -49,6 +56,21 @@ describe("LoginForm", () => {
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.getByLabelText("Password")).toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  });
+
+  it("makes evaluator credentials easy to copy and use", async () => {
+    writeText.mockResolvedValue(undefined);
+    render(<LoginForm />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Use Designer account" }));
+    expect(screen.getByLabelText("Email")).toHaveValue("designer@example.com");
+    expect(screen.getByLabelText("Password")).toHaveValue("Designer123!");
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy Designer email" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("designer@example.com"));
+    expect(screen.getByRole("button", { name: "Copy Designer email" })).toHaveTextContent(
+      "Copied",
+    );
   });
 
   it("signs in and sends a Designer to the scenario workspace", async () => {

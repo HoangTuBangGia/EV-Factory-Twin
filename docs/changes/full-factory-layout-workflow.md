@@ -26,7 +26,8 @@ change mock-runtime movement, so layout experiments were not end to end.
 
 ## Files Changed
 
-- Added the canonical layout to `twin-core` and Supabase seed/migration.
+- Added the canonical layout to `twin-core` and ledger-backed PostgreSQL
+  migrations.
 - Replaced backend fixed station/route tables with active-layout projections.
 - Added station dragging and route drawing to the `/factory` 2D workspace.
 - Removed the legacy design-route and live-layout overlays from the plant map.
@@ -43,8 +44,8 @@ change mock-runtime movement, so layout experiments were not end to end.
 ## CI / Build Impact
 
 No dependency or workflow changes. Existing Python and frontend gates cover the
-new contract and UI behavior. Existing hosted Supabase projects must apply the
-new migration before using default layout version 2.
+new contract and UI behavior. Cloud SQL must apply migration `0011` before using
+default layout version 2.
 
 ## Follow-up
 

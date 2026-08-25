@@ -111,7 +111,7 @@ The evaluation is incomplete unless it demonstrates:
 
 Run and record this hosted path with `docs/runbooks/mvp-edge-acceptance.md`.
 Backend/DB, frontend, ROS and container CI are necessary gates but do not replace
-the networked acceptance run against Render, Vercel and Supabase.
+the networked acceptance run against Cloud Run, Cloud SQL and the GCE edge.
 
 ## Limitations
 

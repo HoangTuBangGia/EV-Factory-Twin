@@ -10,5 +10,13 @@ export const currentUserSchema = z.object({
   is_active: z.boolean(),
 });
 
+export const loginResponseSchema = z.object({
+  access_token: z.string().min(1),
+  token_type: z.literal("bearer"),
+  expires_at: z.number().int().positive(),
+  user: currentUserSchema,
+});
+
 export type AppRole = z.infer<typeof appRoleSchema>;
 export type CurrentUser = z.infer<typeof currentUserSchema>;
+export type LoginResponse = z.infer<typeof loginResponseSchema>;

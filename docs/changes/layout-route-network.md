@@ -26,7 +26,7 @@ equipment and layout changes had little operational effect.
 ## Files Changed
 
 - Added the route kind and routing helper in `packages/twin-core`.
-- Added the v3 layout migration and updated Supabase seed data.
+- Added the ledger-backed PostgreSQL v3 layout and repair migrations.
 - Updated backend movement/state orchestration and regression tests.
 - Added two delivery choices, a charging link, a second marriage station, route
   selection/add/remove/drawing controls, and delivery-only scenario filtering.

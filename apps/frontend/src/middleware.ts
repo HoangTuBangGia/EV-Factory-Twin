@@ -1,26 +1,7 @@
-import { NextResponse, type NextRequest } from "next/server";
-import { refreshSupabaseSession } from "@/lib/supabase/middleware";
+import { NextResponse } from "next/server";
 
-function copyCookies(source: NextResponse, target: NextResponse) {
-  for (const cookie of source.cookies.getAll()) target.cookies.set(cookie);
-  return target;
-}
-
-export async function middleware(request: NextRequest) {
-  const { response, user } = await refreshSupabaseSession(request, false);
-  const isLogin = request.nextUrl.pathname === "/login";
-
-  if (!user && !isLogin) {
-    const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = "/login";
-    loginUrl.search = "";
-    loginUrl.searchParams.set(
-      "returnTo",
-      `${request.nextUrl.pathname}${request.nextUrl.search}`,
-    );
-    return copyCookies(response, NextResponse.redirect(loginUrl));
-  }
-
+export function middleware() {
+  const response = NextResponse.next();
   response.headers.set("Cache-Control", "private, no-store");
   return response;
 }

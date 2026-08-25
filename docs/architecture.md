@@ -1,5 +1,9 @@
 # EV Factory Digital Twin — MVP Advanced Architecture
 
+> Deployment/auth update (ADR-0005): runtime hiện dùng Cloud Run, Cloud SQL
+> PostgreSQL 17 và FastAPI-issued JWT. Các sơ đồ Supabase/Render/Vercel phía dưới
+> là baseline lịch sử và không còn authoritative cho deployment.
+
 > **Project:** EV Factory Digital Twin for AMR-based Battery Intralogistics  
 > **Scope:** Core Platform Architecture  
 > **Status:** Architecture Baseline  
@@ -2930,7 +2934,7 @@ repositioning and charging. The local mock runtime treats the approved waypoint
 network as bidirectional and uses shortest-path routing between stations; it only
 falls back to a direct segment for legacy disconnected v1/v2 layouts.
 
-Scenario application uses a durable outbound-only command path. Render stores a
+Scenario application uses a durable outbound-only command path. Cloud Run stores a
 PENDING command; the edge bridge leases it over authenticated HTTPS, records ACK,
 executes the typed `/fleet/apply_scenario` ROS service and posts the terminal
 result. One operation has multiple immutable attempts. A scenario remains

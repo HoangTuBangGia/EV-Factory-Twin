@@ -16,8 +16,8 @@ logger = logging.getLogger("ev_twin_api")
 bearer_scheme = HTTPBearer(
     auto_error=False,
     bearerFormat="JWT",
-    scheme_name="SupabaseAccessToken",
-    description="Supabase Auth access token",
+    scheme_name="FactoryTwinAccessToken",
+    description="Factory Twin access token",
 )
 
 edge_bearer_scheme = HTTPBearer(

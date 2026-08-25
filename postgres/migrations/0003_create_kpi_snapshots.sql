@@ -45,19 +45,3 @@ create index kpi_snapshots_recorded_at_idx
 create index kpi_snapshots_scenario_recorded_at_idx
     on public.kpi_snapshots (scenario_id, recorded_at desc)
     where scenario_id is not null;
-
-alter table public.kpi_snapshots enable row level security;
-
-revoke all on table public.kpi_snapshots from anon;
-revoke all on table public.kpi_snapshots from authenticated;
-revoke all on table public.kpi_snapshots from service_role;
-grant select on table public.kpi_snapshots to authenticated;
-grant select, insert on table public.kpi_snapshots to service_role;
-grant usage, select on sequence public.kpi_snapshots_id_seq to service_role;
-
-create policy kpi_snapshots_select_active_users
-on public.kpi_snapshots
-for select
-to authenticated
-using ((select private.is_active_user()));
-

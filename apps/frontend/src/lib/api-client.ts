@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { env } from "./env";
 import { factoryAlertSchema } from "@/schemas/alert";
-import { currentUserSchema } from "@/schemas/auth";
+import { currentUserSchema, loginResponseSchema } from "@/schemas/auth";
 import {
   applyScenarioRequestSchema,
   commandSchema,
@@ -66,7 +66,12 @@ async function responseError(response: Response, path: string): Promise<ApiError
   return new ApiError(response.status, path, detail);
 }
 
-async function request<T>(path: string, schema: z.ZodType<T>, init?: RequestInit): Promise<T> {
+async function request<T>(
+  path: string,
+  schema: z.ZodType<T>,
+  init?: RequestInit,
+  handleUnauthorized = true,
+): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set("Accept", "application/json");
   if (init?.body) headers.set("Content-Type", "application/json");
@@ -76,7 +81,7 @@ async function request<T>(path: string, schema: z.ZodType<T>, init?: RequestInit
     ...init,
     headers,
   });
-  if (response.status === 401) unauthorizedHandler?.();
+  if (handleUnauthorized && response.status === 401) unauthorizedHandler?.();
   if (!response.ok) throw await responseError(response, path);
   return schema.parse(await response.json());
 }
@@ -91,6 +96,13 @@ async function requestVoid(path: string, init?: RequestInit): Promise<void> {
 }
 
 export const apiClient = {
+  login: (email: string, password: string) => request(
+    "/api/v1/auth/login",
+    loginResponseSchema,
+    { method: "POST", body: JSON.stringify({ email, password }) },
+    false,
+  ),
+  logout: () => requestVoid("/api/v1/auth/logout", { method: "POST" }),
   getCurrentUser: () => request("/api/v1/auth/me", currentUserSchema),
   getFactory: () => request("/api/v1/factory", z.unknown()),
   getRobots: (signal?: AbortSignal) => request(

@@ -24,7 +24,7 @@ docs và CI.
 | Thử thay đổi cấu hình vận hành | Đạt ở contract | Durable apply command có ACK/result/timeout/retry/audit và UI history; acceptance ROS thật còn ở M13 |
 | Cho phép đổi bố trí và chạy lại | Đạt MVP | Designer CRUD layout, tạo version immutable và dùng version đó cho SimPy/apply |
 | Giao diện 3D | Một phần | Có React Three Fiber scene nhưng route factory chính vẫn dùng 2D |
-| Ít nhất hai vai trò Designer/Monitor | Đạt ở code | Supabase Auth, profile role và FastAPI guard đã có; chỉ cần E2E hai role |
+| Ít nhất hai vai trò Designer/Monitor | Đạt ở code | Backend JWT, profile role và FastAPI guard đã có; cần GCP E2E hai role |
 | ROS2/Gazebo và đồng bộ hai chiều | Đạt ở code | Có multi-AMR, fleet/task lifecycle, bridge registry/telemetry và apply command ACK/result; còn hosted GCP acceptance |
 | Tắc nghẽn mô phỏng | Một phần | Có waiting/backlog; cần zone occupancy/congestion score |
 | Va chạm mô phỏng | Chưa có | Chỉ cần route conflict/no-go validation mức MVP, không cần physics nâng cao |
