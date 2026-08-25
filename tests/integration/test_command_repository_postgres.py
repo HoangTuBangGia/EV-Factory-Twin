@@ -20,7 +20,8 @@ async def test_unleased_command_timeout_and_retry_deadline_round_trip() -> None:
     repository = SqlAlchemyCommandRepository(database)
     operation_id = uuid4()
     scenario_id = f"TEST-SCN-{uuid4().hex}"
-    started_at = datetime.now(UTC) - timedelta(seconds=2)
+    started_at = datetime.now(UTC)
+    timeout_seconds = 300
 
     try:
         async with database.session() as session, session.begin():
@@ -90,7 +91,7 @@ async def test_unleased_command_timeout_and_retry_deadline_round_trip() -> None:
                 scenario_id=scenario_id,
                 status=CommandStatus.PENDING,
                 payload=config,
-                timeout_seconds=1,
+                timeout_seconds=timeout_seconds,
                 max_retries=1,
                 attempts=[CommandAttempt(attempt_number=1, status=CommandStatus.PENDING)],
                 requested_by=actor_id,
@@ -99,19 +100,30 @@ async def test_unleased_command_timeout_and_retry_deadline_round_trip() -> None:
             )
         )
 
-        expired = await repository.expire(datetime.now(UTC))
+        expired_at = started_at + timedelta(seconds=timeout_seconds + 1)
+        expired = await repository.expire(expired_at)
         assert expired[0].status == CommandStatus.TIMED_OUT
 
-        retried_at = datetime.now(UTC)
+        retried_at = expired_at + timedelta(seconds=1)
         retried = await repository.retry(operation_id, retried_at)
         assert retried.status == CommandStatus.PENDING
         assert retried.updated_at >= retried_at
-        assert not await repository.expire(retried_at + timedelta(milliseconds=500))
-        assert (await repository.expire(retried_at + timedelta(seconds=2)))[0].status == (
-            CommandStatus.TIMED_OUT
+        assert not await repository.expire(
+            retried_at + timedelta(seconds=timeout_seconds - 1)
         )
+        assert (
+            await repository.expire(retried_at + timedelta(seconds=timeout_seconds + 1))
+        )[0].status == CommandStatus.TIMED_OUT
     finally:
         async with database.session() as session, session.begin():
+            await session.execute(
+                text("select operation_id from public.commands where operation_id=:id for update"),
+                {"id": operation_id},
+            )
+            await session.execute(
+                text("delete from public.alerts where operation_id=:id"),
+                {"id": operation_id},
+            )
             await session.execute(
                 text("delete from public.command_acknowledgements where operation_id=:id"),
                 {"id": operation_id},
