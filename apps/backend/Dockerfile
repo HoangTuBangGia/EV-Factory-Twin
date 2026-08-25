@@ -13,11 +13,11 @@ COPY services/simulation ./services/simulation
 COPY evaluation ./evaluation
 
 RUN uv sync --locked --no-dev --package ev-twin-api \
-    && useradd --create-home --uid 10001 app
+    && useradd --create-home --uid 10001 app \
+    && chmod -R a+rX /app
 
 USER app
 
 EXPOSE 8000
 
 CMD ["sh", "-c", "exec uv run --no-sync --package ev-twin-api uvicorn ev_twin_api.main:app --app-dir apps/backend/src --host 0.0.0.0 --port \"${PORT:-8000}\""]
-

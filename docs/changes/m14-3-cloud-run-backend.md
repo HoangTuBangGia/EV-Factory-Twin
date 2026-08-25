@@ -23,6 +23,7 @@ The MVP stays at one maximum instance because realtime fleet state is in-memory.
 - `postgres/migrations/0010_grant_runtime_database_access.sql`
 - `deploy/gcp/cloudbuild.backend.yaml`
 - `deploy/gcp/backend.env.example`
+- `apps/backend/Dockerfile`
 - `Makefile`
 - `tests/integration/test_gcp_cloud_run_backend.py`
 - `tests/integration/test_postgres_migrations.py`
@@ -51,9 +52,12 @@ The MVP stays at one maximum instance because realtime fleet state is in-memory.
 ## CI / Build Impact
 
 Cloud Build uses the existing locked Backend Dockerfile and publishes an image
-tagged with the reviewed Git SHA. No runtime dependency is added.
+tagged with the reviewed Git SHA. The image normalizes copied source read
+permissions before switching to the non-root runtime user so local source modes
+cannot make Python modules unreadable. No runtime dependency is added.
 
 ## Follow-up
 
-Deploy the Frontend to Cloud Run and run end-to-end hosted acceptance with the
-GCE ROS/Gazebo edge.
+Retry the reviewed Backend image deployment, keep the Vercel frontend on the
+matching environment branch, and run end-to-end hosted acceptance with the GCE
+ROS/Gazebo edge.
