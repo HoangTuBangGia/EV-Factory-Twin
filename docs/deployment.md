@@ -1,6 +1,6 @@
 # Deployment
 
-The authoritative MVP deployment is GCP-native:
+The target MVP deployment is GCP-native:
 
 ```text
 Browser → Vercel Next.js → Cloud Run FastAPI → Cloud SQL PostgreSQL 17
@@ -12,10 +12,22 @@ Browser → Vercel Next.js → Cloud Run FastAPI → Cloud SQL PostgreSQL 17
 
 ## Runtime services
 
+During the staged cutover, `main` production remains on Render and
+`c3-app-078.vercel.app` must keep its Render API/WebSocket variables. The GCP
+production resources stay dark until hosted acceptance and an explicit cutover.
+
 - `c3-app-078` and `ev-factory-twin-gcp`: isolated Vercel frontend projects.
-- `ev-twin-api`: public Cloud Run API with explicit CORS for the frontend URL.
-- Cloud SQL PostgreSQL 17: private persistence; no browser access.
-- `ev-twin-edge-01`: GCE ROS/Gazebo and telemetry/command bridge.
+- `ev-twin-api-dev`: Cloud Run API deployed from `develop`, with CORS limited
+  to `ev-factory-twin-gcp.vercel.app`.
+- `ev-twin-api`: production Cloud Run API reserved for the eventual `main`
+  cutover; `develop` automation never targets it.
+- `ev-twin-postgres-01`: develop Cloud SQL PostgreSQL 17.
+- `ev-twin-postgres-prod-01`: production Cloud SQL PostgreSQL 17; provisioned
+  separately before enabling `main` delivery.
+- `ev-twin-edge-01`: develop GCE ROS/Gazebo and telemetry/command bridge.
+- `ev-twin-edge-prod-01`: private production GCE ROS/Gazebo VM, provisioned and
+  bootstrapped but without application code, secrets, or active services before
+  cutover.
 
 Use generated `*.run.app` and `*.vercel.app` URLs for the MVP; a custom domain
 is not required.
@@ -44,6 +56,47 @@ use the non-administrator `ev_twin_app` role provisioned before migration `0010`
 The reproducible operator flow is documented in
 `docs/runbooks/gcp-cloud-run-backend.md`; use the root Make targets rather than
 ad-hoc console configuration.
+
+## Branch continuous delivery
+
+`.github/workflows/ci.yml` calls the reusable
+deployment workflows only after all CI jobs pass. `develop` deploys
+`ev-twin-api-dev`; `main` deploys `ev-twin-api`. Both authenticate with separate
+repository- and branch-scoped Workload Identity providers and deployers. The
+shared engine builds an image tagged with the complete reviewed commit SHA and
+verifies health, unauthenticated rejection, and the exact environment origin.
+It then deploys the same full SHA to the matching edge VM through IAP. Develop
+targets only `ev-twin-edge-01`; production targets only
+`ev-twin-edge-prod-01`.
+
+The workflow does not hold a Google service-account key. Configure the GitHub
+Environment `gcp-develop` with these repository/environment variables:
+
+```text
+GCP_WORKLOAD_IDENTITY_PROVIDER=projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-actions/providers/github-develop
+GCP_DEPLOY_SERVICE_ACCOUNT=ev-twin-github-deploy@ev-factory-twin.iam.gserviceaccount.com
+```
+
+The `gcp-production` Environment uses the `github-main` provider and
+`ev-twin-github-prod-deploy` service account. Configure required reviewers on
+`gcp-production` when production delivery must pause for human approval; omit
+them for fully automatic delivery after protected-branch CI.
+
+Production has its own Cloud SQL instance, runtime service account, database
+credential, JWT signing secret, and edge secret. Do not activate the `main`
+deployment until that database has the complete migration ledger and production
+accounts/seed data.
+
+If the deployed commit changes `postgres/migrations`, automatic deployment
+stops. Apply the ledger-backed migrations to the corresponding database, then
+invoke that branch's workflow manually with `migrations_applied=true`. The
+workflow never applies DDL with a Backend runtime identity.
+
+Edge delivery uses OS Login without administrator permission. The deployer may
+invoke only the root-owned `/usr/local/sbin/ev-twin-deploy` command through
+sudo. The wrapper validates the full SHA and repository origin, runs the ROS
+gate on the VM, restarts simulation and bridge services, and rolls back on
+failure.
 
 ## Frontend environment
 

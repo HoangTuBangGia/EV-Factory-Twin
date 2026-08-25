@@ -12,8 +12,8 @@ Vercel feature deployment
 ```
 
 The project is `ev-factory-twin`, the primary region is `us-central1`, and the
-edge VM zone is `us-central1-a`. The `main`/Render production stack is separate
-and must not be changed by these commands.
+edge VM zone is `us-central1-a`. Until the explicit cutover, the `main`/Render
+production stack remains live and must not be changed by GCP preparation.
 
 Run commands one block at a time and inspect their output. Commands marked
 **destructive** require explicit human review immediately before execution.
@@ -94,7 +94,8 @@ Console entry points:
 
 ## 3. Edge VM lifecycle and IAP
 
-Inspect, start, or stop the VM:
+Inspect, start, or stop the environment-specific VM. Use `ev-twin-edge-01` for
+develop and `ev-twin-edge-prod-01` for production:
 
 ```bash
 gcloud compute instances describe ev-twin-edge-01 \
@@ -110,6 +111,19 @@ gcloud compute instances stop ev-twin-edge-01 \
   --project=ev-factory-twin \
   --zone=us-central1-a
 ```
+
+The production VM is private, uses IAP SSH and Cloud NAT, and has deletion
+protection. Provision and bootstrap it from the operator machine with:
+
+```bash
+make gcp-production-edge-vm-create
+make gcp-edge-router-create
+make gcp-edge-nat-create
+make gcp-production-edge-bootstrap
+```
+
+The bootstrap installs ROS 2 Jazzy and Gazebo Harmonic but deliberately does
+not clone code, read production secrets, or enable services.
 
 Stopping interrupts telemetry and command execution but preserves the boot
 disk. Disk charges continue until the disk is deleted.
@@ -438,6 +452,222 @@ gcloud builds list \
   --limit=20 \
   --format='table(id,status,createTime,duration,images)'
 ```
+
+### Develop CI/CD bootstrap
+
+The develop deployment uses GitHub OIDC and Workload Identity Federation. It
+does not use a downloaded service-account key. Run the following targets once
+from an authenticated operator workstation:
+
+```bash
+make gcp-develop-cicd-apis
+make gcp-develop-cicd-service-account-create
+make gcp-develop-cicd-wif-create
+make gcp-develop-cicd-access
+```
+
+Resolve the provider identifier without exposing a secret:
+
+```bash
+gcloud iam workload-identity-pools providers describe github-develop \
+  --project=ev-factory-twin \
+  --location=global \
+  --workload-identity-pool=github-actions \
+  --format='value(name)'
+```
+
+In the GitHub `gcp-develop` Environment, create variables:
+
+```text
+GCP_WORKLOAD_IDENTITY_PROVIDER=<provider name returned above>
+GCP_DEPLOY_SERVICE_ACCOUNT=ev-twin-github-deploy@ev-factory-twin.iam.gserviceaccount.com
+```
+
+After both branch deployers exist, create/configure both GitHub Environments in
+one operator-controlled command and inspect the non-secret variables:
+
+```bash
+make github-gcp-environments-configure
+make github-gcp-environments-list
+```
+
+Before enabling automatic deployment, bootstrap the public develop service once
+with operator credentials and an already reviewed image:
+
+```bash
+make gcp-backend-deploy \
+  GCP_BACKEND_SERVICE=ev-twin-api-dev \
+  GCP_BACKEND_CORS_ORIGINS=https://ev-factory-twin-gcp.vercel.app
+```
+
+This one-time command sets the public invoker policy. The GitHub deployer has
+Cloud Run Developer rather than Cloud Run Admin and therefore updates revisions
+without changing service IAM.
+
+Verify the same hosted contract enforced by CI/CD:
+
+```bash
+make gcp-backend-smoke \
+  GCP_BACKEND_SERVICE=ev-twin-api-dev \
+  GCP_BACKEND_CORS_ORIGINS=https://ev-factory-twin-gcp.vercel.app
+```
+
+After a successful `develop` CI run, `.github/workflows/deploy-gcp-develop.yml`
+publishes the full-SHA image, deploys only `ev-twin-api-dev`, verifies it, then
+deploys the same SHA to `ev-twin-edge-01`. It does not target `ev-twin-api`,
+`main`, `ev-twin-edge-prod-01`, or either Vercel project. Vercel continues to
+deploy its configured branch independently.
+
+Bootstrap edge access once after creating the deploy identity. These operations
+grant project read/IAP access but OS Login only on the selected VM:
+
+```bash
+make gcp-edge-cicd-access
+make gcp-edge-os-login-enable
+make gcp-edge-operator-impersonation-grant OPERATOR_ACCOUNT=OPERATOR_EMAIL
+make gcp-edge-deploy-os-user
+```
+
+Use the username printed by the last command to install the reviewed wrapper
+and its single-command sudo rule:
+
+```bash
+make gcp-edge-deploy-wrapper-install EDGE_DEPLOY_OS_USER=USERNAME_FROM_PREVIOUS_COMMAND
+make gcp-edge-operator-impersonation-revoke OPERATOR_ACCOUNT=OPERATOR_EMAIL
+```
+
+The temporary Token Creator binding exists only so the operator workstation can
+impersonate the deploy identity during bootstrap. Revoke it immediately after
+installing and validating the wrapper; GitHub WIF does not require it.
+
+Repeat for production with explicit overrides; this prepares access but does
+not deploy or start production:
+
+```bash
+make gcp-edge-cicd-access \
+  GCP_EDGE_VM=ev-twin-edge-prod-01 \
+  GCP_EDGE_DEPLOY_SERVICE_ACCOUNT_EMAIL=ev-twin-github-prod-deploy@ev-factory-twin.iam.gserviceaccount.com
+make gcp-edge-os-login-enable GCP_EDGE_VM=ev-twin-edge-prod-01
+make gcp-edge-deploy-os-user \
+  GCP_EDGE_DEPLOY_SERVICE_ACCOUNT_EMAIL=ev-twin-github-prod-deploy@ev-factory-twin.iam.gserviceaccount.com
+make gcp-edge-deploy-wrapper-install \
+  GCP_EDGE_VM=ev-twin-edge-prod-01 \
+  EDGE_DEPLOY_OS_USER=PRODUCTION_USERNAME_FROM_PREVIOUS_COMMAND
+```
+
+If migrations changed, first apply them through the existing operator-controlled
+Cloud SQL proxy flow. Then dispatch `Deploy GCP Develop` from branch `develop`
+with `migrations_applied=true`. Do not use this confirmation before checking the
+migration ledger.
+
+Inspect the resulting revision:
+
+```bash
+gcloud run services describe ev-twin-api-dev \
+  --project=ev-factory-twin \
+  --region=us-central1 \
+  --format='yaml(status.url,status.latestReadyRevisionName,status.traffic,spec.template.spec.containers[0].image)'
+```
+
+ROS/Gazebo VM deployment remains operator-approved. Do not grant the GitHub
+Backend deployer general SSH or sudo access. A later edge deployment checkpoint
+must install a narrowly scoped VM deployment wrapper before adding an approved
+GitHub Environment job.
+
+### Production CI/CD bootstrap
+
+Production uses a second Cloud SQL instance and independent runtime/deployment
+identities. Create resources in this order:
+
+```bash
+make gcp-production-cloudsql-create
+make gcp-production-postgres-password-set
+make gcp-production-backend-service-account-create
+make gcp-production-backend-cloudsql-access
+make gcp-production-secrets-create
+make gcp-production-database-user-create
+make gcp-secret-version-add SECRET_NAME=ev-twin-prod-auth-jwt-secret
+make gcp-secret-version-add SECRET_NAME=ev-twin-prod-edge-telemetry-secret
+make gcp-production-backend-secret-access
+```
+
+The Cloud SQL create target provisions a separate zonal PostgreSQL 17 Enterprise
+`db-f1-micro` instance with pg_cron enabled. The explicit edition prevents the
+CLI defaulting PostgreSQL 17 to Enterprise Plus, which does not support this
+shared-core tier. It starts billing immediately. The password targets prompt
+without echo and never write credentials to the repository.
+
+Connect the Auth Proxy to
+`ev-factory-twin:us-central1:ev-twin-postgres-prod-01`, prepare a matching
+root-only `CLOUD_SQL_PGPASSFILE`, then apply the full migration chain and seed
+production accounts/reference data. Do not baseline a fresh production
+database.
+
+The Makefile keeps the administrator password out of shell history:
+
+```bash
+make gcp-production-pgpassfile-create
+make gcp-production-cloudsql-proxy-start
+make postgres-migrate-docker \
+  CLOUD_SQL_PGPASSFILE=/tmp/ev-twin-production-cloudsql.pgpass
+```
+
+After migration, create both production roles. Each command prompts for the
+browser password twice without printing it:
+
+```bash
+make gcp-production-user-create \
+  EMAIL=designer@example.com DISPLAY_NAME='Production Designer' ROLE=DESIGNER
+make gcp-production-user-create \
+  EMAIL=monitor@example.com DISPLAY_NAME='Production Monitor' ROLE=MONITOR
+make gcp-production-seed
+make gcp-production-postgres-smoke
+```
+
+The wrapper reads the runtime database URL from Secret Manager, replaces only
+its Cloud Run socket with the local proxy address, disables database TLS only
+for that localhost proxy hop, and does not print the URL. The proxy-to-Cloud SQL
+connection remains authenticated and encrypted. After seed and smoke operations,
+always stop the proxy and securely remove the temporary password file:
+
+```bash
+make gcp-production-cloudsql-proxy-stop
+```
+
+Create the production GitHub identity after the database is ready:
+
+```bash
+make gcp-production-cicd-service-account-create
+make gcp-production-cicd-wif-create
+make gcp-production-cicd-access
+```
+
+Resolve the `github-main` provider name and configure it with the production
+deployer in the `gcp-production` GitHub Environment:
+
+```text
+GCP_WORKLOAD_IDENTITY_PROVIDER=projects/849232336681/locations/global/workloadIdentityPools/github-actions/providers/github-main
+GCP_DEPLOY_SERVICE_ACCOUNT=ev-twin-github-prod-deploy@ev-factory-twin.iam.gserviceaccount.com
+```
+
+Bootstrap the public production service once using an accepted image:
+
+```bash
+make gcp-backend-deploy \
+  GCP_BACKEND_SERVICE=ev-twin-api \
+  GCP_BACKEND_SERVICE_ACCOUNT=ev-twin-api-prod \
+  GCP_CLOUD_SQL_INSTANCE=ev-twin-postgres-prod-01 \
+  GCP_DATABASE_URL_SECRET=ev-twin-prod-database-url \
+  GCP_AUTH_JWT_SECRET=ev-twin-prod-auth-jwt-secret \
+  GCP_EDGE_SECRET=ev-twin-prod-edge-telemetry-secret \
+  GCP_BACKEND_CORS_ORIGINS=https://c3-app-078.vercel.app
+```
+
+Only after this bootstrap and hosted smoke should `main` delivery be enabled.
+Until the cutover, do not change the `c3-app-078` Render variables and do not
+start the production ROS bridge.
+Use required reviewers on `gcp-production` for an approval gate, or omit them
+for automatic deployment after protected-branch CI.
 
 ## 10. Cloud SQL and Auth Proxy
 

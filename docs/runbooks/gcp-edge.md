@@ -3,11 +3,11 @@
 ## Scope
 
 Run the ROS 2 Jazzy, Gazebo Harmonic, fleet/task managers and authenticated
-telemetry bridge on one Ubuntu 24.04 Compute Engine VM. Render, Vercel and
-Cloud Run and Cloud SQL provide the application services. ROS DDS and Gazebo are never exposed to
-the Internet.
+telemetry bridge on Ubuntu 24.04 Compute Engine. Vercel, Cloud Run and Cloud SQL
+provide the application services. Develop and production use separate edge VMs.
+ROS DDS and Gazebo are never exposed to the Internet.
 
-This MVP uses one ordinary VM and headless Gazebo. Kubernetes, Cloud Run, GPU,
+Each environment uses one ordinary VM and headless Gazebo. Kubernetes, GPU,
 Spot VM and multi-VM DDS are deliberately excluded.
 
 ## 1. Provisioning contract
@@ -16,14 +16,14 @@ Create a dedicated-project or dedicated-VPC Ubuntu 24.04 VM with:
 
 - at least 4 vCPU, 16 GB RAM and 50 GB persistent disk for the initial load test;
 - standard on-demand lifecycle, automatic restart and deletion protection;
-- outbound TCP 443 to Render and package repositories;
+- outbound TCP 443 to Cloud Run and package repositories;
 - no inbound ROS/Gazebo ports;
 - SSH restricted to Identity-Aware Proxy or another team-controlled admin path;
 - time synchronization enabled.
 
-An ephemeral external address is sufficient for MVP outbound traffic. If the VM
-has no external address, provide Cloud NAT before installing packages or starting
-the bridge. A static public IP is not required by the application.
+Production has no external address and uses Cloud NAT for outbound traffic.
+Develop may retain its existing ephemeral address during migration. A static
+public IP is not required by the application.
 
 Do not grant broad cloud API roles to the VM service account. The current runtime
 does not call GCP APIs.
@@ -34,6 +34,16 @@ Follow the official ROS 2 Jazzy Ubuntu 24.04 and Gazebo Harmonic installation
 instructions. Install `git`, `rosdep`, `colcon`, the package dependencies declared
 under `ros2_ws/src`, and the `ament_python` colcon extension. Do not install
 project Python dependencies with pip.
+
+For the production VM, run the repository bootstrap from the operator machine:
+
+```bash
+make gcp-production-edge-bootstrap
+```
+
+The target connects through IAP and runs `scripts/gcp_edge_bootstrap.sh` as
+root. It is safe to rerun and does not clone application code, read secrets, or
+start runtime services.
 
 Create a locked-down runtime account and checkout directory:
 
@@ -64,10 +74,10 @@ sudo install -o root -g root -m 0600 \
 sudoedit /etc/ev-factory-twin/bridge.env
 ```
 
-Set the real Render HTTPS URL and the same random edge secret configured on
-Render. Keep the file `root:root` mode `0600`; systemd reads it before dropping to
-the `ev-twin` service user. Do not put the secret in instance metadata, startup
-scripts, repository files, command arguments or logs.
+Set the environment's Cloud Run HTTPS URL and matching edge secret. Keep the
+file `root:root` mode `0600`; systemd reads it before dropping to the `ev-twin`
+service user. Do not put the secret in instance metadata, startup scripts,
+repository files, command arguments or logs.
 
 Secret Manager may be used as the operator's source of truth, but materialize the
 secret into this root-only file during an approved maintenance action. The
@@ -87,7 +97,7 @@ sudo systemctl enable --now ev-twin-bridge.service
 
 The simulation runs `gz sim -s -r` through the ROS launch file. The bridge waits
 for network-online and the simulation unit, validates HTTPS/secret configuration,
-then connects outbound to Render. Both units restart only after failure and use
+then connects outbound to Cloud Run. Both units restart only after failure and use
 SIGINT for ROS-aware shutdown.
 
 ## 5. Verify and operate
@@ -100,7 +110,7 @@ sudo -u ev-twin bash -lc \
 ```
 
 Expected nodes include both namespaced AMRs, Fleet Manager and Task Manager.
-Render must show `gcp-edge-main` connected and telemetry for `AMR-01` and
+The Backend must show the environment-specific bridge connected and telemetry for `AMR-01` and
 `AMR-02`. Continue with `docs/runbooks/mvp-edge-acceptance.md`.
 
 Use journald retention/forwarding appropriate for the project, but never log the

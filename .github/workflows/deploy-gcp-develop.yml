@@ -1,0 +1,34 @@
+name: Deploy GCP Develop
+
+on:
+  workflow_call:
+  workflow_dispatch:
+    inputs:
+      migrations_applied:
+        description: Confirm develop migrations are already applied
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/develop'
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/deploy-gcp.yml
+    with:
+      environment_name: gcp-develop
+      service: ev-twin-api-dev
+      origin: https://ev-factory-twin-gcp.vercel.app
+      runtime_service_account: ev-twin-api@ev-factory-twin.iam.gserviceaccount.com
+      cloud_sql_connection: ev-factory-twin:us-central1:ev-twin-postgres-01
+      database_url_secret: ev-twin-database-url
+      auth_jwt_secret: ev-twin-auth-jwt-secret
+      edge_secret: ev-twin-edge-telemetry-secret
+      edge_vm: ev-twin-edge-01
+      migrations_applied: ${{ inputs.migrations_applied || false }}
