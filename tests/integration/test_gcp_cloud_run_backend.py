@@ -6,6 +6,7 @@ ROOT = Path(__file__).parents[2]
 MAKEFILE = ROOT / "Makefile"
 CLOUD_BUILD = ROOT / "deploy" / "gcp" / "cloudbuild.backend.yaml"
 ENV_EXAMPLE = ROOT / "deploy" / "gcp" / "backend.env.example"
+DOCKERFILE = ROOT / "apps" / "backend" / "Dockerfile"
 RUNTIME_GRANTS = ROOT / "postgres" / "migrations" / "0010_grant_runtime_database_access.sql"
 
 
@@ -27,6 +28,13 @@ def test_cloud_build_uses_backend_dockerfile_and_immutable_image_input() -> None
     assert "apps/backend/Dockerfile" in config
     assert "${_IMAGE}" in config
     assert "latest" not in config
+
+
+def test_backend_image_normalizes_source_read_permissions_before_non_root_runtime() -> None:
+    dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+
+    assert "chmod -R a+rX /app" in dockerfile
+    assert dockerfile.index("chmod -R a+rX /app") < dockerfile.index("USER app")
 
 
 def test_cloud_run_target_preserves_mvp_runtime_boundaries() -> None:
