@@ -108,12 +108,10 @@ async def test_unleased_command_timeout_and_retry_deadline_round_trip() -> None:
         retried = await repository.retry(operation_id, retried_at)
         assert retried.status == CommandStatus.PENDING
         assert retried.updated_at >= retried_at
-        assert not await repository.expire(
-            retried_at + timedelta(seconds=timeout_seconds - 1)
-        )
-        assert (
-            await repository.expire(retried_at + timedelta(seconds=timeout_seconds + 1))
-        )[0].status == CommandStatus.TIMED_OUT
+        assert not await repository.expire(retried_at + timedelta(seconds=timeout_seconds - 1))
+        assert (await repository.expire(retried_at + timedelta(seconds=timeout_seconds + 1)))[
+            0
+        ].status == CommandStatus.TIMED_OUT
     finally:
         async with database.session() as session, session.begin():
             await session.execute(
