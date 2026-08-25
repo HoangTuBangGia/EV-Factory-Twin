@@ -6,6 +6,7 @@ DEVELOP_WORKFLOW = ROOT / ".github" / "workflows" / "deploy-gcp-develop.yml"
 PRODUCTION_WORKFLOW = ROOT / ".github" / "workflows" / "deploy-gcp-production.yml"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 MAKEFILE = ROOT / "Makefile"
+EDGE_DEPLOY_SCRIPT = ROOT / "scripts" / "gcp_edge_deploy.sh"
 
 
 def test_develop_deployment_is_branch_and_ci_gated() -> None:
@@ -60,6 +61,19 @@ def test_develop_deployment_runs_hosted_contract_smoke() -> None:
     assert 'test "$allowed_origin" = "$ORIGIN"' in workflow
 
 
+def test_branch_deployments_target_isolated_ros_edges() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    develop = DEVELOP_WORKFLOW.read_text(encoding="utf-8")
+    production = PRODUCTION_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "edge_vm: ev-twin-edge-01" in develop
+    assert "edge_vm: ev-twin-edge-prod-01" in production
+    assert "Deploy reviewed SHA to ROS edge" in workflow
+    assert "sudo /usr/local/sbin/ev-twin-deploy '$GITHUB_SHA'" in workflow
+    assert "--ssh-key-expire-after=5m" in workflow
+    assert 'test "$deployed_sha" = "$GITHUB_SHA"' in workflow
+
+
 def test_makefile_provisions_repository_scoped_workload_identity() -> None:
     makefile = MAKEFILE.read_text(encoding="utf-8")
 
@@ -80,6 +94,26 @@ def test_makefile_provisions_repository_scoped_workload_identity() -> None:
     assert "--env gcp-production" in makefile
     assert "gcp-backend-smoke:" in makefile
     assert 'test "$$status" = 401' in makefile
+    assert "gcp-edge-cicd-access:" in makefile
+    assert "roles/compute.osLogin" in makefile
+    assert "roles/iap.tunnelResourceAccessor" in makefile
+    assert "gcp-edge-operator-impersonation-grant:" in makefile
+    assert "gcp-edge-operator-impersonation-revoke:" in makefile
+    assert "gcp-edge-deploy-wrapper-install:" in makefile
+    assert "gcp-edge-deploy-wrapper-smoke:" in makefile
+    assert "invalid-sha" in makefile
+
+
+def test_edge_deploy_wrapper_validates_sha_and_rolls_back() -> None:
+    script = EDGE_DEPLOY_SCRIPT.read_text(encoding="utf-8")
+
+    assert "^[0-9a-f]{40}$" in script
+    assert "flock --exclusive --nonblock" in script
+    assert "unexpected repository origin" in script
+    assert "make ros-check" in script
+    assert "rollback completed" in script
+    assert "systemctl is-active --quiet ev-twin-simulation.service" in script
+    assert "systemctl is-active --quiet ev-twin-bridge.service" in script
 
 
 def test_production_runtime_has_separate_database_identity_and_secrets() -> None:
@@ -95,6 +129,6 @@ def test_production_runtime_has_separate_database_identity_and_secrets() -> None
     assert "gcp-production-cloudsql-proxy-start:" in makefile
     assert "gcp-production-cloudsql-proxy-stop:" in makefile
     assert "gcp-production-user-create:" in makefile
-    assert 'DATABASE_SSL_MODE=disable $(MAKE) user-create' in makefile
+    assert "DATABASE_SSL_MODE=disable $(MAKE) user-create" in makefile
     assert "gcp-production-seed:" in makefile
     assert "gcp-production-postgres-smoke:" in makefile

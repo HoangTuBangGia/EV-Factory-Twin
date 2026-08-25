@@ -30,4 +30,5 @@ jobs:
       database_url_secret: ev-twin-prod-database-url
       auth_jwt_secret: ev-twin-prod-auth-jwt-secret
       edge_secret: ev-twin-prod-edge-telemetry-secret
+      edge_vm: ev-twin-edge-prod-01
       migrations_applied: ${{ inputs.migrations_applied || false }}

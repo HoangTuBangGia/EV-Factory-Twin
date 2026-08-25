@@ -25,8 +25,13 @@ write access is scoped to the existing `ev-twin` repository.
 
 PostgreSQL DDL remains operator-controlled. A commit that changes migrations is
 blocked until the operator applies the ledger-backed migrations and manually
-confirms that action. ROS/Gazebo VM deployment remains outside this workflow
-until a least-privilege, approval-gated edge deployment identity exists.
+confirms that action. After Cloud Run smoke succeeds, the same immutable SHA is
+deployed to the branch-specific ROS/Gazebo VM through IAP and OS Login.
+
+The edge deploy identity has no administrator login. A root-owned wrapper is
+the only passwordless sudo command; it validates the full SHA and repository
+origin, serializes deployments, runs `ros-check`, restarts both services, records
+the deployed SHA, and rebuilds the previous SHA on failure.
 
 Production ROS/Gazebo now has a separately provisioned private Compute Engine
 VM. Cloud NAT provides outbound-only access, and an idempotent IAP bootstrap
@@ -43,6 +48,7 @@ out application code or materializing secrets.
 - `.dockerignore`
 - `Makefile`
 - `scripts/gcp_edge_bootstrap.sh`
+- `scripts/gcp_edge_deploy.sh`
 - `tests/integration/test_gcp_develop_cicd.py`
 - `docs/deployment.md`
 - `docs/runbooks/gcp-operations.md`
@@ -68,6 +74,6 @@ deployments without cancelling an active rollout.
 
 Finish both GitHub Environments, provision and migrate production Cloud SQL,
 bootstrap both public Cloud Run services, and complete branch-specific hosted
-acceptance. Install the accepted production commit and environment-specific
-bridge configuration on the production edge VM. Add approval-gated ROS VM
-delivery only after installing a restricted deployment wrapper on each VM.
+acceptance. Install the restricted wrapper and environment-specific bridge
+configuration on each edge VM. Keep production inactive until the explicit
+Render-to-GCP cutover.

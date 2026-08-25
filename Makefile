@@ -42,9 +42,12 @@ GCP_PRODUCTION_EDGE_NETWORK ?= ev-twin-edge-vpc
 GCP_PRODUCTION_EDGE_SUBNET ?= ev-twin-edge-us-central1
 GCP_EDGE_ROUTER ?= ev-twin-edge-router
 GCP_EDGE_NAT ?= ev-twin-edge-nat
+GCP_EDGE_VM ?= ev-twin-edge-01
+GCP_EDGE_ZONE ?= us-central1-a
+GCP_EDGE_DEPLOY_SERVICE_ACCOUNT_EMAIL ?= $(GCP_GITHUB_DEPLOY_SERVICE_ACCOUNT_EMAIL)
 CLOUD_SQL_PROXY_IMAGE ?= gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.18.2
 
-.PHONY: sync lint format format-check migration-check postgres-migrate postgres-migrate-docker postgres-migrations-baseline-docker postgres-seed-docker integration postgres-smoke test test-cov typecheck check backend user-create frontend-sync frontend frontend-lint frontend-typecheck frontend-test frontend-build frontend-check frontend-browser-install frontend-smoke frontend-e2e-list frontend-e2e docker-build gcp-backend-check gcp-backend-apis gcp-artifact-repository-create gcp-cloud-build-access gcp-backend-service-account-create gcp-backend-cloudsql-access gcp-backend-secrets-create gcp-backend-database-user-create gcp-secret-version-add gcp-backend-secret-access gcp-backend-build gcp-backend-deploy gcp-backend-smoke gcp-develop-cicd-apis gcp-develop-cicd-service-account-create gcp-develop-cicd-wif-create gcp-develop-cicd-access gcp-production-cloudsql-create gcp-production-postgres-password-set gcp-production-backend-service-account-create gcp-production-backend-cloudsql-access gcp-production-secrets-create gcp-production-database-user-create gcp-production-backend-secret-access gcp-production-pgpassfile-create gcp-production-cloudsql-proxy-start gcp-production-cloudsql-proxy-stop gcp-production-user-create gcp-production-seed gcp-production-postgres-smoke gcp-production-cicd-service-account-create gcp-production-cicd-wif-create gcp-production-cicd-access gcp-production-edge-vm-create gcp-production-edge-bootstrap gcp-edge-router-create gcp-edge-nat-create github-gcp-environments-configure github-gcp-environments-list ros-deps ros-build ros-test ros-check
+.PHONY: sync lint format format-check migration-check postgres-migrate postgres-migrate-docker postgres-migrations-baseline-docker postgres-seed-docker integration postgres-smoke test test-cov typecheck check backend user-create frontend-sync frontend frontend-lint frontend-typecheck frontend-test frontend-build frontend-check frontend-browser-install frontend-smoke frontend-e2e-list frontend-e2e docker-build gcp-backend-check gcp-backend-apis gcp-artifact-repository-create gcp-cloud-build-access gcp-backend-service-account-create gcp-backend-cloudsql-access gcp-backend-secrets-create gcp-backend-database-user-create gcp-secret-version-add gcp-backend-secret-access gcp-backend-build gcp-backend-deploy gcp-backend-smoke gcp-develop-cicd-apis gcp-develop-cicd-service-account-create gcp-develop-cicd-wif-create gcp-develop-cicd-access gcp-production-cloudsql-create gcp-production-postgres-password-set gcp-production-backend-service-account-create gcp-production-backend-cloudsql-access gcp-production-secrets-create gcp-production-database-user-create gcp-production-backend-secret-access gcp-production-pgpassfile-create gcp-production-cloudsql-proxy-start gcp-production-cloudsql-proxy-stop gcp-production-user-create gcp-production-seed gcp-production-postgres-smoke gcp-production-cicd-service-account-create gcp-production-cicd-wif-create gcp-production-cicd-access gcp-production-edge-vm-create gcp-production-edge-bootstrap gcp-edge-router-create gcp-edge-nat-create gcp-edge-cicd-access gcp-edge-os-login-enable gcp-edge-operator-impersonation-grant gcp-edge-operator-impersonation-revoke gcp-edge-deploy-os-user gcp-edge-deploy-wrapper-install gcp-edge-deploy-wrapper-smoke github-gcp-environments-configure github-gcp-environments-list ros-deps ros-build ros-test ros-check
 
 sync:
 	uv sync --all-packages --dev
@@ -358,6 +361,77 @@ gcp-edge-nat-create:
 		--router-region="$(GCP_REGION)" \
 		--nat-custom-subnet-ip-ranges="$(GCP_PRODUCTION_EDGE_SUBNET)" \
 		--auto-allocate-nat-external-ips
+
+gcp-edge-cicd-access:
+	@for role in roles/compute.viewer roles/iap.tunnelResourceAccessor; do \
+		gcloud projects add-iam-policy-binding "$(GCP_PROJECT)" \
+			--member="serviceAccount:$(GCP_EDGE_DEPLOY_SERVICE_ACCOUNT_EMAIL)" \
+			--role="$$role" || exit 1; \
+	done
+	gcloud compute instances add-iam-policy-binding "$(GCP_EDGE_VM)" \
+		--project="$(GCP_PROJECT)" --zone="$(GCP_EDGE_ZONE)" \
+		--member="serviceAccount:$(GCP_EDGE_DEPLOY_SERVICE_ACCOUNT_EMAIL)" \
+		--role=roles/compute.osLogin
+
+gcp-edge-os-login-enable:
+	gcloud compute instances add-metadata "$(GCP_EDGE_VM)" \
+		--project="$(GCP_PROJECT)" --zone="$(GCP_EDGE_ZONE)" \
+		--metadata=enable-oslogin=TRUE
+
+gcp-edge-operator-impersonation-grant:
+	@test -n "$(OPERATOR_ACCOUNT)" || \
+		(echo "OPERATOR_ACCOUNT is required" >&2; exit 2)
+	gcloud iam service-accounts add-iam-policy-binding \
+		"$(GCP_EDGE_DEPLOY_SERVICE_ACCOUNT_EMAIL)" \
+		--project="$(GCP_PROJECT)" \
+		--member="user:$(OPERATOR_ACCOUNT)" \
+		--role=roles/iam.serviceAccountTokenCreator
+
+gcp-edge-operator-impersonation-revoke:
+	@test -n "$(OPERATOR_ACCOUNT)" || \
+		(echo "OPERATOR_ACCOUNT is required" >&2; exit 2)
+	gcloud iam service-accounts remove-iam-policy-binding \
+		"$(GCP_EDGE_DEPLOY_SERVICE_ACCOUNT_EMAIL)" \
+		--project="$(GCP_PROJECT)" \
+		--member="user:$(OPERATOR_ACCOUNT)" \
+		--role=roles/iam.serviceAccountTokenCreator
+
+gcp-edge-deploy-os-user:
+	gcloud compute ssh "$(GCP_EDGE_VM)" \
+		--project="$(GCP_PROJECT)" --zone="$(GCP_EDGE_ZONE)" \
+		--impersonate-service-account="$(GCP_EDGE_DEPLOY_SERVICE_ACCOUNT_EMAIL)" \
+		--tunnel-through-iap --ssh-key-expire-after=5m \
+		--command='id -un'
+
+gcp-edge-deploy-wrapper-install:
+	@test -n "$(EDGE_DEPLOY_OS_USER)" || \
+		(echo "EDGE_DEPLOY_OS_USER is required" >&2; exit 2)
+	@case "$(EDGE_DEPLOY_OS_USER)" in \
+		*[!a-zA-Z0-9_-]*) echo "EDGE_DEPLOY_OS_USER is invalid" >&2; exit 2 ;; \
+	esac
+	gcloud compute ssh "$(GCP_EDGE_VM)" \
+		--project="$(GCP_PROJECT)" --zone="$(GCP_EDGE_ZONE)" \
+		--tunnel-through-iap \
+		--command='sudo install -o root -g root -m 0755 /dev/stdin /usr/local/sbin/ev-twin-deploy' \
+		< scripts/gcp_edge_deploy.sh
+	@printf '%s ALL=(root) NOPASSWD: /usr/local/sbin/ev-twin-deploy\n' \
+		"$(EDGE_DEPLOY_OS_USER)" | \
+		gcloud compute ssh "$(GCP_EDGE_VM)" \
+			--project="$(GCP_PROJECT)" --zone="$(GCP_EDGE_ZONE)" \
+			--tunnel-through-iap \
+			--command='sudo install -o root -g root -m 0440 /dev/stdin /etc/sudoers.d/ev-twin-deploy && sudo visudo -cf /etc/sudoers.d/ev-twin-deploy'
+
+gcp-edge-deploy-wrapper-smoke:
+	@output=$$(gcloud compute ssh "$(GCP_EDGE_VM)" \
+		--project="$(GCP_PROJECT)" --zone="$(GCP_EDGE_ZONE)" \
+		--impersonate-service-account="$(GCP_EDGE_DEPLOY_SERVICE_ACCOUNT_EMAIL)" \
+		--tunnel-through-iap --ssh-key-expire-after=5m \
+		--command='sudo -n /usr/local/sbin/ev-twin-deploy invalid-sha' \
+		2>&1); status=$$?; \
+	printf '%s\n' "$$output"; \
+	test "$$status" = 2; \
+	printf '%s\n' "$$output" | grep -F \
+		'usage: ev-twin-deploy FULL_40_CHARACTER_GIT_SHA'
 
 gcp-production-postgres-password-set:
 	@bash -eu -o pipefail -c '\

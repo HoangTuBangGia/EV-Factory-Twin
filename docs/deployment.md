@@ -65,6 +65,9 @@ deployment workflows only after all CI jobs pass. `develop` deploys
 repository- and branch-scoped Workload Identity providers and deployers. The
 shared engine builds an image tagged with the complete reviewed commit SHA and
 verifies health, unauthenticated rejection, and the exact environment origin.
+It then deploys the same full SHA to the matching edge VM through IAP. Develop
+targets only `ev-twin-edge-01`; production targets only
+`ev-twin-edge-prod-01`.
 
 The workflow does not hold a Google service-account key. Configure the GitHub
 Environment `gcp-develop` with these repository/environment variables:
@@ -88,6 +91,12 @@ If the deployed commit changes `postgres/migrations`, automatic deployment
 stops. Apply the ledger-backed migrations to the corresponding database, then
 invoke that branch's workflow manually with `migrations_applied=true`. The
 workflow never applies DDL with a Backend runtime identity.
+
+Edge delivery uses OS Login without administrator permission. The deployer may
+invoke only the root-owned `/usr/local/sbin/ev-twin-deploy` command through
+sudo. The wrapper validates the full SHA and repository origin, runs the ROS
+gate on the VM, restarts simulation and bridge services, and rolls back on
+failure.
 
 ## Frontend environment
 

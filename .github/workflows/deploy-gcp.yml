@@ -27,6 +27,13 @@ on:
       edge_secret:
         required: true
         type: string
+      edge_vm:
+        required: true
+        type: string
+      edge_zone:
+        required: false
+        default: us-central1-a
+        type: string
       migrations_applied:
         required: false
         default: false
@@ -152,3 +159,26 @@ jobs:
             sed -n 's/^access-control-allow-origin:[[:space:]]*//Ip' | tr -d '\r')"
           test "$allowed_origin" = "$ORIGIN"
           echo "$SERVICE ready at $service_url"
+
+      - name: Deploy reviewed SHA to ROS edge
+        env:
+          EDGE_VM: ${{ inputs.edge_vm }}
+          EDGE_ZONE: ${{ inputs.edge_zone }}
+        run: |
+          gcloud compute ssh "$EDGE_VM" \
+            --project="$GCP_PROJECT" \
+            --zone="$EDGE_ZONE" \
+            --tunnel-through-iap \
+            --ssh-key-expire-after=5m \
+            --quiet \
+            --command="sudo /usr/local/sbin/ev-twin-deploy '$GITHUB_SHA'"
+
+          deployed_sha="$(gcloud compute ssh "$EDGE_VM" \
+            --project="$GCP_PROJECT" \
+            --zone="$EDGE_ZONE" \
+            --tunnel-through-iap \
+            --ssh-key-expire-after=5m \
+            --quiet \
+            --command='cat /var/lib/ev-twin-deploy/current-sha')"
+          test "$deployed_sha" = "$GITHUB_SHA"
+          echo "$EDGE_VM ready at $deployed_sha"

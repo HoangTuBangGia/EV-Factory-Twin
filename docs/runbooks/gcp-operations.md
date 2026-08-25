@@ -513,9 +513,47 @@ make gcp-backend-smoke \
 ```
 
 After a successful `develop` CI run, `.github/workflows/deploy-gcp-develop.yml`
-publishes the full-SHA image and deploys only `ev-twin-api-dev`. It does not
-target `ev-twin-api`, `main`, or either Vercel project. Vercel continues to
+publishes the full-SHA image, deploys only `ev-twin-api-dev`, verifies it, then
+deploys the same SHA to `ev-twin-edge-01`. It does not target `ev-twin-api`,
+`main`, `ev-twin-edge-prod-01`, or either Vercel project. Vercel continues to
 deploy its configured branch independently.
+
+Bootstrap edge access once after creating the deploy identity. These operations
+grant project read/IAP access but OS Login only on the selected VM:
+
+```bash
+make gcp-edge-cicd-access
+make gcp-edge-os-login-enable
+make gcp-edge-operator-impersonation-grant OPERATOR_ACCOUNT=OPERATOR_EMAIL
+make gcp-edge-deploy-os-user
+```
+
+Use the username printed by the last command to install the reviewed wrapper
+and its single-command sudo rule:
+
+```bash
+make gcp-edge-deploy-wrapper-install EDGE_DEPLOY_OS_USER=USERNAME_FROM_PREVIOUS_COMMAND
+make gcp-edge-operator-impersonation-revoke OPERATOR_ACCOUNT=OPERATOR_EMAIL
+```
+
+The temporary Token Creator binding exists only so the operator workstation can
+impersonate the deploy identity during bootstrap. Revoke it immediately after
+installing and validating the wrapper; GitHub WIF does not require it.
+
+Repeat for production with explicit overrides; this prepares access but does
+not deploy or start production:
+
+```bash
+make gcp-edge-cicd-access \
+  GCP_EDGE_VM=ev-twin-edge-prod-01 \
+  GCP_EDGE_DEPLOY_SERVICE_ACCOUNT_EMAIL=ev-twin-github-prod-deploy@ev-factory-twin.iam.gserviceaccount.com
+make gcp-edge-os-login-enable GCP_EDGE_VM=ev-twin-edge-prod-01
+make gcp-edge-deploy-os-user \
+  GCP_EDGE_DEPLOY_SERVICE_ACCOUNT_EMAIL=ev-twin-github-prod-deploy@ev-factory-twin.iam.gserviceaccount.com
+make gcp-edge-deploy-wrapper-install \
+  GCP_EDGE_VM=ev-twin-edge-prod-01 \
+  EDGE_DEPLOY_OS_USER=PRODUCTION_USERNAME_FROM_PREVIOUS_COMMAND
+```
 
 If migrations changed, first apply them through the existing operator-controlled
 Cloud SQL proxy flow. Then dispatch `Deploy GCP Develop` from branch `develop`
