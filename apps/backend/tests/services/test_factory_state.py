@@ -1,11 +1,13 @@
 from uuid import uuid4
 
-from ev_twin_api.core.layout import FACTORY_HEIGHT_M, FACTORY_WIDTH_M
 from ev_twin_api.schemas.alert import AlertCode, AlertSeverity, FactoryAlert
 from ev_twin_api.schemas.factory import MockFactoryConfig
-from ev_twin_api.schemas.robot import RobotStatus
+from ev_twin_api.schemas.robot import Pose, RobotStatus
 from ev_twin_api.schemas.task import Task, TaskStatus
 from ev_twin_api.services.factory_state import FactoryState
+from twin_core.default_layout import default_layout_content
+
+LAYOUT = default_layout_content()
 
 
 def _new_state(**config_overrides: object) -> FactoryState:
@@ -36,8 +38,8 @@ def test_robots_start_idle_full_battery_no_task() -> None:
 def test_robot_poses_within_factory_bounds() -> None:
     state = _new_state()
     for robot in state.robots.values():
-        assert 0 <= robot.pose.x <= FACTORY_WIDTH_M
-        assert 0 <= robot.pose.y <= FACTORY_HEIGHT_M
+        assert 0 <= robot.pose.x <= LAYOUT.width
+        assert 0 <= robot.pose.y <= LAYOUT.height
 
 
 def test_robot_poses_do_not_overlap() -> None:
@@ -46,19 +48,17 @@ def test_robot_poses_do_not_overlap() -> None:
     assert len(positions) == len(set(positions))
 
 
-def test_layout_has_six_stations_with_expected_coordinates() -> None:
+def test_layout_uses_canonical_plant_coordinates() -> None:
     state = _new_state()
     layout = state.get_layout()
-    assert layout.width_m == FACTORY_WIDTH_M
-    assert layout.height_m == FACTORY_HEIGHT_M
+    assert layout.width_m == 120
+    assert layout.height_m == 40
 
     expected = {
-        "BATTERY_BUFFER": (2, 4),
-        "INTERSECTION_A": (8, 4),
-        "INTERSECTION_B": (12, 8),
-        "MARRIAGE_STATION": (16, 8),
-        "CHARGING_STATION": (2, 12),
-        "IDLE_ZONE": (5, 12),
+        "BATTERY_BUFFER": (32, 29),
+        "MARRIAGE_STATION": (52, 6),
+        "MARRIAGE_STATION_2": (82, 8),
+        "CHARGING_STATION": (32, 11),
     }
     assert {station.id: (station.x, station.y) for station in layout.stations} == expected
 
@@ -73,6 +73,57 @@ def test_initialize_is_deterministic() -> None:
 def test_robot_count_from_config() -> None:
     state = _new_state(robot_count=3)
     assert set(state.robots.keys()) == {"AMR-01", "AMR-02", "AMR-03"}
+
+
+def test_applied_layout_controls_runtime_route_and_station_geometry() -> None:
+    state = _new_state(robot_count=2)
+    moved = LAYOUT.model_copy(
+        update={
+            "stations": [
+                station.model_copy(update={"x": 35.0})
+                if station.id == "CHARGING_STATION"
+                else station
+                for station in LAYOUT.stations
+            ]
+        }
+    )
+
+    state.apply_layout(moved, "BATTERY_DELIVERY")
+    state.reset()
+
+    assert next(station for station in state.stations if station.id == "CHARGING_STATION").x == 35
+    assert state.route_waypoints(("BATTERY_BUFFER", "MARRIAGE_STATION")) == tuple(
+        (point.x, point.y) for point in moved.routes[0].waypoints
+    )
+
+
+def test_task_route_repositions_on_network_before_pickup() -> None:
+    state = _new_state(robot_count=2)
+    marriage = next(station for station in state.stations if station.id == "MARRIAGE_STATION")
+
+    waypoints, pickup_index = state.task_route_waypoints(
+        Pose(x=marriage.x, y=marriage.y, yaw=0),
+        "BATTERY_BUFFER",
+        "MARRIAGE_STATION",
+    )
+
+    assert waypoints[:pickup_index] == tuple(
+        reversed(tuple((point.x, point.y) for point in LAYOUT.routes[0].waypoints))
+    )
+    assert waypoints[pickup_index - 1] == (32, 29)
+    assert waypoints[-1] == (52, 6)
+
+
+def test_charging_route_uses_support_network() -> None:
+    state = _new_state(robot_count=2)
+
+    assert state.charging_route_waypoints(Pose(x=52, y=6, yaw=0)) == (
+        (52.0, 6.0),
+        (52.0, 20.0),
+        (40.0, 20.0),
+        (32.0, 20.0),
+        (32.0, 11.0),
+    )
 
 
 def test_edge_state_starts_empty_and_registry_preserves_known_telemetry() -> None:

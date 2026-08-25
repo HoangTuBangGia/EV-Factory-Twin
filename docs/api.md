@@ -53,7 +53,7 @@ string/log/frontend và không được tái sử dụng service-role key.
 | POST | `/api/v1/auth/login` | `LoginResponse` | Đăng nhập email/password và nhận JWT 8 giờ |
 | POST | `/api/v1/auth/logout` | `204` | Kết thúc session phía browser; JWT là stateless |
 | GET | `/api/v1/auth/me` | `CurrentUser` | User/profile/role đang đăng nhập |
-| GET | `/api/v1/factory` | [`FactoryLayout`](#station--factorylayout) | Kích thước nhà máy + 6 station |
+| GET | `/api/v1/factory` | [`FactoryLayout`](#station--factorylayout) | Kích thước + operational stations của active layout |
 | GET | `/api/v1/robots` | [`Robot[]`](#robot) | Toàn bộ AMR |
 | GET | `/api/v1/robots/{robot_id}` | [`Robot`](#robot) | 1 AMR; id lạ → 404 |
 | GET | `/api/v1/tasks` | [`Task[]`](#task) | Toàn bộ task |
@@ -119,33 +119,47 @@ layout vừa APPLIED xuất hiện mà không cần reload trang.
 
 ```json
 {
-  "layout_id": "LAYOUT-0001",
-  "name": "Battery transfer zone",
-  "version": 1,
-  "width": 20.0,
-  "height": 15.0,
+  "layout_id": "LAYOUT-DEFAULT",
+  "name": "EV battery intralogistics plant",
+  "version": 3,
+  "width": 120.0,
+  "height": 40.0,
   "stations": [
-    {"id": "BATTERY_BUFFER", "type": "BATTERY_BUFFER", "x": 2.0, "y": 4.0},
-    {"id": "MARRIAGE_STATION", "type": "MARRIAGE_STATION", "x": 16.0, "y": 8.0},
-    {"id": "CHARGING_STATION", "type": "CHARGING_STATION", "x": 2.0, "y": 12.0}
+    {"id": "BATTERY_BUFFER", "type": "BATTERY_BUFFER", "x": 32.0, "y": 29.0},
+    {"id": "MARRIAGE_STATION", "type": "MARRIAGE_STATION", "x": 52.0, "y": 6.0},
+    {"id": "MARRIAGE_STATION_2", "type": "MARRIAGE_STATION", "x": 82.0, "y": 8.0},
+    {"id": "CHARGING_STATION", "type": "CHARGING_STATION", "x": 32.0, "y": 11.0}
   ],
   "routes": [{
     "id": "BATTERY_DELIVERY",
+    "kind": "DELIVERY",
     "start_station_id": "BATTERY_BUFFER",
     "end_station_id": "MARRIAGE_STATION",
-    "waypoints": [{"x": 2.0, "y": 4.0}, {"x": 16.0, "y": 8.0}]
+    "waypoints": [{"x": 32.0, "y": 29.0}, {"x": 32.0, "y": 20.0}, {"x": 40.0, "y": 20.0}, {"x": 52.0, "y": 20.0}, {"x": 52.0, "y": 6.0}]
+  }, {
+    "id": "BATTERY_DELIVERY_LONG",
+    "kind": "DELIVERY",
+    "start_station_id": "BATTERY_BUFFER",
+    "end_station_id": "MARRIAGE_STATION_2",
+    "waypoints": [{"x": 32.0, "y": 29.0}, {"x": 32.0, "y": 20.0}, {"x": 40.0, "y": 20.0}, {"x": 60.0, "y": 20.0}, {"x": 82.0, "y": 20.0}, {"x": 82.0, "y": 8.0}]
+  }, {
+    "id": "CHARGER_LINK",
+    "kind": "SUPPORT",
+    "start_station_id": "CHARGING_STATION",
+    "end_station_id": "BATTERY_BUFFER",
+    "waypoints": [{"x": 32.0, "y": 11.0}, {"x": 32.0, "y": 20.0}, {"x": 32.0, "y": 29.0}]
   }],
   "no_go_zones": [],
   "congestion_zones": [{
-    "id": "CONGESTION_01",
+    "id": "WAREHOUSE_PRODUCTION_DOOR",
     "delay_multiplier": 1.25,
-    "points": [{"x": 10.0, "y": 6.0}, {"x": 13.0, "y": 6.0}, {"x": 13.0, "y": 9.0}]
+    "points": [{"x": 38.0, "y": 17.5}, {"x": 42.0, "y": 17.5}, {"x": 42.0, "y": 22.5}, {"x": 38.0, "y": 22.5}]
   }],
   "config": {
-    "robot_count": 2,
+    "robot_count": 5,
     "demand_interval_seconds": 8.0,
-    "robot_speed_mps": 1.0,
-    "charger_count": 1
+    "robot_speed_mps": 1.2,
+    "charger_count": 2
   },
   "created_by": "00000000-0000-0000-0000-000000000001",
   "created_at": "2026-08-22T02:00:00Z",
@@ -157,8 +171,8 @@ Create body là `{ "name": string, "content": <geometry/config> }`; create-versi
 body là `{ "content": <geometry/config> }`. `layout_id`, `version`, actor và
 timestamps luôn do Backend/PostgreSQL tạo. Validation từ chối coordinate không
 hữu hạn/out-of-bounds, ID trùng, thiếu station type bắt buộc, polygon suy biến/tự
-cắt, route tham chiếu station lạ, endpoint không khớp station và route/station
-đi vào no-go zone. Congestion zone không cấm route và dùng
+cắt, thiếu route `DELIVERY`, route tham chiếu station lạ, endpoint không khớp
+station và route/station đi vào no-go zone. Congestion zone không cấm route và dùng
 `delay_multiplier` trong `[1, 10]`.
 
 ## Edge telemetry ingress
@@ -358,20 +372,18 @@ này. Payload của WebSocket event `task.updated`.
 
 `GET /api/v1/factory` trả về `FactoryLayout`.
 
-Nhà máy 20 m × 15 m, luôn trả về đúng 6 station với toạ độ cố định (deterministic
-— khởi động lại backend không làm đổi giá trị):
+Response phản ánh active immutable layout. Với default version 3, footprint là
+120 m × 40 m và có bốn operational station:
 
 ```json
 {
-  "width_m": 20,
-  "height_m": 15,
+  "width_m": 120,
+  "height_m": 40,
   "stations": [
-    { "id": "BATTERY_BUFFER", "name": "Battery Buffer", "type": "BUFFER", "x": 2, "y": 4 },
-    { "id": "INTERSECTION_A", "name": "Intersection A", "type": "WAYPOINT", "x": 8, "y": 4 },
-    { "id": "INTERSECTION_B", "name": "Intersection B", "type": "WAYPOINT", "x": 12, "y": 8 },
-    { "id": "MARRIAGE_STATION", "name": "Marriage Station", "type": "MARRIAGE", "x": 16, "y": 8 },
-    { "id": "CHARGING_STATION", "name": "Charging Station", "type": "CHARGER", "x": 2, "y": 12 },
-    { "id": "IDLE_ZONE", "name": "Idle Zone", "type": "IDLE", "x": 5, "y": 12 }
+    { "id": "BATTERY_BUFFER", "name": "Battery Buffer", "type": "BUFFER", "x": 32, "y": 29 },
+    { "id": "MARRIAGE_STATION", "name": "Marriage Station", "type": "MARRIAGE", "x": 52, "y": 6 },
+    { "id": "MARRIAGE_STATION_2", "name": "Marriage Station", "type": "MARRIAGE", "x": 82, "y": 8 },
+    { "id": "CHARGING_STATION", "name": "Charging Station", "type": "CHARGER", "x": 32, "y": 11 }
   ]
 }
 ```
@@ -379,7 +391,7 @@ Nhà máy 20 m × 15 m, luôn trả về đúng 6 station với toạ độ cố
 | Field | Type | Nullable | Ghi chú |
 |---|---|---|---|
 | `width_m` / `height_m` | float | không | kích thước nhà máy, mét |
-| `stations` | list of `Station` | không | 6 station như trên |
+| `stations` | list of `Station` | không | Operational stations của active layout |
 | `Station.id` | string | không | định danh ổn định, dùng làm `pickup`/`dropoff` trong `Task` |
 | `Station.name` | string | không | tên hiển thị |
 | `Station.type` | string | không | xem bảng giá trị bên dưới |
@@ -480,7 +492,7 @@ vẫn còn sau khi backend restart. Chế độ local/test không cấu hình da
 dùng repository in-memory và sẽ mất dữ liệu khi process dừng. Baseline được đọc
 từ scenario chuẩn trong repository mã nguồn, có id `baseline`, không nằm trong
 `GET /api/v1/scenarios` và chỉ dùng để so sánh. Baseline resolve
-`LAYOUT-DEFAULT` version 1, route `BATTERY_DELIVERY` và chạy cùng logistics engine
+`LAYOUT-DEFAULT` version 3, route `BATTERY_DELIVERY` và chạy cùng logistics engine
 cùng chín KPI authoritative như candidate; khác biệt chỉ nằm ở input scenario.
 
 ### ScenarioRunRequest
@@ -492,7 +504,7 @@ Body của `POST /api/v1/scenarios/run`. Mỗi run bắt buộc tham chiếu đ�
 {
   "name": "more-robots",
   "layout_id": "LAYOUT-DEFAULT",
-  "layout_version": 1,
+  "layout_version": 3,
   "route_id": "BATTERY_DELIVERY",
   "num_robots": 6,
   "num_tasks": 500,
@@ -600,7 +612,7 @@ Tất cả endpoint scenario trả về schema này (endpoint list trả về m�
     "loading_time": 10.0,
     "simulation_time": 3600.0,
     "layout_id": "LAYOUT-DEFAULT",
-    "layout_version": 1,
+    "layout_version": 3,
     "route_id": "BATTERY_DELIVERY",
     "robot_speed_mps": 1.2,
     "charger_count": 2,
@@ -654,13 +666,15 @@ Tất cả endpoint scenario trả về schema này (endpoint list trả về m�
 
 ### Ánh xạ khi apply
 
-Apply giữ nguyên tốc độ robot, tốc độ simulation và ngưỡng pin hiện tại. Chỉ hai
-tham số scenario được ánh xạ sang mock factory realtime:
+Apply giữ nguyên tốc độ simulation và ngưỡng pin hiện tại. Geometry và route lấy
+từ immutable layout version; các tham số sau được chiếu sang mock runtime:
 
 | Scenario config | MockFactory config | Hiệu lực khi apply |
 |---|---|---|
 | `num_robots` | `robot_count` | Có; reset tạo lại số robot tương ứng |
 | `task_arrival_interval` | `task_interval_seconds` | Có; đổi nhịp sinh task realtime |
+| `robot_speed_mps` | `robot_speed_mps` | Có; đổi tốc độ di chuyển realtime |
+| `layout_id`, `layout_version`, `route_id` | active layout/route | Có; reset station, route và vị trí spawn |
 | `num_tasks` | — | Không; chỉ dùng cho benchmark |
 | `travel_time` | — | Không; chỉ dùng cho benchmark |
 | `loading_time` | — | Không; chỉ dùng cho benchmark |

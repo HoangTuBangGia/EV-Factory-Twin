@@ -17,7 +17,7 @@ export const scenarioConfigSchema = z.object({
   loading_time: z.number().positive().max(86_400),
   simulation_time: z.number().positive().max(86_400),
   layout_id: z.string().min(1).max(80).default("LAYOUT-DEFAULT"),
-  layout_version: z.number().int().min(1).default(1),
+  layout_version: z.number().int().min(1).default(3),
   route_id: z.string().min(1).max(80).default("BATTERY_DELIVERY"),
   robot_speed_mps: z.number().positive().max(10).default(1),
   charger_count: z.number().int().min(1).max(20).default(1),

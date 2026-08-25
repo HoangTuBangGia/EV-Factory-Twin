@@ -1,7 +1,7 @@
 import math
 from dataclasses import dataclass
 
-from twin_core.models.layout import LayoutVersion, Point, point_in_polygon
+from twin_core.models.layout import LayoutVersion, Point, RouteKind, point_in_polygon
 
 
 @dataclass(frozen=True)
@@ -15,6 +15,8 @@ def route_profile(layout: LayoutVersion, route_id: str) -> RouteProfile:
     route = next((candidate for candidate in layout.routes if candidate.id == route_id), None)
     if route is None:
         raise ValueError(f"Route '{route_id}' not found in layout '{layout.layout_id}'")
+    if route.kind != RouteKind.DELIVERY:
+        raise ValueError(f"Route '{route_id}' is not a delivery route")
     distance = sum(
         math.hypot(b.x - a.x, b.y - a.y)
         for a, b in zip(route.waypoints, route.waypoints[1:], strict=False)

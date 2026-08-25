@@ -22,6 +22,7 @@ from ev_twin_api.schemas.command import (
     CommandStatus,
 )
 from ev_twin_api.schemas.factory import MockFactoryConfig
+from ev_twin_api.schemas.layout import CreateLayoutRequest
 from ev_twin_api.schemas.scenario import ScenarioRunRequest, ScenarioStatus
 from ev_twin_api.services.audit_service import InMemoryAuditRepository
 from ev_twin_api.services.command_service import CommandService, InMemoryCommandRepository
@@ -33,6 +34,7 @@ from ev_twin_api.services.scenario_service import InvalidScenarioTransitionError
 from ev_twin_api.services.websocket_manager import WebSocketManager
 from fastapi import HTTPException
 from pydantic import ValidationError
+from twin_core.default_layout import default_layout_content
 from twin_core.models.layout import LayoutVersion
 
 SCENARIO_PAYLOAD = {
@@ -112,7 +114,7 @@ async def test_baseline_uses_repository_scenario() -> None:
     assert baseline.config.num_tasks == 500
     assert baseline.config.task_arrival_interval == 5.0
     assert baseline.config.layout_id == "LAYOUT-DEFAULT"
-    assert baseline.config.layout_version == 1
+    assert baseline.config.layout_version == 3
     assert baseline.config.route_id == "BATTERY_DELIVERY"
     assert baseline.config.travel_time != 30.0
     assert baseline.metrics.completed_tasks + baseline.metrics.unfinished_tasks == 500
@@ -210,11 +212,11 @@ async def test_apply_waits_for_positive_command_result() -> None:
     assert mock_factory.config.task_interval_seconds == 6.0
     assert len(state.list_robots()) == 4
     assert [(layout.layout_id, layout.version) for layout in projected_layouts] == [
-        ("LAYOUT-DEFAULT", 1)
+        ("LAYOUT-DEFAULT", 3)
     ]
     restored_layout = await service.get_applied_layout()
     assert restored_layout is not None
-    assert (restored_layout.layout_id, restored_layout.version) == ("LAYOUT-DEFAULT", 1)
+    assert (restored_layout.layout_id, restored_layout.version) == ("LAYOUT-DEFAULT", 3)
     assert any(
         call.args[0] == {"type": "factory.reset", "data": None}
         for call in broadcast.await_args_list
@@ -235,6 +237,42 @@ async def test_ros_apply_completion_does_not_reset_edge_runtime_state() -> None:
     assert applied.status == ScenarioStatus.APPLIED
     assert {robot.id for robot in state.list_robots()} == {"EDGE-01", "EDGE-02"}
     mock_factory.reset.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_apply_projects_selected_layout_geometry_into_mock_runtime() -> None:
+    layout_repository = InMemoryLayoutRepository()
+    layout_service = LayoutService(layout_repository)
+    content = default_layout_content().model_dump(mode="json")
+    content["stations"][0].update({"x": 28, "y": 28})
+    for route in content["routes"]:
+        if route["start_station_id"] == "BATTERY_BUFFER":
+            route["waypoints"][0] = {"x": 28, "y": 28}
+        if route["end_station_id"] == "BATTERY_BUFFER":
+            route["waypoints"][-1] = {"x": 28, "y": 28}
+    created_layout = await layout_service.create(
+        CreateLayoutRequest(name="Moved buffer", content=content),
+        DESIGNER,
+    )
+    config = MockFactoryConfig()
+    state = FactoryState(config)
+    mock_factory = MockFactory(state, config, WebSocketManager(), enabled=False)
+    service = ScenarioService(mock_factory, layout_service=layout_service)
+    scenario = await service.run(
+        scenario_request(
+            layout_id=created_layout.layout_id,
+            layout_version=created_layout.version,
+        ),
+        DESIGNER,
+    )
+    await service.submit(scenario.id, DESIGNER)
+    approved = await service.approve(scenario.id, MONITOR)
+
+    await service.complete_apply(approved.id, MONITOR)
+
+    buffer = next(station for station in state.stations if station.id == "BATTERY_BUFFER")
+    assert (buffer.x, buffer.y) == (28, 28)
+    assert state.route_waypoints(("BATTERY_BUFFER", "MARRIAGE_STATION"))[0] == (28, 28)
 
 
 @pytest.mark.asyncio

@@ -12,12 +12,18 @@ import {
 describe("factory layout", () => {
   it("matches the current simulator stations and delivery route", () => {
     expect(defaultFactoryLayout.stations.map(({ type, x, y }) => [type, x, y])).toEqual([
-      ["BATTERY_BUFFER", 2, 4],
-      ["MARRIAGE_STATION", 16, 8],
-      ["CHARGING_STATION", 2, 12],
+      ["BATTERY_BUFFER", 32, 29],
+      ["MARRIAGE_STATION", 52, 6],
+      ["MARRIAGE_STATION", 82, 8],
+      ["CHARGING_STATION", 32, 11],
+    ]);
+    expect(defaultFactoryLayout.routes.map(({ id, kind }) => [id, kind])).toEqual([
+      ["BATTERY_DELIVERY", "DELIVERY"],
+      ["BATTERY_DELIVERY_LONG", "DELIVERY"],
+      ["CHARGER_LINK", "SUPPORT"],
     ]);
     expect(defaultFactoryLayout.routes[0].waypoints.map(({ x, y }) => [x, y])).toEqual([
-      [2, 4], [8, 4], [12, 8], [16, 8],
+      [32, 29], [32, 20], [40, 20], [52, 20], [52, 6],
     ]);
   });
 
@@ -51,11 +57,11 @@ describe("factory layout", () => {
   });
 
   it("uses layout dimensions when converting world coordinates", () => {
-    expect(toScene({ x: 10, y: 7.5 }, defaultFactoryLayout)).toEqual([0, 0, 0]);
+    expect(toScene({ x: 60, y: 20 }, defaultFactoryLayout)).toEqual([0, 0, 0]);
     expect(toScene(
       stationByType(defaultFactoryLayout, "BATTERY_BUFFER"),
       defaultFactoryLayout,
-    )).toEqual([-8, 0, 3.5]);
+    )).toEqual([-28, 0, -9]);
     expect(toScene({ x: 15, y: 10 }, { width: 30, height: 20 }, 1.5)).toEqual([
       0, 1.5, 0,
     ]);

@@ -187,6 +187,14 @@ class ScenarioService:
         return scenario
 
     async def get_applied_layout(self) -> LayoutVersion | None:
+        applied = await self.get_applied_scenario()
+        if applied is None:
+            return None
+        return await self._layout_service.get(
+            applied.config.layout_id, applied.config.layout_version
+        )
+
+    async def get_applied_scenario(self) -> Scenario | None:
         applied = [
             scenario
             for scenario in await self._repository.list()
@@ -194,8 +202,7 @@ class ScenarioService:
         ]
         if not applied:
             return None
-        latest = max(applied, key=lambda scenario: scenario.applied_at or scenario.created_at)
-        return await self._layout_service.get(latest.config.layout_id, latest.config.layout_version)
+        return max(applied, key=lambda scenario: scenario.applied_at or scenario.created_at)
 
     async def approve(self, scenario_id: str, actor: CurrentUser) -> Scenario:
         return await self._review(scenario_id, ScenarioStatus.APPROVED, actor)
@@ -238,6 +245,11 @@ class ScenarioService:
         """Apply one approved scenario while all factory controls are serialized."""
 
         previous_config = self._mock_factory.config.model_copy(deep=True)
+        previous_layout = self._mock_factory.layout
+        previous_route_id = self._mock_factory.route_id
+        layout = await self._layout_service.get(
+            scenario.config.layout_id, scenario.config.layout_version
+        )
         realtime_config = MockFactoryConfig(
             robot_count=scenario.config.num_robots,
             task_interval_seconds=scenario.config.task_arrival_interval,
@@ -252,6 +264,7 @@ class ScenarioService:
             if not self._apply_to_mock_runtime:
                 return
             factory_mutation_started = True
+            self._mock_factory.apply_layout(layout, scenario.config.route_id)
             self._mock_factory.apply_config(realtime_config)
             await self._mock_factory.reset()
 
@@ -266,9 +279,6 @@ class ScenarioService:
                 before_commit=apply_before_database_commit,
             )
             if self._applied_layout_sink is not None:
-                layout = await self._layout_service.get(
-                    applied.config.layout_id, applied.config.layout_version
-                )
                 self._applied_layout_sink(layout)
             return applied
         except Exception as error:
@@ -278,6 +288,7 @@ class ScenarioService:
             # config and reset once more. A failed compensation is logged loudly.
             if factory_mutation_started:
                 try:
+                    self._mock_factory.apply_layout(previous_layout, previous_route_id)
                     self._mock_factory.apply_config(previous_config)
                     await self._mock_factory.reset()
                 except Exception:

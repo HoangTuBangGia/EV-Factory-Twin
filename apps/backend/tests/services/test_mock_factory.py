@@ -5,7 +5,6 @@ from typing import Any
 from uuid import UUID
 
 import pytest
-from ev_twin_api.core.layout import FACTORY_HEIGHT_M, FACTORY_WIDTH_M
 from ev_twin_api.main import app
 from ev_twin_api.schemas.alert import FactoryAlert
 from ev_twin_api.schemas.factory import MockFactoryConfig
@@ -18,8 +17,10 @@ from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.mock_factory import MockFactory
 from ev_twin_api.services.websocket_manager import WebSocketManager
 from httpx2 import ASGITransport, AsyncClient
+from twin_core.default_layout import default_layout_content
 
 TEST_USER_ID = UUID("00000000-0000-0000-0000-000000000001")
+LAYOUT = default_layout_content()
 
 
 class FakeWebSocket:
@@ -210,8 +211,8 @@ async def test_assigned_robot_moves_deterministically_through_the_factory() -> N
     moved = factory._state.get_robot("AMR-01")
     assert moved is not None
     assert (moved.pose.x, moved.pose.y) != (initial.pose.x, initial.pose.y)
-    assert 0 <= moved.pose.x <= FACTORY_WIDTH_M
-    assert 0 <= moved.pose.y <= FACTORY_HEIGHT_M
+    assert 0 <= moved.pose.x <= LAYOUT.width
+    assert 0 <= moved.pose.y <= LAYOUT.height
 
 
 @pytest.mark.asyncio
@@ -249,7 +250,7 @@ async def test_robot_state_machine_progresses_through_full_task_cycle() -> None:
     factory._task_service.generate_task()
 
     seen_statuses: list[str] = []
-    for _ in range(200):
+    for _ in range(300):
         await factory.tick(0.1)
         robot = factory._state.get_robot("AMR-01")
         assert robot is not None
@@ -277,6 +278,27 @@ async def test_robot_state_machine_progresses_through_full_task_cycle() -> None:
 
 
 @pytest.mark.asyncio
+async def test_reposition_waypoint_does_not_trigger_pickup_early() -> None:
+    factory = _make_factory(task_interval_seconds=60.0, robot_speed_mps=3.0)
+    robot = factory._state.get_robot("AMR-01")
+    assert robot is not None
+    factory._state.update_robot(
+        robot.model_copy(update={"pose": robot.pose.model_copy(update={"x": 52, "y": 6})})
+    )
+    factory._task_service.generate_task()
+
+    await factory.tick(0.1)  # assign task and snapshot the reposition + delivery path
+    await factory.tick(0.1)  # reach the first reposition waypoint at Marriage Station
+
+    moving = factory._state.get_robot("AMR-01")
+    assert moving is not None
+    assert moving.status == RobotStatus.MOVING_TO_PICKUP
+    progress = factory._active_movements["AMR-01"]
+    assert progress.waypoint_index == 1
+    assert progress.pickup_waypoint_index == 5
+
+
+@pytest.mark.asyncio
 async def test_task_completes_end_to_end_through_the_real_engine_loop() -> None:
     # acceptance criterion (guide BE-5): "A battery delivery task completes
     # end-to-end and the AMR returns to IDLE" — exercised through start()/stop(),
@@ -289,7 +311,7 @@ async def test_task_completes_end_to_end_through_the_real_engine_loop() -> None:
 
     await factory.start()
     try:
-        await asyncio.sleep(2.0)
+        await asyncio.sleep(3.0)
     finally:
         await factory.stop()
 
@@ -398,8 +420,8 @@ async def test_low_battery_robot_charges_and_returns_to_idle() -> None:
     final_robot = factory._state.get_robot("AMR-01")
     assert final_robot is not None
     assert final_robot.battery >= CHARGE_TARGET_PERCENT
-    assert final_robot.pose.x == 2.0
-    assert final_robot.pose.y == 12.0
+    assert final_robot.pose.x == 32.0
+    assert final_robot.pose.y == 11.0
 
 
 @pytest.mark.asyncio
@@ -408,7 +430,7 @@ async def test_metrics_reflect_a_completed_task_through_the_real_engine() -> Non
     factory = _make_factory(task_interval_seconds=60.0, robot_speed_mps=3.0)
     factory._task_service.generate_task()
 
-    for _ in range(200):
+    for _ in range(300):
         await factory.tick(0.1)
         task = factory._state.get_task("TASK-0001")
         assert task is not None

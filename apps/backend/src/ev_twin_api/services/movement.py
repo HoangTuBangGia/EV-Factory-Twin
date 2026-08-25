@@ -1,26 +1,26 @@
 import math
 from dataclasses import dataclass
 
-from ev_twin_api.core.routes import ROUTES
 from ev_twin_api.schemas.robot import Pose, Velocity
 
 
 @dataclass
 class RouteProgress:
-    """Tracks one robot's progress along a named waypoint route.
+    """Tracks one robot's progress along an immutable waypoint snapshot.
 
     Internal engine bookkeeping only — not part of the FE-BE contract, so it
     intentionally does not live on the Robot schema.
     """
 
-    route_key: tuple[str, str]
+    waypoints: tuple[tuple[float, float], ...]
     waypoint_index: int = 0
+    pickup_waypoint_index: int | None = None
 
 
 def advance_along_route(
     pose: Pose, progress: RouteProgress, speed_mps: float, dt: float
 ) -> tuple[Pose, Velocity, bool]:
-    """Move `pose` toward the current waypoint of `progress.route_key`.
+    """Move `pose` toward the current waypoint of an immutable route snapshot.
 
     A call advances at most one waypoint: overshoot past the target snaps
     exactly onto it (any leftover distance for that tick is discarded rather
@@ -28,7 +28,7 @@ def advance_along_route(
     up as an exact position at some tick boundary instead of only being
     passed through mid-tick. Returns (new_pose, new_velocity, route_finished).
     """
-    waypoints = ROUTES[progress.route_key]
+    waypoints = progress.waypoints
 
     if progress.waypoint_index >= len(waypoints):
         return pose, Velocity(linear=0.0, angular=0.0), True

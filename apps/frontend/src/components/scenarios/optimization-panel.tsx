@@ -76,7 +76,8 @@ export function OptimizationPanel({
           </select></div>
         <div className="field"><label htmlFor="optimization-routes">Route IDs</label>
           <input id="optimization-routes" name="route_ids"
-            defaultValue={selectedLayout?.routes[0]?.id ?? "BATTERY_DELIVERY"}/></div>
+            defaultValue={selectedLayout?.routes.find((route) => route.kind === "DELIVERY")?.id
+              ?? "BATTERY_DELIVERY"}/></div>
         <div className="field"><label htmlFor="optimization-robots">Robot counts</label>
           <input id="optimization-robots" name="robot_counts" defaultValue="2,3"/></div>
         <div className="field"><label htmlFor="optimization-speeds">Robot speeds (m/s)</label>

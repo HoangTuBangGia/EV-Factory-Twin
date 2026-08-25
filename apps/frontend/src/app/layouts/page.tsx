@@ -2,12 +2,12 @@
 
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
-import { FactoryMap2D } from "@/components/factory/factory-map-2d";
+import { FactoryPlantMap2D } from "@/components/factory/factory-plant-map-2d";
 import { apiClient } from "@/lib/api-client";
 import { can } from "@/lib/auth/permissions";
 import { defaultFactoryLayout } from "@/lib/factory-layout";
 import { projectLayoutVersion } from "@/lib/layout-projection";
-import type { FactoryLayout } from "@/schemas/factory";
+import type { FactoryLayout, WorldPoint } from "@/schemas/factory";
 import {
   layoutVersionContentSchema,
   type LayoutSummary,
@@ -25,16 +25,25 @@ function initialContent(): LayoutVersionContent {
     stations: defaultFactoryLayout.stations,
     routes: defaultFactoryLayout.routes.map((route) => ({
       ...route,
-      start_station_id: "BATTERY_BUFFER",
-      end_station_id: "MARRIAGE_STATION",
+      start_station_id: route.start_station_id ?? "BATTERY_BUFFER",
+      end_station_id: route.end_station_id ?? "MARRIAGE_STATION",
     })),
     no_go_zones: defaultFactoryLayout.no_go_zones,
-    congestion_zones: [],
+    congestion_zones: [{
+      id: "WAREHOUSE_PRODUCTION_DOOR",
+      delay_multiplier: 1.25,
+      points: [
+        { x: 38, y: 17.5 },
+        { x: 42, y: 17.5 },
+        { x: 42, y: 22.5 },
+        { x: 38, y: 22.5 },
+      ],
+    }],
     config: {
-      robot_count: 2,
-      demand_interval_seconds: 5,
-      robot_speed_mps: 1,
-      charger_count: 1,
+      robot_count: 5,
+      demand_interval_seconds: 8,
+      robot_speed_mps: 1.2,
+      charger_count: 2,
     },
   });
 }
@@ -59,7 +68,7 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "An unexpected error occurred.";
 }
 
-export default function LayoutsPage() {
+function LayoutWorkspace() {
   const { user } = useAuth();
   const [layouts, setLayouts] = useState<LayoutSummary[]>([]);
   const [selected, setSelected] = useState<LayoutVersion | null>(null);
@@ -68,6 +77,9 @@ export default function LayoutsPage() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [zoneError, setZoneError] = useState<string | null>(null);
+  const [routeDrawing, setRouteDrawing] = useState(false);
+  const [routeDraft, setRouteDraft] = useState<WorldPoint[]>([]);
+  const [selectedRouteId, setSelectedRouteId] = useState("BATTERY_DELIVERY");
   const parsed = layoutVersionContentSchema.safeParse(draft);
   const preview = useMemo<FactoryLayout | null>(() => parsed.success
     ? contentToMap(
@@ -92,6 +104,9 @@ export default function LayoutsPage() {
       setSelected(loaded);
       setName(loaded.name);
       setDraft(layoutVersionContentSchema.parse(loaded));
+      setSelectedRouteId(loaded.routes[0]?.id ?? "");
+      setRouteDrawing(false);
+      setRouteDraft([]);
     } catch (error) {
       setNotice(`Unable to load layout: ${errorMessage(error)}`);
     } finally {
@@ -120,14 +135,147 @@ export default function LayoutsPage() {
     setDraft(initialContent());
     setNotice(null);
     setZoneError(null);
+    setRouteDrawing(false);
+    setRouteDraft([]);
+    setSelectedRouteId("BATTERY_DELIVERY");
   }
 
-  function updateStation(id: string, field: "x" | "y", value: number) {
+  function moveStation(id: string, point: WorldPoint) {
     setDraft((current) => ({
       ...current,
       stations: current.stations.map((station) => (
-        station.id === id ? { ...station, [field]: value } : station
+        station.id === id ? { ...station, ...point } : station
       )),
+      routes: current.routes.map((route) => ({
+        ...route,
+        waypoints: route.waypoints.map((waypoint, index) => {
+          if (index === 0 && route.start_station_id === id) return point;
+          if (index === route.waypoints.length - 1 && route.end_station_id === id) return point;
+          return waypoint;
+        }),
+      })),
+    }));
+  }
+
+  function updateStation(id: string, field: "x" | "y", value: number) {
+    const station = draft.stations.find((candidate) => candidate.id === id);
+    if (station) moveStation(id, { x: station.x, y: station.y, [field]: value });
+  }
+
+  function startRouteDrawing() {
+    const route = draft.routes.find((candidate) => candidate.id === selectedRouteId);
+    if (!route) return;
+    setRouteDrawing(true);
+    setRouteDraft([]);
+    setNotice(`Select ${route.start_station_id}, add waypoints, then select ${route.end_station_id}.`);
+  }
+
+  function addRoutePoint(point: WorldPoint) {
+    if (routeDraft.length === 0) {
+      setNotice("Select the configured start station before adding waypoints.");
+      return;
+    }
+    setRouteDraft((current) => [...current, point]);
+  }
+
+  function selectRouteStation(stationId: string) {
+    const route = draft.routes.find((candidate) => candidate.id === selectedRouteId);
+    const station = draft.stations.find((candidate) => candidate.id === stationId);
+    if (!route || !station) return;
+    if (routeDraft.length === 0) {
+      if (stationId !== route.start_station_id) {
+        setNotice(`Start at ${route.start_station_id}.`);
+        return;
+      }
+      setRouteDraft([{ x: station.x, y: station.y }]);
+      setNotice(`Add waypoints on the floor, then select ${route.end_station_id}.`);
+      return;
+    }
+    if (stationId !== route.end_station_id) {
+      setNotice(`Finish at ${route.end_station_id}.`);
+      return;
+    }
+    const waypoints = [...routeDraft, { x: station.x, y: station.y }];
+    setDraft((current) => ({
+      ...current,
+      routes: current.routes.map((candidate) => (
+        candidate.id === selectedRouteId ? { ...candidate, waypoints } : candidate
+      )),
+    }));
+    setRouteDraft([]);
+    setRouteDrawing(false);
+    setNotice(`${route.id} updated. Save it as an immutable version.`);
+  }
+
+  function addRoute(kind: "DELIVERY" | "SUPPORT") {
+    const start = draft.stations.find((station) => station.type === (
+      kind === "DELIVERY" ? "BATTERY_BUFFER" : "CHARGING_STATION"
+    ));
+    const destinations = draft.stations.filter((station) => station.type === (
+      kind === "DELIVERY" ? "MARRIAGE_STATION" : "BATTERY_BUFFER"
+    ));
+    if (!start || destinations.length === 0) return;
+    const usedDestinations = new Set(
+      draft.routes.filter((route) => route.kind === kind)
+        .map((route) => route.end_station_id),
+    );
+    const end = destinations.find((station) => !usedDestinations.has(station.id))
+      ?? destinations[0];
+    const prefix = kind === "DELIVERY" ? "BATTERY_DELIVERY" : "SUPPORT_ROUTE";
+    let suffix = draft.routes.filter((route) => route.kind === kind).length + 1;
+    while (draft.routes.some((route) => route.id === `${prefix}_${suffix}`)) suffix += 1;
+    const id = `${prefix}_${suffix}`;
+    setDraft((current) => ({
+      ...current,
+      routes: [...current.routes, {
+        id,
+        kind,
+        start_station_id: start.id,
+        end_station_id: end.id,
+        waypoints: [{ x: start.x, y: start.y }, { x: end.x, y: end.y }],
+      }],
+    }));
+    setSelectedRouteId(id);
+    setRouteDrawing(false);
+    setRouteDraft([]);
+    setNotice(`${id} added. Draw its safe path on the map.`);
+  }
+
+  function removeSelectedRoute() {
+    const route = draft.routes.find((candidate) => candidate.id === selectedRouteId);
+    if (!route) return;
+    const remaining = draft.routes.filter((candidate) => candidate.id !== route.id);
+    if (!remaining.some((candidate) => candidate.kind === "DELIVERY")) {
+      setNotice("A layout must keep at least one delivery route.");
+      return;
+    }
+    setDraft((current) => ({ ...current, routes: remaining }));
+    setSelectedRouteId(remaining[0]?.id ?? "");
+    setRouteDrawing(false);
+    setRouteDraft([]);
+    setNotice(`${route.id} removed from the draft.`);
+  }
+
+  function updateRouteEndpoint(
+    routeIndex: number,
+    field: "start_station_id" | "end_station_id",
+    stationId: string,
+  ) {
+    const station = draft.stations.find((candidate) => candidate.id === stationId);
+    if (!station) return;
+    setDraft((current) => ({
+      ...current,
+      routes: current.routes.map((route, index) => {
+        if (index !== routeIndex) return route;
+        const waypointIndex = field === "start_station_id" ? 0 : route.waypoints.length - 1;
+        return {
+          ...route,
+          [field]: stationId,
+          waypoints: route.waypoints.map((point, pointIndex) => (
+            pointIndex === waypointIndex ? { x: station.x, y: station.y } : point
+          )),
+        };
+      }),
     }));
   }
 
@@ -269,8 +417,48 @@ export default function LayoutsPage() {
           </fieldset>)}</div>
 
           <h4 className="editor-section-title">Routes</h4>
-          <div className="layout-editor-items">{draft.routes.map((route, routeIndex) => <fieldset key={route.id}>
-            <legend>{route.id} · {route.start_station_id} → {route.end_station_id}</legend>
+          <div className="button-row layout-route-tools">
+            <button className="button" type="button" onClick={() => addRoute("DELIVERY")}>
+              Add delivery route
+            </button>
+            <button className="button" type="button" onClick={() => addRoute("SUPPORT")}>
+              Add support route
+            </button>
+            <button className="button" type="button" onClick={startRouteDrawing}>
+              {routeDrawing ? "Restart selected route" : "Draw selected route"}
+            </button>
+            <button className="button danger" type="button" onClick={removeSelectedRoute}>
+              Remove selected route
+            </button>
+            {routeDrawing && <button className="button" type="button" onClick={() => {
+              setRouteDrawing(false);
+              setRouteDraft([]);
+              setNotice(null);
+            }}>Cancel drawing</button>}
+          </div>
+          <div className="layout-editor-items">{draft.routes.map((route, routeIndex) => <fieldset
+            key={route.id} className={route.id === selectedRouteId ? "selected-route" : ""}
+            onClick={() => setSelectedRouteId(route.id)}
+          >
+            <legend><label>
+              <input type="radio" name="selected-route" value={route.id}
+                checked={route.id === selectedRouteId}
+                onChange={() => setSelectedRouteId(route.id)}/>
+              {route.id} · {route.kind}
+            </label></legend>
+            <div className="form-grid route-endpoints">
+              {(["start_station_id", "end_station_id"] as const).map((field) => <div
+                className="field" key={field}
+              >
+                <label htmlFor={`${route.id}-${field}`}>{field === "start_station_id" ? "Start" : "End"}</label>
+                <select id={`${route.id}-${field}`} value={route[field]}
+                  onChange={(event) => updateRouteEndpoint(routeIndex, field, event.target.value)}>
+                  {draft.stations.map((station) => <option key={station.id} value={station.id}>
+                    {station.id}
+                  </option>)}
+                </select>
+              </div>)}
+            </div>
             <div className="waypoint-list">{route.waypoints.map((point, pointIndex) => <div className="waypoint-row" key={`${route.id}-${pointIndex}`}>
               <strong>#{pointIndex + 1}</strong>
               {(["x", "y"] as const).map((field) => <label key={field}><span>{field.toUpperCase()}</span>
@@ -301,6 +489,9 @@ export default function LayoutsPage() {
             <button className="button primary" type="submit" disabled={busy || !parsed.success || Boolean(zoneError)}>
               {busy ? "Saving…" : selected ? "Create new version" : "Create layout"}
             </button>
+            {selected && <a className="button primary" href={`/scenarios?layout=${encodeURIComponent(selected.layout_id)}&version=${selected.version}`}>
+              Simulate this version
+            </a>}
           </div>
         </div>
       </form>
@@ -308,10 +499,25 @@ export default function LayoutsPage() {
       <section className="panel layout-preview-panel">
         <div className="panel-head"><h3>Live 2D preview</h3><span>{preview ? "Valid candidate" : "Fix validation errors"}</span></div>
         <div className="layout-preview">{preview
-          ? <FactoryMap2D robots={[]} selectedRobotId={null} onSelect={() => undefined} layers={ALL_LAYERS} layout={preview}/>
+          ? <FactoryPlantMap2D
+              robots={[]} selectedRobotId={null} onSelect={() => undefined}
+              layers={ALL_LAYERS} layout={preview}
+              editor={{
+                routeDrawing,
+                routeDraft,
+                selectedRouteId,
+                onStationMove: moveStation,
+                onRoutePoint: addRoutePoint,
+                onRouteStation: selectRouteStation,
+              }}
+            />
           : <div className="empty">Preview pauses while the draft is invalid.</div>}
         </div>
       </section>
     </div>
   </>;
+}
+
+export default function LayoutsPage() {
+  return <LayoutWorkspace/>;
 }

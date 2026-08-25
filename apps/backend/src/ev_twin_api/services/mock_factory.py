@@ -7,8 +7,8 @@ from datetime import UTC, datetime
 from typing import Annotated, cast
 
 from fastapi import Depends, Request
+from twin_core.models.layout import LayoutVersionContent
 
-from ev_twin_api.core.routes import CHARGER_ROUTE_KEY, ROUTES
 from ev_twin_api.schemas.alert import FactoryAlert
 from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.schemas.robot import RobotStatus
@@ -94,9 +94,27 @@ class MockFactory:
             yield
 
     def assign_route(self, robot_id: str, route_key: tuple[str, str]) -> None:
-        if route_key not in ROUTES:
-            raise ValueError(f"Unknown route: {route_key}")
-        self._active_movements[robot_id] = RouteProgress(route_key=route_key)
+        self._active_movements[robot_id] = RouteProgress(
+            waypoints=self._state.route_waypoints(route_key), pickup_waypoint_index=1
+        )
+
+    def assign_task_route(self, robot_id: str, pickup: str, dropoff: str) -> None:
+        robot = self._state.get_robot(robot_id)
+        if robot is None:
+            raise ValueError(f"Robot '{robot_id}' not found")
+        waypoints, pickup_index = self._state.task_route_waypoints(robot.pose, pickup, dropoff)
+        self._active_movements[robot_id] = RouteProgress(
+            waypoints=waypoints,
+            pickup_waypoint_index=pickup_index,
+        )
+
+    def assign_charging_route(self, robot_id: str) -> None:
+        robot = self._state.get_robot(robot_id)
+        if robot is None:
+            raise ValueError(f"Robot '{robot_id}' not found")
+        self._active_movements[robot_id] = RouteProgress(
+            waypoints=self._state.charging_route_waypoints(robot.pose)
+        )
 
     def clear_route(self, robot_id: str) -> None:
         self._active_movements.pop(robot_id, None)
@@ -112,6 +130,17 @@ class MockFactory:
         """
         for field_name in MockFactoryConfig.model_fields:
             setattr(self.config, field_name, getattr(new_config, field_name))
+
+    @property
+    def layout(self) -> LayoutVersionContent:
+        return self._state.layout
+
+    @property
+    def route_id(self) -> str:
+        return self._state.route_id
+
+    def apply_layout(self, layout: LayoutVersionContent, route_id: str) -> None:
+        self._state.apply_layout(layout, route_id)
 
     async def start(self) -> None:
         if self._task is not None and not self._task.done():
@@ -214,7 +243,9 @@ class MockFactory:
                     )
                     if (
                         robot.status == RobotStatus.MOVING_TO_PICKUP
-                        and progress.waypoint_index > previous_index
+                        and progress.pickup_waypoint_index is not None
+                        and progress.waypoint_index >= progress.pickup_waypoint_index
+                        and previous_index < progress.pickup_waypoint_index
                     ):
                         task = self._task_service.arrive_at_pickup(robot.id)
                         await self._websocket_manager.broadcast(task_updated_event(task))
@@ -238,7 +269,7 @@ class MockFactory:
                     updated, self.config.low_battery_threshold
                 )
                 if charging_robot is not None:
-                    self.assign_route(charging_robot.id, CHARGER_ROUTE_KEY)
+                    self.assign_charging_route(charging_robot.id)
 
             latest_robot = self._state.get_robot(robot.id)
             if latest_robot is not None:
@@ -252,7 +283,7 @@ class MockFactory:
                 break
             selected_robot, selected_task = assignment
             assigned_task = self._task_service.assign(selected_robot, selected_task)
-            self.assign_route(selected_robot.id, (selected_task.pickup, selected_task.dropoff))
+            self.assign_task_route(selected_robot.id, selected_task.pickup, selected_task.dropoff)
             await self._websocket_manager.broadcast(task_updated_event(assigned_task))
 
         self._time_since_last_task += dt

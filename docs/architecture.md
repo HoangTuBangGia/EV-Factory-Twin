@@ -2920,7 +2920,21 @@ Backend `ScenarioService` requires `LayoutService`; there is no layout-free or
 legacy benchmark fallback in the API runtime. The legacy simulation runner is
 kept only for standalone evaluation fixtures.
 
-Scenario application uses a durable outbound-only command path. Render stores a
+The canonical fallback is `LAYOUT-DEFAULT` version 3 with a 120 × 40 metre
+coordinate frame shared by the plant blueprint, SimPy route profile, mock runtime,
+2D editor and 3D scene. Applying an approved scenario projects its selected
+station geometry and route into the mock runtime before reset; robot spawn points
+are derived from the selected charging station. The frontend reloads that same
+immutable version after `factory.reset`. Static building/equipment geometry is
+context only and is not part of the movable operational-layout contract.
+
+Layout routes carry a backward-compatible `kind`: `DELIVERY` routes are valid
+scenario/SimPy flows, while `SUPPORT` routes connect operational stations for
+repositioning and charging. The local mock runtime treats the approved waypoint
+network as bidirectional and uses shortest-path routing between stations; it only
+falls back to a direct segment for legacy disconnected v1/v2 layouts.
+
+Scenario application uses a durable outbound-only command path. Cloud Run stores a
 PENDING command; the edge bridge leases it over authenticated HTTPS, records ACK,
 executes the typed `/fleet/apply_scenario` ROS service and posts the terminal
 result. One operation has multiple immutable attempts. A scenario remains

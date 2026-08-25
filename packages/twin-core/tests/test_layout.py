@@ -1,6 +1,21 @@
 import pytest
 from pydantic import ValidationError
-from twin_core.models.layout import LayoutVersionContent
+from twin_core.default_layout import default_layout_content
+from twin_core.models.layout import LayoutVersionContent, RouteKind
+from twin_core.routing import shortest_station_path
+
+
+def test_canonical_layout_matches_full_factory_footprint() -> None:
+    layout = default_layout_content()
+
+    assert (layout.width, layout.height) == (120, 40)
+    assert layout.config.robot_count == 5
+    assert len(layout.routes) == 3
+    assert layout.routes[0].kind == RouteKind.DELIVERY
+    assert (
+        layout.routes[0].waypoints[0].x,
+        layout.routes[0].waypoints[0].y,
+    ) == (layout.stations[0].x, layout.stations[0].y)
 
 
 def valid_layout() -> dict[str, object]:
@@ -46,6 +61,29 @@ def test_valid_layout_contract() -> None:
 
     assert layout.config.robot_count == 2
     assert layout.routes[0].start_station_id == "BATTERY_BUFFER"
+    assert layout.routes[0].kind == RouteKind.DELIVERY
+
+
+def test_canonical_route_network_reaches_delivery_and_charging_stations() -> None:
+    layout = default_layout_content()
+
+    assert shortest_station_path(layout, "MARRIAGE_STATION_2", "CHARGING_STATION") == (
+        (82.0, 8.0),
+        (82.0, 20.0),
+        (60.0, 20.0),
+        (40.0, 20.0),
+        (32.0, 20.0),
+        (32.0, 11.0),
+    )
+
+
+def test_route_network_rejects_disconnected_stations() -> None:
+    with pytest.raises(ValueError, match="No route-network path"):
+        shortest_station_path(
+            LayoutVersionContent.model_validate(valid_layout()),
+            "MARRIAGE_STATION",
+            "CHARGING_STATION",
+        )
 
 
 @pytest.mark.parametrize(
