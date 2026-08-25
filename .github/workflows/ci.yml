@@ -126,3 +126,21 @@ jobs:
           NEXT_PUBLIC_DATA_SOURCE: api
           NEXT_PUBLIC_API_URL: http://localhost:8000
           NEXT_PUBLIC_WS_URL: ws://localhost:8000/ws/factory
+
+  deploy-develop:
+    name: Deploy · GCP develop
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    needs: [database, backend, frontend]
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/deploy-gcp-develop.yml
+
+  deploy-production:
+    name: Deploy · GCP production
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [database, backend, frontend]
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/deploy-gcp-production.yml

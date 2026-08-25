@@ -1,0 +1,33 @@
+name: Deploy GCP Production
+
+on:
+  workflow_call:
+  workflow_dispatch:
+    inputs:
+      migrations_applied:
+        description: Confirm production migrations are already applied
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/deploy-gcp.yml
+    with:
+      environment_name: gcp-production
+      service: ev-twin-api
+      origin: https://c3-app-078.vercel.app
+      runtime_service_account: ev-twin-api-prod@ev-factory-twin.iam.gserviceaccount.com
+      cloud_sql_connection: ev-factory-twin:us-central1:ev-twin-postgres-prod-01
+      database_url_secret: ev-twin-prod-database-url
+      auth_jwt_secret: ev-twin-prod-auth-jwt-secret
+      edge_secret: ev-twin-prod-edge-telemetry-secret
+      migrations_applied: ${{ inputs.migrations_applied || false }}

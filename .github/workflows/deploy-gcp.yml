@@ -1,0 +1,154 @@
+name: Deploy GCP Environment
+
+on:
+  workflow_call:
+    inputs:
+      environment_name:
+        required: true
+        type: string
+      service:
+        required: true
+        type: string
+      origin:
+        required: true
+        type: string
+      runtime_service_account:
+        required: true
+        type: string
+      cloud_sql_connection:
+        required: true
+        type: string
+      database_url_secret:
+        required: true
+        type: string
+      auth_jwt_secret:
+        required: true
+        type: string
+      edge_secret:
+        required: true
+        type: string
+      migrations_applied:
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: deploy-${{ inputs.environment_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GCP_PROJECT: ev-factory-twin
+  GCP_REGION: us-central1
+  GCP_ARTIFACT_IMAGE: us-central1-docker.pkg.dev/ev-factory-twin/ev-twin/backend
+
+jobs:
+  deploy:
+    environment: ${{ inputs.environment_name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout reviewed commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Guard unapplied migrations
+        env:
+          MIGRATIONS_APPLIED: ${{ inputs.migrations_applied }}
+        run: |
+          parent="$(git rev-parse HEAD^)"
+          if git diff --quiet "$parent" HEAD -- postgres/migrations; then
+            exit 0
+          fi
+          if [[ "$MIGRATIONS_APPLIED" == "true" ]]; then
+            exit 0
+          fi
+          echo "PostgreSQL migrations changed. Apply them to this environment, then dispatch its deployment workflow with migrations_applied=true." >&2
+          exit 1
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Artifact Registry authentication
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+      - name: Build and publish immutable Backend image
+        run: |
+          image="${GCP_ARTIFACT_IMAGE}:${GITHUB_SHA}"
+          docker build --file apps/backend/Dockerfile --tag "$image" .
+          docker push "$image"
+
+      - name: Deploy Cloud Run revision
+        env:
+          AUTH_JWT_SECRET: ${{ inputs.auth_jwt_secret }}
+          CLOUD_SQL_CONNECTION: ${{ inputs.cloud_sql_connection }}
+          DATABASE_URL_SECRET: ${{ inputs.database_url_secret }}
+          EDGE_SECRET: ${{ inputs.edge_secret }}
+          ORIGIN: ${{ inputs.origin }}
+          RUNTIME_SERVICE_ACCOUNT: ${{ inputs.runtime_service_account }}
+          SERVICE: ${{ inputs.service }}
+        run: |
+          gcloud run deploy "$SERVICE" \
+            --project="$GCP_PROJECT" \
+            --region="$GCP_REGION" \
+            --platform=managed \
+            --image="${GCP_ARTIFACT_IMAGE}:${GITHUB_SHA}" \
+            --service-account="$RUNTIME_SERVICE_ACCOUNT" \
+            --add-cloudsql-instances="$CLOUD_SQL_CONNECTION" \
+            --set-secrets="DATABASE_URL=${DATABASE_URL_SECRET}:latest,AUTH_JWT_SECRET=${AUTH_JWT_SECRET}:latest,EDGE_TELEMETRY_SHARED_SECRET=${EDGE_SECRET}:latest" \
+            --set-env-vars="^@^APP_ENV=production@DATABASE_SSL_MODE=disable@AUTH_JWT_ISSUER=ev-factory-twin-api@AUTH_JWT_AUDIENCE=ev-factory-twin-browser@AUTH_ACCESS_TOKEN_TTL_SECONDS=28800@CORS_ORIGINS=${ORIGIN}@MOCK_FACTORY_ENABLED=false" \
+            --port=8000 \
+            --cpu=1 \
+            --memory=512Mi \
+            --concurrency=80 \
+            --min-instances=0 \
+            --max-instances=1 \
+            --timeout=300 \
+            --quiet
+
+      - name: Verify hosted contract
+        env:
+          ORIGIN: ${{ inputs.origin }}
+          SERVICE: ${{ inputs.service }}
+        run: |
+          service_url="$(gcloud run services describe "$SERVICE" \
+            --project="$GCP_PROJECT" \
+            --region="$GCP_REGION" \
+            --format='value(status.url)')"
+          test -n "$service_url"
+
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error "$service_url/health" >/dev/null; then
+              break
+            fi
+            if [[ "$attempt" == 30 ]]; then
+              echo "Cloud Run health check did not become ready" >&2
+              exit 1
+            fi
+            sleep 2
+          done
+
+          status="$(curl --silent --show-error --output /dev/null \
+            --write-out '%{http_code}' "$service_url/api/v1/factory")"
+          test "$status" = 401
+
+          allowed_origin="$(curl --silent --show-error --dump-header - --output /dev/null \
+            --request OPTIONS \
+            --header "Origin: $ORIGIN" \
+            --header 'Access-Control-Request-Method: GET' \
+            "$service_url/api/v1/factory" | \
+            sed -n 's/^access-control-allow-origin:[[:space:]]*//Ip' | tr -d '\r')"
+          test "$allowed_origin" = "$ORIGIN"
+          echo "$SERVICE ready at $service_url"

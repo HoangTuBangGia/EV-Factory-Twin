@@ -16,8 +16,9 @@ account credentials into tickets, screenshots, shell history, or this document.
 
 Review resources in this order:
 
-1. Compute Engine VM `ev-twin-edge-01` while running.
-2. Cloud SQL instance `ev-twin-postgres-01` while running.
+1. Compute Engine VMs `ev-twin-edge-01` and `ev-twin-edge-prod-01` while running.
+2. Cloud SQL instances `ev-twin-postgres-01` and
+   `ev-twin-postgres-prod-01` while running.
 3. Compute Engine persistent disks, including while their VM is stopped.
 4. Cloud SQL storage, backups, and public IPv4 allocation.
 5. Network egress and any external IPv4 or Cloud NAT resources.
@@ -41,9 +42,10 @@ automatically stop resources.
 
 ## Compute Engine edge
 
-Current resource:
+Current resources:
 
-- instance: `ev-twin-edge-01`
+- instances: `ev-twin-edge-01` (develop) and `ev-twin-edge-prod-01`
+  (production preparation)
 - zone: `us-central1-a`
 - machine type: `e2-standard-4` (4 vCPU, 16 GB RAM)
 - boot disk: approximately 50 GB
@@ -53,6 +55,7 @@ Current resource:
 Console:
 
 - [VM instance](https://console.cloud.google.com/compute/instancesDetail/zones/us-central1-a/instances/ev-twin-edge-01?project=ev-factory-twin)
+- [Production VM](https://console.cloud.google.com/compute/instancesDetail/zones/us-central1-a/instances/ev-twin-edge-prod-01?project=ev-factory-twin)
 - [All VM instances](https://console.cloud.google.com/compute/instances?project=ev-factory-twin)
 - [Persistent disks](https://console.cloud.google.com/compute/disks?project=ev-factory-twin)
 - [External IP addresses](https://console.cloud.google.com/networking/addresses/list?project=ev-factory-twin)
@@ -78,14 +81,18 @@ gcloud compute instances stop ev-twin-edge-01 \
   --zone=us-central1-a
 ```
 
+Use the same command with `ev-twin-edge-prod-01` to stop the production VM
+while it is not under acceptance. Deletion protection remains enabled.
+
 Stopping is reversible and preserves the boot disk. It interrupts Gazebo, ROS,
 telemetry, and command acknowledgement until the VM is started again.
 
 ## Cloud SQL PostgreSQL
 
-Current resource:
+Current resources:
 
-- instance: `ev-twin-postgres-01`
+- instances: `ev-twin-postgres-01` (develop) and
+  `ev-twin-postgres-prod-01` (production)
 - region: `us-central1`
 - database engine: PostgreSQL 17
 - machine tier: `db-f1-micro`
@@ -207,6 +214,8 @@ not inspect secret payloads merely to audit cost.
 The edge deployment uses a VPC, subnet, firewall rules, and IAP-restricted SSH.
 VPC definitions and firewall rules are not expected to be primary cost drivers,
 but external IPv4 addresses, Cloud NAT, and network egress require review.
+The private production VM uses router `ev-twin-edge-router` and NAT gateway
+`ev-twin-edge-nat` for subnet `ev-twin-edge-us-central1`.
 
 Console:
 
@@ -231,7 +240,7 @@ be exposed publicly.
 ## Daily check during acceptance
 
 1. Open Billing reports and filter by project and service.
-2. Confirm whether `ev-twin-edge-01` needs to remain running.
+2. Confirm whether either edge VM needs to remain running.
 3. Check Cloud SQL storage and backup growth.
 4. Check Cloud Run request count and revision count.
 5. Review Artifact Registry image growth after builds.
