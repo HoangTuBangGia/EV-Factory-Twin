@@ -1,8 +1,14 @@
+import os
 from collections.abc import AsyncIterator
 from uuid import UUID
 
 import pytest_asyncio
 from ev_twin_api.api.dependencies import get_current_user
+
+# API tests use deterministic in-memory repositories. Database-gated tests own
+# TEST_DATABASE_URL explicitly and must not inherit the developer's runtime .env.
+os.environ["DATABASE_URL"] = ""
+
 from ev_twin_api.main import app
 from ev_twin_api.schemas.auth import AppRole, CurrentUser
 from httpx2 import ASGITransport, AsyncClient

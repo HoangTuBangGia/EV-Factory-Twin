@@ -6,9 +6,16 @@ from pydantic import ValidationError
 
 def test_local_auth_defaults_are_bounded() -> None:
     settings = Settings(_env_file=None)
+    assert settings.k_revision is None
     assert settings.auth_jwt_issuer == "ev-factory-twin"
     assert settings.auth_jwt_audience == "ev-factory-twin-browser"
     assert settings.auth_access_token_ttl_seconds == 28800
+
+
+def test_cloud_run_revision_is_read_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("K_REVISION", "ev-twin-api-00042-abc")
+
+    assert Settings(_env_file=None).k_revision == "ev-twin-api-00042-abc"
 
 
 def test_plain_postgresql_url_is_normalized_for_asyncpg_without_connecting() -> None:

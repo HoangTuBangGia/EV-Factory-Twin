@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     )
 
     app_env: str = "development"
+    k_revision: str | None = None
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
     database_url: SecretStr | None = None
     database_ssl_mode: Literal["disable", "prefer", "require"] = "require"

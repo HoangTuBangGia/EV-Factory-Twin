@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
-from ev_twin_api.schemas.edge_runtime import BridgeHealth, TaskUpdate
+from ev_twin_api.schemas.edge_runtime import BridgeHealth, BridgeStatus, TaskUpdate
 from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.schemas.task import TaskStatus
 from ev_twin_api.services.edge_runtime import EdgeRuntimeService
@@ -68,7 +68,7 @@ async def test_bridge_health_keeps_latest_timestamp() -> None:
     now = datetime.now(UTC)
     health = BridgeHealth(
         bridge_id="edge-main",
-        status="CONNECTED",
+        status=BridgeStatus.CONNECTED,
         robot_ids=["AMR-01", "AMR-02"],
         timestamp=now,
         delivered_samples=2,
@@ -88,11 +88,45 @@ async def test_bridge_health_keeps_latest_timestamp() -> None:
     manager.broadcast.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_bridge_reconnect_preserves_registered_robot_state_without_duplicate_reset() -> None:
+    service, state, manager = make_service()
+    manager.broadcast = AsyncMock()  # type: ignore[method-assign]
+    now = datetime.now(UTC)
+    health = BridgeHealth(
+        bridge_id="edge-main",
+        status=BridgeStatus.CONNECTED,
+        robot_ids=["AMR-01", "AMR-02"],
+        timestamp=now,
+        delivered_samples=2,
+        failed_deliveries=0,
+    )
+    await service.ingest_health(health)
+    amr_01 = state.get_robot("AMR-01")
+    assert amr_01 is not None
+    amr_01.battery = 73
+    state.update_robot(amr_01)
+    manager.broadcast.reset_mock()
+
+    reconnect = health.model_copy(
+        update={"timestamp": now + timedelta(seconds=1), "delivered_samples": 4}
+    )
+    result = await service.ingest_health(reconnect)
+
+    assert result.accepted
+    assert {robot.id for robot in state.list_robots()} == {"AMR-01", "AMR-02"}
+    preserved = state.get_robot("AMR-01")
+    assert preserved is not None
+    assert preserved.battery == 73
+    assert service.get_health("edge-main") == reconnect
+    manager.broadcast.assert_not_awaited()
+
+
 def test_bridge_health_rejects_duplicate_robot_ids() -> None:
     with pytest.raises(ValueError, match="unique"):
         BridgeHealth(
             bridge_id="edge-main",
-            status="CONNECTED",
+            status=BridgeStatus.CONNECTED,
             robot_ids=["AMR-01", "AMR-01"],
             timestamp=datetime.now(UTC),
             delivered_samples=0,

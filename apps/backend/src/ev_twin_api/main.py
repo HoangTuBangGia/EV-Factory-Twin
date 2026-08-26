@@ -222,7 +222,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await app.state.command_service.start()
     if kpi_snapshot_writer is not None:
         await kpi_snapshot_writer.start()
-    logger.info("backend started")
+    logger.info(
+        "backend started: environment=%s revision=%s database=%s telemetry_source=%s "
+        "workers=runtime-health,telemetry-persistence,command-timeout%s",
+        settings.app_env,
+        settings.k_revision or "local",
+        "postgresql" if database.configured else "in-memory",
+        "mock" if settings.mock_factory_enabled else "edge",
+        ",kpi-snapshot" if kpi_snapshot_writer is not None else "",
+    )
     try:
         yield
     finally:
