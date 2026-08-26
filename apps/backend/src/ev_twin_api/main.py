@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ev_twin_api import __version__
 from ev_twin_api.api.alerts import router as alerts_router
+from ev_twin_api.api.audit import router as audit_router
 from ev_twin_api.api.auth import router as auth_router
 from ev_twin_api.api.commands import router as commands_router
 from ev_twin_api.api.edge_runtime import router as edge_runtime_router
@@ -97,6 +98,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         else None
     )
     app.state.database = database
+    app.state.runtime_history_repository = runtime_repository
     app.state.auth_service = AuthService(
         verifier=jwt_manager,
         users=SqlAlchemyUserRepository(database),
@@ -266,6 +268,7 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(auth_router)
+app.include_router(audit_router)
 app.include_router(commands_router)
 app.include_router(factory_router)
 app.include_router(layouts_router)

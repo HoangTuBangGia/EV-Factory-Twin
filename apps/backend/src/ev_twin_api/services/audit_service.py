@@ -78,6 +78,8 @@ class AuditRepository(Protocol):
         resource_id: str | None = None,
         created_after: datetime | None = None,
         created_before: datetime | None = None,
+        cursor_before: datetime | None = None,
+        cursor_before_id: int | None = None,
     ) -> list[AuditEvent]: ...
 
 
@@ -127,17 +129,29 @@ class InMemoryAuditRepository:
         resource_id: str | None = None,
         created_after: datetime | None = None,
         created_before: datetime | None = None,
+        cursor_before: datetime | None = None,
+        cursor_before_id: int | None = None,
     ) -> list[AuditEvent]:
         async with self._lock:
             events = (
                 event
-                for event in reversed(self._events)
+                for event in self._events
                 if (resource_type is None or event.resource_type == resource_type)
                 and (resource_id is None or event.resource_id == resource_id)
                 and (created_after is None or event.created_at >= created_after)
                 and (created_before is None or event.created_at <= created_before)
+                and (
+                    cursor_before is None
+                    or event.created_at < cursor_before
+                    or (
+                        event.created_at == cursor_before
+                        and cursor_before_id is not None
+                        and event.id < cursor_before_id
+                    )
+                )
             )
-            return [event.model_copy(deep=True) for event in list(events)[:limit]]
+            ordered = sorted(events, key=lambda event: (event.created_at, event.id), reverse=True)
+            return [event.model_copy(deep=True) for event in ordered[:limit]]
 
 
 class SqlAlchemyAuditRepository:
@@ -156,6 +170,8 @@ class SqlAlchemyAuditRepository:
         resource_id: str | None = None,
         created_after: datetime | None = None,
         created_before: datetime | None = None,
+        cursor_before: datetime | None = None,
+        cursor_before_id: int | None = None,
     ) -> list[AuditEvent]:
         clauses: list[str] = []
         params: dict[str, object] = {"limit": limit}
@@ -171,9 +187,18 @@ class SqlAlchemyAuditRepository:
         if created_before is not None:
             clauses.append("created_at <= :created_before")
             params["created_before"] = created_before
+        if cursor_before is not None:
+            clauses.append(
+                "(created_at < :cursor_before "
+                "or (created_at = :cursor_before and id < :cursor_before_id))"
+            )
+            params["cursor_before"] = cursor_before
+            params["cursor_before_id"] = cursor_before_id
 
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
-        statement = text(f"{AUDIT_SELECT_SQL}{where} ORDER BY created_at DESC LIMIT :limit")
+        statement = text(
+            f"{AUDIT_SELECT_SQL}{where} ORDER BY created_at DESC, id DESC LIMIT :limit"
+        )
         async with self._database.session() as session:
             result = await session.execute(statement, params)
         return [_event_from_mapping(row) for row in result.mappings().all()]
@@ -217,6 +242,8 @@ class AuditService:
         resource_id: str | None = None,
         created_after: datetime | None = None,
         created_before: datetime | None = None,
+        cursor_before: datetime | None = None,
+        cursor_before_id: int | None = None,
     ) -> list[AuditEvent]:
         return await self._repository.list(
             limit=limit,
@@ -224,6 +251,8 @@ class AuditService:
             resource_id=resource_id,
             created_after=created_after,
             created_before=created_before,
+            cursor_before=cursor_before,
+            cursor_before_id=cursor_before_id,
         )
 
 

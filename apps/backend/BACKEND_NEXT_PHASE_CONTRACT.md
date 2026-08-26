@@ -308,6 +308,27 @@ Acceptance:
 - Designer không đọc business audit nếu contract vẫn giới hạn cho Monitor;
 - query plan/capacity evidence được ghi lại trước khi mở rộng retention.
 
+Implementation result (2026-08-26): **Minimum acceptance API complete**.
+
+- `GET /api/v1/robots/{robot_id}/telemetry-history` provides read-only,
+  newest-first telemetry using a required UTC range, exclusive `before` cursor
+  and a bounded 1–500 result limit. PostgreSQL filters on `robot_id` and the
+  partition key `source_timestamp`.
+- `GET /api/v1/audit-events` provides a bounded time range, composite
+  `(before, before_id)` cursor, optional resource filters and stable
+  `created_at DESC, id DESC` ordering.
+- Existing read roles may inspect robot telemetry history; business audit remains
+  restricted to `MONITOR` by the Backend authorization boundary.
+- Task, bridge, alert and KPI history remain durable but do not receive new APIs
+  in this checkpoint. Current-state endpoints already cover the MVP UI and full
+  replay remains out of scope.
+- Targeted B3 verification: 74 tests passed.
+- Complete Backend test suite: 350 tests passed.
+- Ruff lint and format check passed; canonical workspace Mypy passed 95 source files.
+
+Cloud SQL query-plan and p95 capacity evidence remain a hosted operational gate;
+retention must not be expanded based only on the local correctness tests.
+
 ### B4 — Apply capability and failure clarity (P1)
 
 Mục tiêu: Backend không tuyên bố áp dụng thành công một layout mà ROS edge không

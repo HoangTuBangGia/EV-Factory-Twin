@@ -1,11 +1,13 @@
 from datetime import datetime
-from typing import Protocol
+from typing import Annotated, Protocol, cast
 
+from fastapi import Depends, Request
 from sqlalchemy import text
 
 from ev_twin_api.core.database import Database
 from ev_twin_api.schemas.alert import AlertStatus, FactoryAlert
 from ev_twin_api.schemas.edge_runtime import BridgeHealth, TaskUpdate
+from ev_twin_api.schemas.history import TelemetryHistoryEntry
 from ev_twin_api.schemas.telemetry import RobotTelemetry, TelemetryIngressStatus
 
 
@@ -24,6 +26,15 @@ class RuntimeHistoryRepository(Protocol):
     async def activate_alert(self, alert: FactoryAlert) -> bool: ...
     async def clear_alert(self, dedupe_key: str, cleared_at: datetime) -> FactoryAlert | None: ...
     async def list_alerts(self) -> list[FactoryAlert]: ...
+    async def list_telemetry(
+        self,
+        *,
+        robot_id: str,
+        start: datetime,
+        end: datetime,
+        before: datetime | None,
+        limit: int,
+    ) -> list[TelemetryHistoryEntry]: ...
 
 
 class InMemoryRuntimeHistoryRepository:
@@ -93,6 +104,28 @@ class InMemoryRuntimeHistoryRepository:
 
     async def list_alerts(self) -> list[FactoryAlert]:
         return [item.model_copy(deep=True) for item in reversed(self.alerts)]
+
+    async def list_telemetry(
+        self,
+        *,
+        robot_id: str,
+        start: datetime,
+        end: datetime,
+        before: datetime | None,
+        limit: int,
+    ) -> list[TelemetryHistoryEntry]:
+        entries = (
+            TelemetryHistoryEntry(
+                telemetry=telemetry,
+                ingested_at=ingested_at,
+                ordering_status=ordering_status,
+            )
+            for telemetry, ingested_at, ordering_status in self.telemetry
+            if telemetry.robot_id == robot_id
+            and start <= telemetry.timestamp <= end
+            and (before is None or telemetry.timestamp < before)
+        )
+        return sorted(entries, key=lambda entry: entry.telemetry.timestamp, reverse=True)[:limit]
 
 
 class SqlAlchemyRuntimeHistoryRepository:
@@ -224,3 +257,69 @@ class SqlAlchemyRuntimeHistoryRepository:
                 """)
             )
             return [FactoryAlert.model_validate(row) for row in result.mappings()]
+
+    async def list_telemetry(
+        self,
+        *,
+        robot_id: str,
+        start: datetime,
+        end: datetime,
+        before: datetime | None,
+        limit: int,
+    ) -> list[TelemetryHistoryEntry]:
+        clauses = [
+            "robot_id = :robot_id",
+            "source_timestamp >= :start",
+            "source_timestamp <= :end",
+        ]
+        params: dict[str, object] = {
+            "robot_id": robot_id,
+            "start": start,
+            "end": end,
+            "limit": limit,
+        }
+        if before is not None:
+            clauses.append("source_timestamp < :before")
+            params["before"] = before
+        async with self._database.session() as session:
+            result = await session.execute(
+                text(f"""
+                    select robot_id, source_timestamp, ingested_at, pose, velocity,
+                        battery, status, task_id, payload_id, ordering_status
+                    from public.robot_telemetry_history
+                    where {" and ".join(clauses)}
+                    order by source_timestamp desc
+                    limit :limit
+                """),
+                params,
+            )
+        return [
+            TelemetryHistoryEntry(
+                telemetry=RobotTelemetry(
+                    robot_id=row["robot_id"],
+                    timestamp=row["source_timestamp"],
+                    pose=row["pose"],
+                    velocity=row["velocity"],
+                    battery=row["battery"],
+                    status=row["status"],
+                    task_id=row["task_id"],
+                    payload_id=row["payload_id"],
+                ),
+                ingested_at=row["ingested_at"],
+                ordering_status=(
+                    TelemetryIngressStatus.IGNORED_STALE
+                    if row["ordering_status"] == "LATE"
+                    else TelemetryIngressStatus.ACCEPTED
+                ),
+            )
+            for row in result.mappings()
+        ]
+
+
+def get_runtime_history_repository(request: Request) -> RuntimeHistoryRepository:
+    return cast(RuntimeHistoryRepository, request.app.state.runtime_history_repository)
+
+
+RuntimeHistoryRepositoryDep = Annotated[
+    RuntimeHistoryRepository, Depends(get_runtime_history_repository)
+]
