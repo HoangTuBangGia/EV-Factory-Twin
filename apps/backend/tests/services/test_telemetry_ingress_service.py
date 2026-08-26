@@ -67,9 +67,14 @@ async def test_ingest_updates_state_and_broadcasts_canonical_event() -> None:
     assert stored.battery == telemetry.battery
     assert stored.status == telemetry.status
     assert stored.last_seen_at == telemetry.timestamp
-    manager.broadcast.assert_awaited_once_with(
-        {"type": "robot.telemetry", "data": telemetry.model_dump(mode="json")}
+    manager.broadcast.assert_awaited_once()
+    event = manager.broadcast.await_args.args[0]
+    assert event["type"] == "robot.telemetry"
+    assert event["data"] == telemetry.model_dump(mode="json")
+    assert event["meta"]["source_timestamp"] == telemetry.timestamp.isoformat().replace(
+        "+00:00", "Z"
     )
+    assert event["meta"]["ingested_at"] <= event["meta"]["broadcast_at"]
 
 
 @pytest.mark.asyncio

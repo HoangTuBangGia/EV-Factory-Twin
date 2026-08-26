@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 from ev_twin_api.schemas.telemetry import RobotTelemetry, TelemetryIngressStatus
 from ev_twin_api.services.runtime_history import InMemoryRuntimeHistoryRepository
+from ev_twin_api.services.telemetry_evidence import TelemetryEvidence
 from ev_twin_api.services.telemetry_persistence import TelemetryPersistenceWorker
 
 
@@ -25,7 +26,8 @@ def telemetry(timestamp: datetime, battery: float) -> RobotTelemetry:
 @pytest.mark.asyncio
 async def test_worker_coalesces_latest_sample_per_robot_and_ordering_class() -> None:
     repository = InMemoryRuntimeHistoryRepository()
-    worker = TelemetryPersistenceWorker(repository, None, flush_seconds=1)
+    evidence = TelemetryEvidence()
+    worker = TelemetryPersistenceWorker(repository, None, flush_seconds=1, evidence=evidence)
     now = datetime.now(UTC)
 
     worker.submit(telemetry(now, 90), now, TelemetryIngressStatus.ACCEPTED)
@@ -45,6 +47,14 @@ async def test_worker_coalesces_latest_sample_per_robot_and_ordering_class() -> 
         (89, TelemetryIngressStatus.ACCEPTED),
         (91, TelemetryIngressStatus.IGNORED_STALE),
     ]
+    snapshot = evidence.snapshot(
+        persistence_pending_samples=worker.pending_count,
+        websocket_active_connections=0,
+    )
+    assert snapshot.persistence_submitted_total == 3
+    assert snapshot.persistence_coalesced_total == 1
+    assert snapshot.persisted_total == 2
+    assert snapshot.persistence_pending_samples == 0
 
 
 @pytest.mark.asyncio
@@ -59,7 +69,8 @@ async def test_worker_retries_failed_latest_sample() -> None:
             await super().record_telemetry(telemetry, ingested_at, ordering_status)
 
     repository = FlakyRepository()
-    worker = TelemetryPersistenceWorker(repository, None, flush_seconds=1)
+    evidence = TelemetryEvidence()
+    worker = TelemetryPersistenceWorker(repository, None, flush_seconds=1, evidence=evidence)
     now = datetime.now(UTC)
     worker.submit(telemetry(now, 90), now, TelemetryIngressStatus.ACCEPTED)
 
@@ -69,6 +80,12 @@ async def test_worker_retries_failed_latest_sample() -> None:
 
     assert repository.attempts == 2
     assert repository.telemetry[0][0].battery == 90
+    snapshot = evidence.snapshot(
+        persistence_pending_samples=worker.pending_count,
+        websocket_active_connections=0,
+    )
+    assert snapshot.persistence_failures_total == 1
+    assert snapshot.persisted_total == 1
 
 
 @pytest.mark.asyncio

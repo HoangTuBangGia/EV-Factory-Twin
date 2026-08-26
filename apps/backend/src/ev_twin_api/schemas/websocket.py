@@ -1,3 +1,4 @@
+from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
 from uuid import UUID
@@ -50,8 +51,23 @@ def auth_ok_event(data: WebSocketAuthOkData) -> dict[str, Any]:
     return {"type": WebSocketEventType.AUTH_OK, "data": data.model_dump(mode="json")}
 
 
-def robot_telemetry_event(telemetry: RobotTelemetry) -> dict[str, Any]:
-    return {"type": WebSocketEventType.ROBOT_TELEMETRY, "data": telemetry.model_dump(mode="json")}
+def robot_telemetry_event(
+    telemetry: RobotTelemetry,
+    *,
+    ingested_at: datetime | None = None,
+    broadcast_at: datetime | None = None,
+) -> dict[str, Any]:
+    event: dict[str, Any] = {
+        "type": WebSocketEventType.ROBOT_TELEMETRY,
+        "data": telemetry.model_dump(mode="json"),
+    }
+    if ingested_at is not None and broadcast_at is not None:
+        event["meta"] = {
+            "source_timestamp": telemetry.timestamp.isoformat().replace("+00:00", "Z"),
+            "ingested_at": ingested_at.isoformat().replace("+00:00", "Z"),
+            "broadcast_at": broadcast_at.isoformat().replace("+00:00", "Z"),
+        }
+    return event
 
 
 def task_updated_event(task: Task) -> dict[str, Any]:

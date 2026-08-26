@@ -14,6 +14,7 @@ from ev_twin_api.services.runtime_history import (
     InMemoryRuntimeHistoryRepository,
     RuntimeHistoryRepository,
 )
+from ev_twin_api.services.telemetry_evidence import TelemetryEvidence
 from ev_twin_api.services.telemetry_persistence import TelemetryPersistenceWorker
 from ev_twin_api.services.websocket_manager import WebSocketManager
 
@@ -40,6 +41,7 @@ class TelemetryIngressService:
         history_repository: RuntimeHistoryRepository | None = None,
         runtime_health: RuntimeHealthService | None = None,
         persistence_worker: TelemetryPersistenceWorker | None = None,
+        evidence: TelemetryEvidence | None = None,
     ) -> None:
         self._factory_state = factory_state
         self._websocket_manager = websocket_manager
@@ -48,18 +50,23 @@ class TelemetryIngressService:
         self._history = history_repository or InMemoryRuntimeHistoryRepository()
         self._runtime_health = runtime_health
         self._persistence_worker = persistence_worker
+        self._evidence = evidence or TelemetryEvidence()
 
     async def ingest(self, telemetry: RobotTelemetry) -> TelemetryIngressResponse:
+        self._evidence.record_received()
         async with self._mock_factory.exclusive_control():
             if self._mock_factory.running:
+                self._evidence.record_rejected_mock_active()
                 raise MockSourceActiveError
 
             current = self._factory_state.get_robot(telemetry.robot_id)
             if current is None:
+                self._evidence.record_rejected_unknown_robot()
                 raise UnknownRobotError(telemetry.robot_id)
 
             ingested_at = datetime.now(UTC)
             if telemetry.timestamp > ingested_at + self._max_future_skew:
+                self._evidence.record_rejected_future_timestamp()
                 raise FutureTimestampError
             ordering_status = (
                 TelemetryIngressStatus.IGNORED_STALE
@@ -67,6 +74,7 @@ class TelemetryIngressService:
                 else TelemetryIngressStatus.ACCEPTED
             )
             if ordering_status == TelemetryIngressStatus.ACCEPTED:
+                self._evidence.record_accepted(telemetry.timestamp, ingested_at)
                 self._factory_state.update_robot(
                     Robot(
                         id=current.id,
@@ -81,8 +89,17 @@ class TelemetryIngressService:
                     )
                 )
 
+            else:
+                self._evidence.record_ignored_stale()
+
         if ordering_status == TelemetryIngressStatus.ACCEPTED:
-            await self._websocket_manager.broadcast(robot_telemetry_event(telemetry))
+            await self._websocket_manager.broadcast(
+                robot_telemetry_event(
+                    telemetry,
+                    ingested_at=ingested_at,
+                    broadcast_at=datetime.now(UTC),
+                )
+            )
 
         if self._persistence_worker is not None:
             self._persistence_worker.submit(telemetry, ingested_at, ordering_status)

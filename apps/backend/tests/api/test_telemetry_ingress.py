@@ -157,3 +157,31 @@ async def test_timestamp_beyond_future_skew_returns_422(edge_client: AsyncClient
 
     assert response.status_code == 422
     assert response.json() == {"detail": "Telemetry timestamp exceeds the allowed future skew"}
+
+
+@pytest.mark.asyncio
+async def test_runtime_evidence_requires_edge_secret_and_counts_ingress(
+    edge_client: AsyncClient,
+) -> None:
+    unauthorized = await edge_client.get("/internal/v1/runtime-evidence")
+    before = await edge_client.get(
+        "/internal/v1/runtime-evidence",
+        headers=edge_headers(),
+    )
+    ingested = await edge_client.post(
+        "/internal/v1/telemetry",
+        json=telemetry_payload(),
+        headers=edge_headers(),
+    )
+    after = await edge_client.get(
+        "/internal/v1/runtime-evidence",
+        headers=edge_headers(),
+    )
+
+    assert unauthorized.status_code == 401
+    assert before.status_code == ingested.status_code == after.status_code == 200
+    assert after.json()["received_total"] == before.json()["received_total"] + 1
+    assert after.json()["accepted_total"] == before.json()["accepted_total"] + 1
+    assert after.json()["latency_sample_count"] == before.json()["latency_sample_count"] + 1
+    assert after.json()["source_to_ingest_latency_ms_p50"] is not None
+    assert after.json()["source_to_ingest_latency_ms_p95"] is not None

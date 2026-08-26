@@ -244,6 +244,7 @@ def test_openapi_declares_bearer_security_for_all_non_health_rest_operations() -
         "/internal/v1/commands/next",
         "/internal/v1/commands/ack",
         "/internal/v1/commands/result",
+        "/internal/v1/runtime-evidence",
     }
     schema = app.openapi()
     schemes = schema["components"]["securitySchemes"]

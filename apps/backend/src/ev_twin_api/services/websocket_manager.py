@@ -6,16 +6,24 @@ from uuid import UUID
 
 from fastapi import Depends, WebSocket
 
+from ev_twin_api.services.telemetry_evidence import TelemetryEvidence
+
 logger = logging.getLogger("ev_twin_api")
 
 
 class WebSocketManager:
     """Tracks authenticated clients and isolates slow broadcast consumers."""
 
-    def __init__(self, *, send_timeout_seconds: float = 0.5) -> None:
+    def __init__(
+        self,
+        *,
+        send_timeout_seconds: float = 0.5,
+        evidence: TelemetryEvidence | None = None,
+    ) -> None:
         if send_timeout_seconds <= 0:
             raise ValueError("send_timeout_seconds must be greater than zero")
         self._send_timeout_seconds = send_timeout_seconds
+        self._evidence = evidence or TelemetryEvidence()
         self._connections: dict[WebSocket, UUID] = {}
 
     async def accept(self, websocket: WebSocket) -> None:
@@ -48,6 +56,10 @@ class WebSocketManager:
     async def broadcast(self, payload: dict[str, Any]) -> None:
         connections = list(self._connections)
         if not connections:
+            if payload.get("type") == "robot.telemetry":
+                self._evidence.record_websocket_broadcast(
+                    delivery_attempts=0, deliveries=0, failures=0
+                )
             return
 
         results = await asyncio.gather(
@@ -58,6 +70,12 @@ class WebSocketManager:
             for connection, delivered in zip(connections, results, strict=True)
             if not delivered
         ]
+        if payload.get("type") == "robot.telemetry":
+            self._evidence.record_websocket_broadcast(
+                delivery_attempts=len(connections),
+                deliveries=len(connections) - len(dead),
+                failures=len(dead),
+            )
         for connection in dead:
             self._connections.pop(connection, None)
         await self._close_connections(
@@ -65,6 +83,10 @@ class WebSocketManager:
             code=1011,
             reason="Realtime delivery failed",
         )
+
+    @property
+    def active_connection_count(self) -> int:
+        return len(self._connections)
 
     async def _send_with_timeout(
         self,

@@ -10,12 +10,16 @@ from ev_twin_api.schemas.command import (
     EdgeCommand,
 )
 from ev_twin_api.schemas.edge_runtime import BridgeHealth, EdgeUpdateResponse, TaskUpdate
+from ev_twin_api.schemas.runtime_evidence import TelemetryRuntimeEvidence
 from ev_twin_api.services.command_service import (
     CommandConflictError,
     CommandNotFoundError,
     CommandServiceDep,
 )
 from ev_twin_api.services.edge_runtime import EdgeRuntimeService
+from ev_twin_api.services.telemetry_evidence import TelemetryEvidence
+from ev_twin_api.services.telemetry_persistence import TelemetryPersistenceWorker
+from ev_twin_api.services.websocket_manager import WebSocketManager
 
 router = APIRouter(
     prefix="/internal/v1",
@@ -29,6 +33,17 @@ def get_edge_runtime_service(request: Request) -> EdgeRuntimeService:
 
 
 EdgeRuntimeServiceDep = Annotated[EdgeRuntimeService, Depends(get_edge_runtime_service)]
+
+
+@router.get("/runtime-evidence", response_model=TelemetryRuntimeEvidence)
+async def runtime_evidence(request: Request) -> TelemetryRuntimeEvidence:
+    evidence: TelemetryEvidence = request.app.state.telemetry_evidence
+    persistence: TelemetryPersistenceWorker = request.app.state.telemetry_persistence_worker
+    websocket: WebSocketManager = request.app.state.websocket_manager
+    return evidence.snapshot(
+        persistence_pending_samples=persistence.pending_count,
+        websocket_active_connections=websocket.active_connection_count,
+    )
 
 
 @router.post("/task-updates", response_model=EdgeUpdateResponse)

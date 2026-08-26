@@ -7,6 +7,7 @@ from datetime import datetime
 from ev_twin_api.schemas.telemetry import RobotTelemetry, TelemetryIngressStatus
 from ev_twin_api.services.runtime_health import RuntimeHealthService
 from ev_twin_api.services.runtime_history import RuntimeHistoryRepository
+from ev_twin_api.services.telemetry_evidence import TelemetryEvidence
 
 logger = logging.getLogger("ev_twin_api")
 
@@ -27,10 +28,12 @@ class TelemetryPersistenceWorker:
         runtime_health: RuntimeHealthService | None,
         *,
         flush_seconds: float,
+        evidence: TelemetryEvidence | None = None,
     ) -> None:
         self._history = history
         self._runtime_health = runtime_health
         self._flush_seconds = flush_seconds
+        self._evidence = evidence or TelemetryEvidence()
         self._pending: dict[tuple[str, TelemetryIngressStatus], PendingTelemetry] = {}
         self._task: asyncio.Task[None] | None = None
 
@@ -42,6 +45,7 @@ class TelemetryPersistenceWorker:
     ) -> None:
         key = (telemetry.robot_id, ordering_status)
         current = self._pending.get(key)
+        self._evidence.record_persistence_submission(coalesced=current is not None)
         if current is None or telemetry.timestamp > current.telemetry.timestamp:
             self._pending[key] = PendingTelemetry(
                 telemetry.model_copy(deep=True), ingested_at, ordering_status
@@ -81,11 +85,17 @@ class TelemetryPersistenceWorker:
             await self._history.record_telemetry(
                 item.telemetry, item.ingested_at, item.ordering_status
             )
+            self._evidence.record_persisted()
         except Exception:
+            self._evidence.record_persistence_failure()
             current = self._pending.get(key)
             if current is None or item.telemetry.timestamp > current.telemetry.timestamp:
                 self._pending[key] = item
             logger.exception("telemetry persistence failed; retained latest sample")
+
+    @property
+    def pending_count(self) -> int:
+        return len(self._pending)
 
     async def _run(self) -> None:
         while True:

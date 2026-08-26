@@ -4,6 +4,7 @@ from typing import Any
 from uuid import UUID
 
 import pytest
+from ev_twin_api.services.telemetry_evidence import TelemetryEvidence
 from ev_twin_api.services.websocket_manager import WebSocketManager
 
 
@@ -123,7 +124,8 @@ async def test_disconnect_user_closes_every_session_for_only_that_user() -> None
 
 @pytest.mark.asyncio
 async def test_slow_client_times_out_without_blocking_healthy_client() -> None:
-    manager = WebSocketManager(send_timeout_seconds=0.05)
+    evidence = TelemetryEvidence()
+    manager = WebSocketManager(send_timeout_seconds=0.05, evidence=evidence)
     slow = FakeWebSocket(send_delay=1.0)
     healthy = FakeWebSocket()
     manager.register_authenticated(slow, USER_1)  # type: ignore[arg-type]
@@ -140,3 +142,12 @@ async def test_slow_client_times_out_without_blocking_healthy_client() -> None:
     assert slow.sent == []
     assert slow not in manager._connections
     assert slow.close_code == 1011
+    snapshot = evidence.snapshot(
+        persistence_pending_samples=0,
+        websocket_active_connections=manager.active_connection_count,
+    )
+    assert snapshot.websocket_broadcast_events_total == 1
+    assert snapshot.websocket_delivery_attempts_total == 2
+    assert snapshot.websocket_deliveries_total == 1
+    assert snapshot.websocket_delivery_failures_total == 1
+    assert snapshot.websocket_active_connections == 1

@@ -259,6 +259,25 @@ Acceptance:
 - instrumentation không làm đổi thứ tự telemetry hoặc block ingestion;
 - timestamp validation và robot isolation có regression test.
 
+Implementation result (2026-08-26): **Backend instrumentation complete**.
+
+- `robot.telemetry.data` remains the Phase 1 `RobotTelemetry` payload; an optional
+  envelope `meta` adds source, Backend ingest and broadcast UTC timestamps.
+- The machine-authenticated `GET /internal/v1/runtime-evidence` endpoint reports
+  accepted, stale and service-level rejection counts plus bounded p50/p95
+  source-to-ingest latency.
+- Persistence evidence distinguishes submitted, coalesced, pending, persisted and
+  failed samples. WebSocket evidence distinguishes broadcast events, delivery
+  attempts, successful deliveries and failed client deliveries.
+- Latency uses a bounded 10,000-sample process-local window. Counters reset with
+  the Cloud Run process and must be recorded together with its `K_REVISION`.
+- Targeted B2 verification: 33 tests passed.
+- Complete Backend test suite: 341 tests passed.
+- Ruff lint and format check passed; canonical workspace Mypy passed 93 source files.
+
+This result makes hosted measurement possible; it does not claim production
+latency or drop-rate values until the GCE two-AMR acceptance run records them.
+
 ### B3 — Read-only operational history (P1)
 
 Mục tiêu: dùng dữ liệu đã persist để điều tra và chứng minh acceptance, không xây

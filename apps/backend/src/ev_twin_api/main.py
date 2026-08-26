@@ -63,6 +63,7 @@ from ev_twin_api.services.scenario_repository import (
     SqlAlchemyScenarioRepository,
 )
 from ev_twin_api.services.scenario_service import ScenarioService
+from ev_twin_api.services.telemetry_evidence import TelemetryEvidence
 from ev_twin_api.services.telemetry_ingress import TelemetryIngressService
 from ev_twin_api.services.telemetry_persistence import TelemetryPersistenceWorker
 from ev_twin_api.services.websocket_manager import WebSocketManager
@@ -110,7 +111,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         robot_speed_mps=settings.mock_robot_speed_mps,
         simulation_speed=settings.mock_simulation_speed,
     )
-    websocket_manager = WebSocketManager()
+    telemetry_evidence = TelemetryEvidence()
+    websocket_manager = WebSocketManager(evidence=telemetry_evidence)
     factory_state = FactoryState(config=mock_config, seed_mock_robots=settings.mock_factory_enabled)
     mock_factory = MockFactory(
         state=factory_state,
@@ -135,8 +137,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         runtime_repository,
         runtime_health,
         flush_seconds=settings.telemetry_history_flush_seconds,
+        evidence=telemetry_evidence,
     )
     app.state.telemetry_persistence_worker = telemetry_persistence
+    app.state.telemetry_evidence = telemetry_evidence
     app.state.telemetry_ingress_service = TelemetryIngressService(
         factory_state=factory_state,
         websocket_manager=websocket_manager,
@@ -145,6 +149,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         history_repository=runtime_repository,
         runtime_health=runtime_health,
         persistence_worker=telemetry_persistence,
+        evidence=telemetry_evidence,
     )
     app.state.edge_runtime_service = EdgeRuntimeService(
         factory_state, websocket_manager, runtime_repository, runtime_health
