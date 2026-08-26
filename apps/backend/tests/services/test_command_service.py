@@ -138,6 +138,105 @@ async def test_failed_result_keeps_scenario_approved_and_retry_reuses_operation(
 
 
 @pytest.mark.asyncio
+async def test_edge_payload_preserves_layout_and_route_identity() -> None:
+    commands, scenarios, scenario_id, _ = await setup()
+    scenario = await scenarios.get(scenario_id)
+    command = await commands.apply(scenario_id, ApplyScenarioRequest(), MONITOR)
+
+    leased = await commands.lease("edge-main")
+
+    assert leased is not None
+    assert leased.payload.layout_id == scenario.config.layout_id
+    assert leased.payload.layout_version == scenario.config.layout_version
+    assert leased.payload.route_id == scenario.config.route_id
+    assert command.payload == leased.payload
+
+
+@pytest.mark.asyncio
+async def test_duplicate_ack_and_result_are_idempotent() -> None:
+    commands, scenarios, scenario_id, _ = await setup()
+    command = await commands.apply(scenario_id, ApplyScenarioRequest(), MONITOR)
+    await commands.lease("edge-main")
+    acknowledgement = CommandAcknowledgementRequest(
+        operation_id=command.operation_id, attempt_number=1, bridge_id="edge-main"
+    )
+    result = CommandResultRequest(
+        operation_id=command.operation_id,
+        attempt_number=1,
+        bridge_id="edge-main",
+        status=CommandStatus.COMPLETED,
+        detail="layout applied",
+    )
+
+    first_ack = await commands.acknowledge(acknowledgement)
+    duplicate_ack = await commands.acknowledge(acknowledgement)
+    first_result = await commands.result(result)
+    duplicate_result = await commands.result(result)
+
+    assert duplicate_ack == first_ack
+    assert duplicate_result == first_result
+    assert (await scenarios.get(scenario_id)).status == ScenarioStatus.APPLIED
+
+
+@pytest.mark.asyncio
+async def test_late_result_from_old_attempt_cannot_complete_retry() -> None:
+    commands, scenarios, scenario_id, _ = await setup()
+    command = await commands.apply(
+        scenario_id, ApplyScenarioRequest(timeout_seconds=0.01, max_retries=1), MONITOR
+    )
+    await commands.lease("edge-main")
+    await commands.acknowledge(
+        CommandAcknowledgementRequest(
+            operation_id=command.operation_id, attempt_number=1, bridge_id="edge-main"
+        )
+    )
+    await asyncio.sleep(0.02)
+    await commands.retry(command.operation_id)
+
+    with pytest.raises(CommandConflictError, match="attempt timed out"):
+        await commands.result(
+            CommandResultRequest(
+                operation_id=command.operation_id,
+                attempt_number=1,
+                bridge_id="edge-main",
+                status=CommandStatus.COMPLETED,
+                detail="late success",
+            )
+        )
+
+    current = await commands.get(command.operation_id)
+    assert current.status == CommandStatus.PENDING
+    assert current.attempts[0].status == CommandStatus.TIMED_OUT
+    assert current.attempts[1].status == CommandStatus.PENDING
+    assert (await scenarios.get(scenario_id)).status == ScenarioStatus.APPROVED
+
+
+@pytest.mark.asyncio
+async def test_edge_failure_reason_is_retained_without_applying_scenario() -> None:
+    commands, scenarios, scenario_id, _ = await setup()
+    command = await commands.apply(scenario_id, ApplyScenarioRequest(), MONITOR)
+    await commands.lease("edge-main")
+    await commands.acknowledge(
+        CommandAcknowledgementRequest(
+            operation_id=command.operation_id, attempt_number=1, bridge_id="edge-main"
+        )
+    )
+
+    failed = await commands.result(
+        CommandResultRequest(
+            operation_id=command.operation_id,
+            attempt_number=1,
+            bridge_id="edge-main",
+            status=CommandStatus.FAILED,
+            detail="unsupported layout version factory-default@1",
+        )
+    )
+
+    assert failed.attempts[0].detail == "unsupported layout version factory-default@1"
+    assert (await scenarios.get(scenario_id)).status == ScenarioStatus.APPROVED
+
+
+@pytest.mark.asyncio
 async def test_expired_attempt_can_retry_within_budget() -> None:
     repository = InMemoryCommandRepository()
     commands, _, scenario_id, _ = await setup()

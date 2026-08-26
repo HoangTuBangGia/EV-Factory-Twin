@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Protocol, cast
 from uuid import UUID, uuid4
@@ -41,6 +42,12 @@ class CommandConflictError(RuntimeError):
     pass
 
 
+@dataclass(frozen=True)
+class CommandMutation:
+    command: Command
+    changed: bool
+
+
 class CommandRepository(Protocol):
     async def create(self, command: Command) -> Command: ...
     async def get(self, operation_id: UUID) -> Command | None: ...
@@ -49,7 +56,13 @@ class CommandRepository(Protocol):
     async def acknowledge(
         self, request: CommandAcknowledgementRequest, now: datetime
     ) -> Command: ...
+    async def acknowledge_changed(
+        self, request: CommandAcknowledgementRequest, now: datetime
+    ) -> CommandMutation: ...
     async def result(self, request: CommandResultRequest, now: datetime) -> Command: ...
+    async def result_changed(
+        self, request: CommandResultRequest, now: datetime
+    ) -> CommandMutation: ...
     async def retry(self, operation_id: UUID, now: datetime) -> Command: ...
     async def expire(self, now: datetime) -> list[Command]: ...
 
@@ -92,35 +105,49 @@ class InMemoryCommandRepository:
             return None
 
     async def acknowledge(self, request: CommandAcknowledgementRequest, now: datetime) -> Command:
+        return (await self.acknowledge_changed(request, now)).command
+
+    async def acknowledge_changed(
+        self, request: CommandAcknowledgementRequest, now: datetime
+    ) -> CommandMutation:
         async with self._lock:
             command, attempt = self._attempt(request.operation_id, request.attempt_number)
             if attempt.leased_by != request.bridge_id:
                 raise CommandConflictError("command attempt is leased by another bridge")
-            if command.status == CommandStatus.ACKNOWLEDGED:
-                return command.model_copy(deep=True)
+            if attempt.status == CommandStatus.ACKNOWLEDGED:
+                return CommandMutation(command.model_copy(deep=True), changed=False)
             self._ensure_live(attempt, now)
-            command.status = attempt.status = CommandStatus.ACKNOWLEDGED
+            if attempt is not command.attempts[-1] or command.status != CommandStatus.PENDING:
+                raise CommandConflictError("command acknowledgement is stale or invalid")
+            command.status = CommandStatus.ACKNOWLEDGED
+            attempt.status = CommandStatus.ACKNOWLEDGED
             attempt.acknowledged_at = now
             command.updated_at = now
-            return command.model_copy(deep=True)
+            return CommandMutation(command.model_copy(deep=True), changed=True)
 
     async def result(self, request: CommandResultRequest, now: datetime) -> Command:
+        return (await self.result_changed(request, now)).command
+
+    async def result_changed(self, request: CommandResultRequest, now: datetime) -> CommandMutation:
         if request.status not in {CommandStatus.COMPLETED, CommandStatus.FAILED}:
             raise CommandConflictError("result status must be COMPLETED or FAILED")
         async with self._lock:
             command, attempt = self._attempt(request.operation_id, request.attempt_number)
             if attempt.leased_by != request.bridge_id:
                 raise CommandConflictError("command attempt is leased by another bridge")
-            if command.status == request.status:
-                return command.model_copy(deep=True)
+            if attempt.status == request.status:
+                if attempt.detail != request.detail:
+                    raise CommandConflictError("duplicate command result detail does not match")
+                return CommandMutation(command.model_copy(deep=True), changed=False)
             self._ensure_live(attempt, now)
-            if command.status != CommandStatus.ACKNOWLEDGED:
+            if attempt is not command.attempts[-1] or command.status != CommandStatus.ACKNOWLEDGED:
                 raise CommandConflictError("command must be acknowledged before result")
-            command.status = attempt.status = request.status
+            command.status = request.status
+            attempt.status = request.status
             attempt.completed_at = now
             attempt.detail = request.detail
             command.updated_at = now
-            return command.model_copy(deep=True)
+            return CommandMutation(command.model_copy(deep=True), changed=True)
 
     async def retry(self, operation_id: UUID, now: datetime) -> Command:
         async with self._lock:
@@ -263,6 +290,11 @@ class SqlAlchemyCommandRepository:
             return await self._load(session, row["operation_id"])
 
     async def acknowledge(self, request: CommandAcknowledgementRequest, now: datetime) -> Command:
+        return (await self.acknowledge_changed(request, now)).command
+
+    async def acknowledge_changed(
+        self, request: CommandAcknowledgementRequest, now: datetime
+    ) -> CommandMutation:
         async with self._database.session() as session, session.begin():
             result = await session.execute(
                 text("""
@@ -275,8 +307,14 @@ class SqlAlchemyCommandRepository:
             )
             if result.scalar_one_or_none() is None:
                 existing = await self._load(session, request.operation_id)
-                if existing and existing.status == CommandStatus.ACKNOWLEDGED:
-                    return existing
+                attempt = self._find_attempt(existing, request.attempt_number)
+                if (
+                    existing is not None
+                    and attempt
+                    and attempt.leased_by == request.bridge_id
+                    and attempt.status == CommandStatus.ACKNOWLEDGED
+                ):
+                    return CommandMutation(existing, changed=False)
                 raise CommandConflictError("command acknowledgement is stale or invalid")
             await session.execute(
                 text("""
@@ -288,9 +326,12 @@ class SqlAlchemyCommandRepository:
             await self._ack_event(session, request, CommandStatus.ACKNOWLEDGED, "", now)
             command = await self._load(session, request.operation_id)
             assert command is not None
-            return command
+            return CommandMutation(command, changed=True)
 
     async def result(self, request: CommandResultRequest, now: datetime) -> Command:
+        return (await self.result_changed(request, now)).command
+
+    async def result_changed(self, request: CommandResultRequest, now: datetime) -> CommandMutation:
         if request.status not in {CommandStatus.COMPLETED, CommandStatus.FAILED}:
             raise CommandConflictError("result status must be COMPLETED or FAILED")
         async with self._database.session() as session, session.begin():
@@ -307,8 +348,15 @@ class SqlAlchemyCommandRepository:
             )
             if result.scalar_one_or_none() is None:
                 existing = await self._load(session, request.operation_id)
-                if existing and existing.status == request.status:
-                    return existing
+                attempt = self._find_attempt(existing, request.attempt_number)
+                if (
+                    existing is not None
+                    and attempt
+                    and attempt.leased_by == request.bridge_id
+                    and attempt.status == request.status
+                    and attempt.detail == request.detail
+                ):
+                    return CommandMutation(existing, changed=False)
                 raise CommandConflictError("command result is stale or invalid")
             await session.execute(
                 text("""
@@ -321,7 +369,7 @@ class SqlAlchemyCommandRepository:
             await self._ack_event(session, request, request.status, request.detail, now)
             command = await self._load(session, request.operation_id)
             assert command is not None
-            return command
+            return CommandMutation(command, changed=True)
 
     async def retry(self, operation_id: UUID, now: datetime) -> Command:
         async with self._database.session() as session, session.begin():
@@ -432,6 +480,12 @@ class SqlAlchemyCommandRepository:
             },
         )
 
+    @staticmethod
+    def _find_attempt(command: Command | None, number: int) -> CommandAttempt | None:
+        if command is None:
+            return None
+        return next((item for item in command.attempts if item.attempt_number == number), None)
+
 
 class CommandService:
     def __init__(
@@ -528,13 +582,17 @@ class CommandService:
         )
 
     async def acknowledge(self, request: CommandAcknowledgementRequest) -> Command:
-        command = await self._repository.acknowledge(request, datetime.now(UTC))
-        await self._audit(command, AuditAction.COMMAND_ACKNOWLEDGED)
-        await self._broadcast(command)
-        return command
+        mutation = await self._repository.acknowledge_changed(request, datetime.now(UTC))
+        if mutation.changed:
+            await self._audit(mutation.command, AuditAction.COMMAND_ACKNOWLEDGED)
+            await self._broadcast(mutation.command)
+        return mutation.command
 
     async def result(self, request: CommandResultRequest) -> Command:
-        command = await self._repository.result(request, datetime.now(UTC))
+        mutation = await self._repository.result_changed(request, datetime.now(UTC))
+        command = mutation.command
+        if not mutation.changed:
+            return command
         if command.status == CommandStatus.COMPLETED:
             actor = CurrentUser(
                 id=command.requested_by,

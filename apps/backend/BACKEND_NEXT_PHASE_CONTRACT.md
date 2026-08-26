@@ -353,6 +353,21 @@ Acceptance:
 - late result của attempt cũ không hoàn tất attempt mới;
 - restart Backend không làm mất durable command history.
 
+Implementation result (2026-08-26): **Backend command lifecycle complete**.
+
+- Edge commands preserve the scenario's immutable `layout_id`, `layout_version`
+  and `route_id`; Backend validation and approval complete before command creation.
+- ACK and result idempotency is scoped to the exact operation, attempt and bridge.
+  Exact duplicate delivery has no repeated audit, WebSocket or apply side effect.
+- A terminal or timed-out old attempt cannot mutate the active retry. Retry remains
+  bounded by `max_retries` and appends rather than replacing attempt history.
+- Edge failure detail remains bounded by the request schema and is retained on the
+  failed attempt; a failed result leaves the scenario `APPROVED`.
+- PostgreSQL command and attempt tables remain the durable source across Backend
+  restarts. The in-memory repository is test/development state and is not durable.
+- ROS topology support, route execution and collision avoidance remain explicitly
+  outside Backend authority and must return a positive result before `APPLIED`.
+
 ### B5 — Production hardening có điều kiện (P2)
 
 Chỉ bắt đầu khi B1–B4 đã hoàn thành và có nhu cầu đo được:
