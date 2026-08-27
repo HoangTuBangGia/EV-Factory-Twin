@@ -368,9 +368,52 @@ Implementation result (2026-08-26): **Backend command lifecycle complete**.
 - ROS topology support, route execution and collision avoidance remain explicitly
   outside Backend authority and must return a positive result before `APPLIED`.
 
+### Cổng xác minh B1–B4 trước B5
+
+Trạng thái hiện tại: **phần code Backend của B1–B4 đã hoàn thành, nhưng chưa được
+nhóm xác minh đầy đủ trên môi trường deploy có Backend, PostgreSQL bền vững và
+ROS/Gazebo edge thật**. Vì vậy không được diễn giải các implementation result ở
+trên thành hosted/runtime acceptance đã hoàn thành.
+
+Không bắt buộc deploy thêm lên GCP nếu staging của nhóm cung cấp đủ các thành phần
+tương đương. Trước khi mở B5, lead hoặc người vận hành cần ghi lại:
+
+- URL/môi trường kiểm thử, thời gian UTC, Git SHA và Backend revision/image;
+- loại database và xác nhận dữ liệu được persist qua Backend restart;
+- phiên bản/cấu hình ROS edge, số AMR và trạng thái mock đã tắt;
+- kết quả `PASS`, `FAIL` hoặc `NOT RUN` cho từng nhóm kiểm tra dưới đây;
+- bằng chứng đã loại bỏ password, token, JWT secret, edge secret và database URL.
+
+Checklist còn phải xác minh:
+
+- [ ] **B1:** Backend production health và authentication hoạt động; ít nhất hai
+  AMR gửi telemetry/task state độc lập; reconnect không tạo robot trùng hoặc cho
+  sample cũ ghi đè sample mới; log không lộ secret.
+- [ ] **B2:** một lượt chạy ổn định ghi được accepted/rejected/stale/dropped,
+  persistence và WebSocket delivery counts cùng source-to-ingest p50/p95; evidence
+  gắn với đúng Git SHA/revision và số lượng mẫu.
+- [ ] **B3:** telemetry/audit history đúng filter, ordering, pagination và role;
+  dữ liệu còn sau restart; PostgreSQL query plan dùng robot/time index hoặc
+  partition phù hợp; p95 truy vấn telemetry 24 giờ của một robot dưới 500 ms trên
+  capacity dataset đã thống nhất.
+- [ ] **B4:** apply thành công chỉ chuyển scenario sang `APPLIED` sau positive ROS
+  result; unsupported layout giữ scenario `APPROVED` và lưu failure reason;
+  duplicate ACK/result không đổi lifecycle; timeout/retry tạo attempt mới; late
+  result của attempt cũ không hoàn tất attempt mới; command history còn sau restart.
+- [ ] Backend quality gates và các PostgreSQL/hosted tests liên quan đạt trên đúng
+  revision được nghiệm thu.
+
+Nếu môi trường chỉ chạy mock, không có ROS edge, không có database persistent hoặc
+không deploy commit chứa B1–B4 thì kết quả chỉ là component verification và các mục
+liên quan phải để `NOT RUN`, không được đánh dấu `PASS`.
+
+B1–B4 chỉ được coi là đóng hoàn toàn khi tất cả mục bắt buộc ở trên là `PASS` và
+evidence đã được nhóm review. Một mục `FAIL` phải tạo checkpoint sửa regression nhỏ
+nhất rồi chạy lại mục đó. `NOT RUN` giữ cổng này ở trạng thái mở.
+
 ### B5 — Production hardening có điều kiện (P2)
 
-Chỉ bắt đầu khi B1–B4 đã hoàn thành và có nhu cầu đo được:
+Chỉ bắt đầu khi cổng xác minh B1–B4 ở trên đã đóng và có nhu cầu production đo được:
 
 - per-bridge identity và ownership khi có nhiều trusted bridge;
 - overlapping secret rotation;
