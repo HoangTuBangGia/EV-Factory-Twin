@@ -3,6 +3,7 @@ import type { FactoryAlert } from "@/schemas/alert";
 import type { Command } from "@/schemas/command";
 import type { FactoryMetrics } from "@/schemas/metric";
 import type { Robot, RobotTelemetry } from "@/schemas/robot";
+import type { Scenario } from "@/schemas/scenario";
 import type { Task } from "@/schemas/task";
 
 export type ConnectionStatus = "CONNECTING" | "LIVE" | "OFFLINE" | "MOCK";
@@ -30,6 +31,7 @@ interface FactoryStore {
   metricsHistory: MetricsSample[];
   alerts: FactoryAlert[];
   commands: Record<string, Command>;
+  scenarios: Scenario[];
   factoryRevision: number;
   selectedRobotId: string | null;
   connectionStatus: ConnectionStatus;
@@ -43,6 +45,8 @@ interface FactoryStore {
   addAlert: (alert: FactoryAlert) => void;
   setCommands: (commands: Command[]) => void;
   updateCommand: (command: Command) => void;
+  setScenarios: (scenarios: Scenario[]) => void;
+  updateScenario: (scenario: Scenario) => void;
   bumpFactoryRevision: () => void;
   selectRobot: (id: string | null) => void;
   setConnectionStatus: (status: ConnectionStatus) => void;
@@ -50,7 +54,7 @@ interface FactoryStore {
 }
 
 export const useFactoryStore = create<FactoryStore>((set) => ({
-  robots: {}, tasks: {}, metrics: null, metricsHistory: [], alerts: [], commands: {}, factoryRevision: 0, selectedRobotId: null,
+  robots: {}, tasks: {}, metrics: null, metricsHistory: [], alerts: [], commands: {}, scenarios: [], factoryRevision: 0, selectedRobotId: null,
   connectionStatus: "CONNECTING",
   setRobots: (robots) => set({ robots: Object.fromEntries(robots.map((robot) => [robot.id, robot])) }),
   updateRobotTelemetry: (telemetry) => set((state) => {
@@ -107,6 +111,12 @@ export const useFactoryStore = create<FactoryStore>((set) => ({
       [command.operation_id]: latestCommand(state.commands[command.operation_id], command),
     },
   })),
+  setScenarios: (scenarios) => set({ scenarios }),
+  updateScenario: (scenario) => set((state) => ({
+    scenarios: state.scenarios.some((current) => current.id === scenario.id)
+      ? state.scenarios.map((current) => (current.id === scenario.id ? scenario : current))
+      : [scenario, ...state.scenarios],
+  })),
   bumpFactoryRevision: () => set((state) => ({ factoryRevision: state.factoryRevision + 1 })),
   selectRobot: (selectedRobotId) => set({ selectedRobotId }),
   setConnectionStatus: (connectionStatus) => set({ connectionStatus }),
@@ -117,6 +127,7 @@ export const useFactoryStore = create<FactoryStore>((set) => ({
     metricsHistory: [],
     alerts: [],
     commands: {},
+    scenarios: [],
     factoryRevision: 0,
     selectedRobotId: null,
     connectionStatus: "OFFLINE",

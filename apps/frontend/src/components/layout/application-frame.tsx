@@ -6,6 +6,7 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { DataProvider } from "@/components/layout/data-provider";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
+import { NextActionStrip } from "@/components/workflow/next-action-strip";
 
 function ProtectedAppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -33,7 +34,10 @@ function ProtectedAppShell({ children }: { children: ReactNode }) {
         <Sidebar />
         <div className="workspace">
           {!isOverview && <Topbar />}
-          <main className={`content${isOverview ? " cockpit-content" : ""}`}>{children}</main>
+          <main className={`content${isOverview ? " cockpit-content" : ""}`}>
+            <NextActionStrip floating={isOverview} />
+            {children}
+          </main>
         </div>
       </div>
     </DataProvider>

@@ -11,8 +11,17 @@ import {
   ScenarioStatusBadge,
 } from "@/components/scenarios/scenario-comparison";
 import { OptimizationPanel } from "@/components/scenarios/optimization-panel";
+import { WorkflowTimeline } from "@/components/workflow/workflow-timeline";
 import { apiClient } from "@/lib/api-client";
 import { can } from "@/lib/auth/permissions";
+import {
+  QUEUE_KEYS,
+  QUEUE_LABELS,
+  filterQueue,
+  isQueueKey,
+  newestFirst,
+  type QueueKey,
+} from "@/lib/workflow";
 import { useFactoryStore } from "@/stores/factory-store";
 import type { LayoutSummary, LayoutVersion } from "@/schemas/layout";
 import {
@@ -46,19 +55,12 @@ function message(error: unknown) {
   return error instanceof Error ? error.message : "An unexpected error occurred.";
 }
 
-function upsertScenario(scenarios: Scenario[], updated: Scenario) {
-  const exists = scenarios.some((scenario) => scenario.id === updated.id);
-  return exists
-    ? scenarios.map((scenario) => scenario.id === updated.id ? updated : scenario)
-    : [...scenarios, updated];
-}
-
 function newestUsefulScenario(scenarios: Scenario[]) {
-  const reversed = [...scenarios].reverse();
-  return reversed.find((scenario) => scenario.status === "SUBMITTED")
-    ?? reversed.find((scenario) => scenario.status === "SIMULATED")
-    ?? reversed.find((scenario) => scenario.status === "APPROVED")
-    ?? reversed[0]
+  const ordered = newestFirst(scenarios);
+  return ordered.find((scenario) => scenario.status === "SUBMITTED")
+    ?? ordered.find((scenario) => scenario.status === "SIMULATED")
+    ?? ordered.find((scenario) => scenario.status === "APPROVED")
+    ?? ordered[0]
     ?? null;
 }
 
@@ -116,15 +118,18 @@ function ReadOnlyConfiguration({ scenario }: { scenario: Scenario | null }) {
 export default function ScenariosPage() {
   const { user } = useAuth();
   const [baseline, setBaseline] = useState<Scenario | null>(null);
-  const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [candidate, setCandidate] = useState<Scenario | null>(null);
   const [layouts, setLayouts] = useState<LayoutSummary[]>([]);
   const [selectedLayout, setSelectedLayout] = useState<LayoutVersion | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
+  const [queue, setQueue] = useState<QueueKey>("all");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [actionError, setActionError] = useState<string | null>(null);
   const [activeAction, setActiveAction] = useState<ScenarioAction | null>(null);
   const [operationId, setOperationId] = useState<string | null>(null);
+  const scenarios = useFactoryStore((state) => state.scenarios);
+  const setScenarios = useFactoryStore((state) => state.setScenarios);
+  const updateScenario = useFactoryStore((state) => state.updateScenario);
   const command = useFactoryStore((state) => operationId ? state.commands[operationId] : null);
   const updateCommand = useFactoryStore((state) => state.updateCommand);
 
@@ -138,7 +143,7 @@ export default function ScenariosPage() {
       }
       return newestUsefulScenario(loaded);
     });
-  }, []);
+  }, [setScenarios]);
 
   const loadPage = useCallback(async () => {
     setLoadState("loading");
@@ -152,6 +157,8 @@ export default function ScenariosPage() {
       setBaseline(loadedBaseline);
       setLayouts(loadedLayouts);
       const query = new URLSearchParams(window.location.search);
+      const requestedQueue = query.get("queue");
+      if (isQueueKey(requestedQueue)) setQueue(requestedQueue);
       const requestedId = query.get("layout");
       const requestedVersion = Number(query.get("version"));
       const requested = loadedLayouts.find((layout) => layout.id === requestedId);
@@ -199,6 +206,7 @@ export default function ScenariosPage() {
   const mayRun = can(user.role, "scenarios:run");
   const mayReview = can(user.role, "scenarios:review");
   const mayApply = can(user.role, "scenarios:apply");
+  const visibleScenarios = newestFirst(filterQueue(scenarios, queue, user.id));
 
   async function runScenario(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -223,7 +231,7 @@ export default function ScenariosPage() {
     setActiveAction("run");
     try {
       const created = await apiClient.runScenario(parsed.data);
-      setScenarios((current) => upsertScenario(current, created));
+      updateScenario(created);
       setCandidate(created);
     } catch (error) {
       setActionError(message(error));
@@ -244,7 +252,7 @@ export default function ScenariosPage() {
         ? await apiClient.approveScenario(candidate.id)
         : await apiClient.rejectScenario(candidate.id);
       setCandidate(updated);
-      setScenarios((current) => upsertScenario(current, updated));
+      updateScenario(updated);
     } catch (error) {
       setActionError(message(error));
     } finally {
@@ -262,7 +270,7 @@ export default function ScenariosPage() {
     try {
       const updated = await apiClient.submitScenario(candidate.id);
       setCandidate(updated);
-      setScenarios((current) => upsertScenario(current, updated));
+      updateScenario(updated);
     } catch (error) {
       setActionError(message(error));
     } finally {
@@ -276,7 +284,9 @@ export default function ScenariosPage() {
       return;
     }
     if (!window.confirm(
-      "Apply this scenario? A command will be sent to the simulation Fleet Manager.",
+      `Apply "${candidate.name}" to the factory?\n\n`
+      + "A command is queued for the Fleet Manager bridge. When the bridge completes it, "
+      + "factory runtime resets AMRs, tasks, alerts and metrics.",
     )) return;
 
     setActionError(null);
@@ -308,13 +318,34 @@ export default function ScenariosPage() {
       </header>
 
       <section className="panel scenario-queue">
-        <div className="panel-head"><h3>Scenario history</h3><span>{scenarios.length} saved in backend</span></div>
+        <div className="panel-head">
+          <h3>Scenario history</h3>
+          <span>{visibleScenarios.length} of {scenarios.length} saved in backend</span>
+        </div>
+        {scenarios.length > 0 && (
+          <div className="toolbar queue-filters" role="group" aria-label="Candidate queue">
+            {QUEUE_KEYS.map((key) => (
+              <button
+                key={key}
+                className={`filter${queue === key ? " active" : ""}`}
+                type="button"
+                aria-pressed={queue === key}
+                onClick={() => setQueue(key)}
+              >
+                {QUEUE_LABELS[key]} {filterQueue(scenarios, key, user.id).length}
+              </button>
+            ))}
+          </div>
+        )}
         {loadState === "loading" && <div className="empty">Loading scenario history…</div>}
         {loadState === "error" && <div className="empty">Scenario history is unavailable. Retry when the API is online.</div>}
         {loadState === "ready" && scenarios.length === 0 && <div className="empty">No candidate has been simulated yet.</div>}
-        {scenarios.length > 0 && (
+        {scenarios.length > 0 && visibleScenarios.length === 0 && (
+          <div className="empty">No candidate is in the {QUEUE_LABELS[queue].toLowerCase()} queue.</div>
+        )}
+        {visibleScenarios.length > 0 && (
           <div className="scenario-tabs" role="list" aria-label="Scenario history">
-            {[...scenarios].reverse().map((scenario) => (
+            {visibleScenarios.map((scenario) => (
               <button
                 key={scenario.id}
                 className={candidate?.id === scenario.id ? "selected" : ""}
@@ -445,6 +476,10 @@ export default function ScenariosPage() {
                 <div><small>Completed</small><strong>{candidate.metrics.completed_tasks}</strong></div>
                 <div><small>Benchmark time</small><strong>{candidate.duration_ms.toFixed(1)} ms</strong></div>
               </div>
+              <WorkflowTimeline
+                status={candidate.status}
+                command={command?.scenario_id === candidate.id ? command : null}
+              />
               {baseline ? (
                 <ScenarioComparison baseline={baseline.metrics} candidate={candidate.metrics} />
               ) : (

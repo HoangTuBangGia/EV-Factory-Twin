@@ -68,6 +68,39 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "An unexpected error occurred.";
 }
 
+/**
+ * Route drawing has an order the map cannot express on its own, so the steps
+ * are shown with live state instead of a transient one-line notice.
+ */
+function RouteStepper({
+  route,
+  placed,
+}: {
+  route: LayoutVersionContent["routes"][number];
+  placed: number;
+}) {
+  const steps = [
+    `Select ${route.start_station_id}`,
+    placed > 1 ? `Add waypoints · ${placed - 1} placed` : "Add waypoints",
+    `Select ${route.end_station_id}`,
+  ];
+  const current = placed === 0 ? 0 : 1;
+
+  return (
+    <ol className="route-stepper" aria-label={`Drawing ${route.id}`}>
+      {steps.map((step, index) => (
+        <li
+          key={step}
+          className={index < current ? "done" : index === current ? "current" : "pending"}
+          aria-current={index === current ? "step" : undefined}
+        >
+          <b aria-hidden="true">{index + 1}</b>{step}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function LayoutWorkspace() {
   const { user } = useAuth();
   const [layouts, setLayouts] = useState<LayoutSummary[]>([]);
@@ -167,7 +200,7 @@ function LayoutWorkspace() {
     if (!route) return;
     setRouteDrawing(true);
     setRouteDraft([]);
-    setNotice(`Select ${route.start_station_id}, add waypoints, then select ${route.end_station_id}.`);
+    setNotice(null);
   }
 
   function addRoutePoint(point: WorldPoint) {
@@ -188,7 +221,7 @@ function LayoutWorkspace() {
         return;
       }
       setRouteDraft([{ x: station.x, y: station.y }]);
-      setNotice(`Add waypoints on the floor, then select ${route.end_station_id}.`);
+      setNotice(null);
       return;
     }
     if (stationId !== route.end_station_id) {
@@ -355,6 +388,8 @@ function LayoutWorkspace() {
     }
   }
 
+  const drawingRoute = draft.routes.find((route) => route.id === selectedRouteId);
+
   return <>
     <header className="page-head">
       <div><h2>Layout editor</h2><p>Create immutable factory geometry and runtime configuration.</p></div>
@@ -436,6 +471,8 @@ function LayoutWorkspace() {
               setNotice(null);
             }}>Cancel drawing</button>}
           </div>
+          {routeDrawing && drawingRoute
+            && <RouteStepper route={drawingRoute} placed={routeDraft.length}/>}
           <div className="layout-editor-items">{draft.routes.map((route, routeIndex) => <fieldset
             key={route.id} className={route.id === selectedRouteId ? "selected-route" : ""}
             onClick={() => setSelectedRouteId(route.id)}
@@ -483,11 +520,15 @@ function LayoutWorkspace() {
             {zoneError ?? parsed.error?.issues[0]?.message ?? "Layout is invalid."}
           </div>}
           {notice && <div className="review-note" role="status">{notice}</div>}
+          <p className="form-help">
+            Saving stores an immutable revision. The live factory keeps running its current layout
+            until a Monitor applies a simulated candidate built on this revision.
+          </p>
           <div className="button-row">
             {selected && <button className="button" type="button" disabled={busy} onClick={() => void rename()}>Rename</button>}
             {selected && <button className="button" type="button" disabled={busy} onClick={() => void archive()}>Archive</button>}
             <button className="button primary" type="submit" disabled={busy || !parsed.success || Boolean(zoneError)}>
-              {busy ? "Saving…" : selected ? "Create new version" : "Create layout"}
+              {busy ? "Saving…" : selected ? "Save candidate revision" : "Create layout"}
             </button>
             {selected && <a className="button primary" href={`/scenarios?layout=${encodeURIComponent(selected.layout_id)}&version=${selected.version}`}>
               Simulate this version
