@@ -241,7 +241,7 @@ Còn nợ trong P0:
 | # | Item | Trạng thái | Ghi chú |
 |---|---|---|---|
 | 1 | Compare map current/candidate cho Monitor | Xong | `layout:view` thêm vào bảng permission frontend cho cả hai role, backend không đổi (C6). Diff hình học tách thành hàm thuần `lib/layout-diff.ts`; panel là `<details>` nên chưa mở thì không fetch. Chi tiết: `docs/changes/layout-comparison-p1.md`. |
-| 2 | Form UI cho no-go/congestion zones | Chưa bắt đầu | |
+| 2 | Form UI cho no-go/congestion zones | Xong | JSON đã được thay bằng form; click map để vẽ polygon, sửa metadata/toạ độ và preview cả hai loại zone. Chi tiết: `docs/changes/layout-zone-editor-p1.md`. |
 | 3 | Basic vs Advanced scenario settings | Chưa bắt đầu | |
 | 4 | Gom command status vào candidate timeline | Chưa bắt đầu | |
 | 5 | Vị trí của `OptimizationPanel` | Chưa bắt đầu | |
@@ -249,6 +249,10 @@ Còn nợ trong P0:
 Quality gate sau P1 item 1, chạy trong `apps/frontend`: `npm run lint` pass, `npm run typecheck`
 pass, `npm test` 34 file / 151 test pass (mới: 6 unit `layout-diff` + 5 component
 `layout-comparison` + 1 test permission), `npm run build` pass 14/14 page.
+
+Quality gate sau P1 item 2, chạy trong `apps/frontend`: `npm run lint` pass, `npm run typecheck`
+pass, targeted Layouts 10/10 test pass, full `npm test -- --run` 34 file / 154 test pass,
+`npm run build` pass 14/14 page.
 
 Còn nợ trong P1 item 1: khi không có candidate nào APPLIED thì không có mốc so sánh, panel nói
 thẳng điều đó chứ không dựng baseline giả. Congestion vẫn là một số tổng (C5) nên change list chỉ

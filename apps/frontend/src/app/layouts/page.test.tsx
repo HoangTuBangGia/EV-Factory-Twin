@@ -83,6 +83,77 @@ describe("LayoutsPage", () => {
     expect(screen.getByRole("status")).toHaveTextContent("BATTERY_DELIVERY_3 added");
   });
 
+  it("draws a no-go zone on the map and persists it", async () => {
+    api.createLayout.mockImplementation(savedLayout);
+    render(<LayoutsPage/>);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add no-go zone" }));
+    expect(screen.getByRole("button", { name: "Create layout" })).toBeDisabled();
+
+    const map = screen.getByRole("img", { name: "2D EV factory plant map" });
+    Object.defineProperty(map, "getScreenCTM", {
+      configurable: true,
+      value: () => ({ inverse: () => ({}) }),
+    });
+    Object.defineProperty(map, "createSVGPoint", {
+      configurable: true,
+      value: () => {
+        const point = {
+          x: 0,
+          y: 0,
+          matrixTransform: () => ({ x: point.x, y: point.y }),
+        };
+        return point;
+      },
+    });
+    const placePoint = (clientX: number, clientY: number) => {
+      const event = new Event("pointerdown", { bubbles: true });
+      Object.defineProperties(event, {
+        button: { value: 0 },
+        clientX: { value: clientX },
+        clientY: { value: clientY },
+      });
+      fireEvent(map, event);
+    };
+    placePoint(10, 10);
+    placePoint(20, 10);
+    placePoint(20, 20);
+    expect(screen.getByText(/3 placed/)).toBeInTheDocument();
+    const finish = screen.getByRole("button", { name: "Finish zone" });
+    expect(finish).toBeEnabled();
+    fireEvent.click(finish);
+    fireEvent.click(screen.getByRole("button", { name: "Create layout" }));
+
+    await waitFor(() => expect(api.createLayout).toHaveBeenCalledOnce());
+    expect(api.createLayout.mock.calls[0]?.[0].content.no_go_zones).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "NO_GO_ZONE_1" })]),
+    );
+  });
+
+  it("edits congestion delay without JSON", async () => {
+    api.createLayout.mockImplementation(savedLayout);
+    render(<LayoutsPage/>);
+
+    fireEvent.change(screen.getByLabelText("Delay multiplier"), { target: { value: "1.5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create layout" }));
+
+    await waitFor(() => expect(api.createLayout).toHaveBeenCalledOnce());
+    expect(api.createLayout.mock.calls[0]?.[0].content.congestion_zones[0]).toMatchObject({
+      id: "WAREHOUSE_PRODUCTION_DOOR",
+      delay_multiplier: 1.5,
+    });
+  });
+
+  it("blocks saving when zone IDs are duplicated", () => {
+    render(<LayoutsPage/>);
+    const zoneIds = screen.getAllByLabelText("Zone ID");
+
+    fireEvent.change(zoneIds[1]!, { target: { value: "GIGA_PRESS_CLEARANCE" } });
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Zone ID GIGA_PRESS_CLEARANCE is duplicated");
+    expect(screen.getByRole("button", { name: "Create layout" })).toBeDisabled();
+  });
+
   it("reports where the saved revision sits in candidate review", async () => {
     api.createLayout.mockImplementation(savedLayout);
     useFactoryStore.getState().setScenarios([{
