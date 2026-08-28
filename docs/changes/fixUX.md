@@ -243,7 +243,7 @@ Còn nợ trong P0:
 | 1 | Compare map current/candidate cho Monitor | Xong | `layout:view` thêm vào bảng permission frontend cho cả hai role, backend không đổi (C6). Diff hình học tách thành hàm thuần `lib/layout-diff.ts`; panel là `<details>` nên chưa mở thì không fetch. Chi tiết: `docs/changes/layout-comparison-p1.md`. |
 | 2 | Form UI cho no-go/congestion zones | Xong | JSON đã được thay bằng form; click map để vẽ polygon, sửa metadata/toạ độ và preview cả hai loại zone. Chi tiết: `docs/changes/layout-zone-editor-p1.md`. |
 | 3 | Basic vs Advanced scenario settings | Xong | Form cơ bản dùng layout defaults, assumptions chuyên sâu nằm trong disclosure; có live summary và reset. Chi tiết: `docs/changes/scenario-settings-p1.md`. |
-| 4 | Gom command status vào candidate timeline | Chưa bắt đầu | |
+| 4 | Gom command status vào candidate timeline | Xong | Scenarios hydrate command bền vững, chọn operation mới nhất theo candidate và đưa lifecycle/detail/link chẩn đoán vào timeline. Chi tiết: `docs/changes/candidate-command-timeline-p1.md`. |
 | 5 | Vị trí của `OptimizationPanel` | Chưa bắt đầu | |
 
 Quality gate sau P1 item 1, chạy trong `apps/frontend`: `npm run lint` pass, `npm run typecheck`
@@ -257,6 +257,11 @@ pass, targeted Layouts 10/10 test pass, full `npm test -- --run` 34 file / 154 t
 Quality gate sau P1 item 3, chạy trong `apps/frontend`: `npm run lint` pass, `npm run typecheck`
 pass, targeted form 4/4 test pass, full `npm test -- --run` 35 file / 158 test pass,
 Playwright list nhận 3 test (2 hosted test skip do thiếu credential), `npm run build` pass 14/14 page.
+
+Quality gate sau P1 item 4, chạy trong `apps/frontend`: `npm run lint` pass, `npm run typecheck`
+pass, targeted workflow/timeline/Scenarios 30/30 test pass, full `npm test -- --run` 36 file /
+161 test pass, Playwright list nhận 3 test (2 hosted test skip do thiếu credential),
+`npm run build` pass 14/14 page.
 
 Còn nợ trong P1 item 1: khi không có candidate nào APPLIED thì không có mốc so sánh, panel nói
 thẳng điều đó chứ không dựng baseline giả. Congestion vẫn là một số tổng (C5) nên change list chỉ

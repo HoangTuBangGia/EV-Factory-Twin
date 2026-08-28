@@ -104,6 +104,15 @@ export function candidateForLayoutVersion(
   )))[0] ?? null;
 }
 
+/** Resolve durable apply state after reload, including retried operations. */
+export function latestCommandForScenario(commands: Command[], scenarioId: string | null | undefined) {
+  if (!scenarioId) return null;
+  return commands
+    .filter((command) => command.scenario_id === scenarioId)
+    .sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at))[0]
+    ?? null;
+}
+
 function designerAction(scenarios: Scenario[], userId: string): NextAction {
   const latest = newestFirst(filterQueue(scenarios, "mine", userId))[0];
   if (!latest || latest.status === "DRAFT") {

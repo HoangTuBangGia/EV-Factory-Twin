@@ -63,9 +63,17 @@ describe("WorkflowTimeline", () => {
   });
 
   it("says the runtime is unchanged when the bridge never completed the command", () => {
-    render(<WorkflowTimeline status="APPROVED" command={command("TIMED_OUT")} />);
+    const timedOut = command("TIMED_OUT");
+    timedOut.attempts[0] = { ...timedOut.attempts[0], detail: "Bridge lease expired" };
+    render(<WorkflowTimeline status="APPROVED" command={timedOut} />);
 
     expect(screen.getByText(/factory runtime is unchanged/)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Apply command status" })).toHaveTextContent(
+      "TIMED_OUT",
+    );
+    expect(screen.getByText("Bridge lease expired")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open technical details" }))
+      .toHaveAttribute("href", "/commands");
   });
 });
 

@@ -4,6 +4,7 @@ import {
   candidateForLayoutVersion,
   filterQueue,
   isQueueKey,
+  latestCommandForScenario,
   nextAction,
   stageState,
 } from "./workflow";
@@ -116,6 +117,26 @@ describe("candidateForLayoutVersion", () => {
   it("returns null for a version that has never been simulated", () => {
     expect(candidateForLayoutVersion(scenarios, "LAYOUT-DEFAULT", 7)).toBeNull();
     expect(candidateForLayoutVersion(scenarios, "LAYOUT-OTHER", 1)).toBeNull();
+  });
+});
+
+describe("latestCommandForScenario", () => {
+  it("selects the newest durable operation for the candidate", () => {
+    const old = {
+      ...fixtureApplyCommand,
+      operation_id: "11111111-1111-4111-8111-111111111111",
+      updated_at: "2026-08-14T00:11:00.000Z",
+    };
+    const retried = {
+      ...fixtureApplyCommand,
+      operation_id: "22222222-2222-4222-8222-222222222222",
+      updated_at: "2026-08-14T00:12:00.000Z",
+    };
+    const other = { ...fixtureApplyCommand, scenario_id: "SCN-OTHER" };
+
+    expect(latestCommandForScenario([old, other, retried], fixtureScenario.id)?.operation_id)
+      .toBe(retried.operation_id);
+    expect(latestCommandForScenario([old], "SCN-MISSING")).toBeNull();
   });
 });
 

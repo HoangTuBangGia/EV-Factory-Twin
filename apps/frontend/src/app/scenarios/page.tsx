@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
   ScenarioActions,
@@ -24,6 +24,7 @@ import {
   QUEUE_LABELS,
   filterQueue,
   isQueueKey,
+  latestCommandForScenario,
   newestFirst,
   type QueueKey,
 } from "@/lib/workflow";
@@ -111,13 +112,18 @@ export default function ScenariosPage() {
   const [queue, setQueue] = useState<QueueKey>("all");
   const [fieldErrors, setFieldErrors] = useState<ScenarioFieldErrors>({});
   const [actionError, setActionError] = useState<string | null>(null);
+  const [commandLoadError, setCommandLoadError] = useState<string | null>(null);
   const [activeAction, setActiveAction] = useState<ScenarioAction | null>(null);
-  const [operationId, setOperationId] = useState<string | null>(null);
   const scenarios = useFactoryStore((state) => state.scenarios);
+  const commands = useFactoryStore((state) => state.commands);
   const setScenarios = useFactoryStore((state) => state.setScenarios);
+  const setCommands = useFactoryStore((state) => state.setCommands);
   const updateScenario = useFactoryStore((state) => state.updateScenario);
-  const command = useFactoryStore((state) => operationId ? state.commands[operationId] : null);
   const updateCommand = useFactoryStore((state) => state.updateCommand);
+  const candidateCommand = useMemo(() => latestCommandForScenario(
+    Object.values(commands),
+    candidate?.id,
+  ), [candidate?.id, commands]);
 
   const loadScenarios = useCallback(async () => {
     const loaded = await apiClient.getScenarios();
@@ -131,6 +137,15 @@ export default function ScenariosPage() {
     });
   }, [setScenarios]);
 
+  const loadCommands = useCallback(async () => {
+    setCommandLoadError(null);
+    try {
+      setCommands(await apiClient.getCommands());
+    } catch (error) {
+      setCommandLoadError(`Command history is unavailable: ${message(error)}`);
+    }
+  }, [setCommands]);
+
   const loadPage = useCallback(async () => {
     setLoadState("loading");
     setActionError(null);
@@ -139,6 +154,7 @@ export default function ScenariosPage() {
         apiClient.getBaselineScenario(),
         apiClient.getLayouts(),
         loadScenarios(),
+        loadCommands(),
       ]);
       setBaseline(loadedBaseline);
       setLayouts(loadedLayouts);
@@ -161,7 +177,7 @@ export default function ScenariosPage() {
       setActionError(`Unable to load scenarios: ${message(error)}`);
       setLoadState("error");
     }
-  }, [loadScenarios]);
+  }, [loadCommands, loadScenarios]);
 
   async function selectLayout(layoutId: string) {
     setActionError(null);
@@ -185,8 +201,8 @@ export default function ScenariosPage() {
   useEffect(() => { void loadPage(); }, [loadPage]);
 
   useEffect(() => {
-    if (command?.status === "COMPLETED") void loadScenarios();
-  }, [command?.status, loadScenarios]);
+    if (candidateCommand?.status === "COMPLETED") void loadScenarios();
+  }, [candidateCommand?.status, loadScenarios]);
 
   if (!user) return null;
   const mayRun = can(user.role, "scenarios:run");
@@ -283,7 +299,6 @@ export default function ScenariosPage() {
         max_retries: 1,
       });
       updateCommand(createdCommand);
-      setOperationId(createdCommand.operation_id);
     } catch (error) {
       setActionError(message(error));
     } finally {
@@ -371,6 +386,7 @@ export default function ScenariosPage() {
             {candidate ? <ScenarioStatusBadge status={candidate.status} /> : <span>No candidate</span>}
           </div>
           {actionError && <div className="scenario-error" role="alert">{actionError}</div>}
+          {commandLoadError && <div className="review-note" role="status">{commandLoadError}</div>}
           {!candidate && loadState !== "loading" && (
             <div className="empty">{mayRun ? "Run a scenario to compare it with the baseline." : "Wait for a Designer to run a scenario."}</div>
           )}
@@ -384,7 +400,7 @@ export default function ScenariosPage() {
               </div>
               <WorkflowTimeline
                 status={candidate.status}
-                command={command?.scenario_id === candidate.id ? command : null}
+                command={candidateCommand}
               />
               {baseline ? (
                 <ScenarioComparison baseline={baseline.metrics} candidate={candidate.metrics} />
@@ -401,9 +417,6 @@ export default function ScenariosPage() {
                 onReview={(action) => void review(action)}
                 onApply={() => void applyScenario()}
               />
-              {command && <div className="review-note" role="status">
-                Command <strong>{command.operation_id}</strong> · {command.status}
-              </div>}
             </div>
           )}
         </section>

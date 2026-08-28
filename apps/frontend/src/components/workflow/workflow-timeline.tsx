@@ -21,6 +21,10 @@ function phaseState(index: number, progress: { index: number; failed: boolean })
   return "done";
 }
 
+function timestamp(value: string | null | undefined) {
+  return value ? new Date(value).toLocaleString() : "Not yet";
+}
+
 export function WorkflowTimeline({
   status,
   command,
@@ -62,6 +66,33 @@ export function WorkflowTimeline({
           unchanged. Retry it from Commands.
         </p>
       )}
+      {command && (() => {
+        const acknowledgedAt = command.attempts
+          .map((attempt) => attempt.acknowledged_at)
+          .filter((value): value is string => value !== null)
+          .at(-1);
+        const completedAt = command.attempts
+          .map((attempt) => attempt.completed_at)
+          .filter((value): value is string => value !== null)
+          .at(-1);
+        const detail = command.attempts
+          .map((attempt) => attempt.detail)
+          .filter(Boolean)
+          .at(-1);
+        return <section className="workflow-command" aria-label="Apply command status">
+          <div className="workflow-command-head">
+            <strong>Factory apply</strong>
+            <span className={`scenario-status ${command.status}`}>{command.status}</span>
+          </div>
+          <dl>
+            <div><dt>Queued</dt><dd>{timestamp(command.created_at)}</dd></div>
+            <div><dt>Acknowledged</dt><dd>{timestamp(acknowledgedAt)}</dd></div>
+            <div><dt>Finished</dt><dd>{timestamp(completedAt)}</dd></div>
+          </dl>
+          {detail && <p>{detail}</p>}
+          <a href="/commands">Open technical details</a>
+        </section>;
+      })()}
     </div>
   );
 }
