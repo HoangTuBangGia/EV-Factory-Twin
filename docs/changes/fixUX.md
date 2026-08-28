@@ -200,12 +200,14 @@ Reject/request-revision có cấu trúc. Theo C3 và C4 việc này gồm:
 
 ## Tiến độ implementation
 
-Cập nhật 27/08/2026. P0 đã implement trên branch `feat/frontend-data-driven-layout-editor`,
-chưa commit. Chi tiết checkpoint: `docs/changes/workflow-guidance-p0.md`.
+Cập nhật 28/08/2026. P0 đã commit trên branch `feat/frontend-data-driven-layout-editor` ở
+`22c43ab`; phần wire `candidateForLayoutVersion` vào page Layouts và toàn bộ P1 item 1 vẫn chưa
+commit. Chi tiết checkpoint: `docs/changes/workflow-guidance-p0.md`,
+`docs/changes/layout-comparison-p1.md`.
 
 | # | Item P0 | Trạng thái | Nơi implement |
 |---|---|---|---|
-| 1 | Candidate view model | Một phần | `lib/workflow.ts` — `stageState`, `applyProgress`, `filterQueue`, `newestFirst`, `nextAction` đã dùng thật; `candidateForLayoutVersion` mới chỉ có unit test, chưa page nào gọi. |
+| 1 | Candidate view model | Xong | `lib/workflow.ts` — `stageState`, `applyProgress`, `filterQueue`, `newestFirst`, `nextAction`, `candidateForLayoutVersion`. Join theo C1 được `VersionCandidate` trong `app/layouts/page.tsx` dùng để nói version đang mở đứng ở đâu trong review. |
 | 2 | Next action strip | Xong | `components/workflow/next-action-strip.tsx`, mount trong `application-frame.tsx`; biến thể `.floating` cho Overview cockpit, ẩn dưới 1200px. |
 | 3 | Workflow timeline | Xong | `components/workflow/workflow-timeline.tsx`, gắn vào chi tiết candidate ở `app/scenarios/page.tsx`. Pha bridge đọc `acknowledged_at` từ attempts nên command đã fail vẫn cho thấy đi được tới đâu. |
 | 4 | Đổi nhãn/copy | Xong | `app/layouts/page.tsx`: `Save candidate revision` + dòng giải thích live factory chưa đổi. Không test nào assert nhãn cũ nên C10 không phát sinh sửa test. |
@@ -221,20 +223,38 @@ Phát sinh ngoài 7 item, cần thiết để làm được chúng:
 - CSS viết tay theo C9: `.workflow-strip`, `.workflow-timeline`, `.workflow-stages`,
   `.workflow-phases`, `.queue-filters`, `.route-stepper`.
 
-Quality gate 27/08/2026, chạy trong `apps/frontend`: `npm run lint` pass, `npm run typecheck`
-pass, `npm test` 32 file / 137 test pass (mới: 20 unit + 7 component), `npm run build` pass
-14/14 page. `npm run test:e2e` tự skip vì thiếu credential hosted RBAC, phải xác nhận trên CI.
+Quality gate 28/08/2026, chạy trong `apps/frontend`: `npm run lint` pass, `npm run typecheck`
+pass, `npm test` 32 file / 139 test pass (mới: 20 unit workflow + 7 component + 2 test Layouts
+cho candidate của version), `npm run build` pass 14/14 page. `npm run test:e2e` tự skip vì thiếu
+credential hosted RBAC, phải xác nhận trên CI.
 
 Còn nợ trong P0:
 
-- Quyết định `candidateForLayoutVersion`: wire vào page Layouts để version đang mở hiện trạng
-  thái candidate của nó, hoặc bỏ helper. Không giữ abstraction chưa dùng.
 - Strip và page Scenarios gọi trùng `GET /scenarios`, cộng với fetch trùng sẵn có ở
   `hooks/use-applied-factory-layout.ts`. Gộp thành một đường hydrate là checkpoint riêng.
+  Page Layouts **không** fetch thêm: nó đọc `scenarios` từ store do strip ở frame nạp.
 - C3 vẫn nguyên: reject vẫn là bế tắc, hiện chỉ được **giải thích** bằng copy. Đúng scope, việc
   sửa thuộc P2.
 
-P1 và P2: chưa bắt đầu.
+### P1
+
+| # | Item | Trạng thái | Ghi chú |
+|---|---|---|---|
+| 1 | Compare map current/candidate cho Monitor | Xong | `layout:view` thêm vào bảng permission frontend cho cả hai role, backend không đổi (C6). Diff hình học tách thành hàm thuần `lib/layout-diff.ts`; panel là `<details>` nên chưa mở thì không fetch. Chi tiết: `docs/changes/layout-comparison-p1.md`. |
+| 2 | Form UI cho no-go/congestion zones | Chưa bắt đầu | |
+| 3 | Basic vs Advanced scenario settings | Chưa bắt đầu | |
+| 4 | Gom command status vào candidate timeline | Chưa bắt đầu | |
+| 5 | Vị trí của `OptimizationPanel` | Chưa bắt đầu | |
+
+Quality gate sau P1 item 1, chạy trong `apps/frontend`: `npm run lint` pass, `npm run typecheck`
+pass, `npm test` 34 file / 151 test pass (mới: 6 unit `layout-diff` + 5 component
+`layout-comparison` + 1 test permission), `npm run build` pass 14/14 page.
+
+Còn nợ trong P1 item 1: khi không có candidate nào APPLIED thì không có mốc so sánh, panel nói
+thẳng điều đó chứ không dựng baseline giả. Congestion vẫn là một số tổng (C5) nên change list chỉ
+báo được zone bị đổi hình, không quy được delay cho zone.
+
+P2: chưa bắt đầu.
 
 ## Tiêu chí thành công
 

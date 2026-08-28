@@ -3,10 +3,12 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { FactoryPlantMap2D } from "@/components/factory/factory-plant-map-2d";
+import { WorkflowTimeline } from "@/components/workflow/workflow-timeline";
 import { apiClient } from "@/lib/api-client";
 import { can } from "@/lib/auth/permissions";
 import { defaultFactoryLayout } from "@/lib/factory-layout";
 import { projectLayoutVersion } from "@/lib/layout-projection";
+import { candidateForLayoutVersion } from "@/lib/workflow";
 import type { FactoryLayout, WorldPoint } from "@/schemas/factory";
 import {
   layoutVersionContentSchema,
@@ -14,6 +16,7 @@ import {
   type LayoutVersion,
   type LayoutVersionContent,
 } from "@/schemas/layout";
+import { useFactoryStore } from "@/stores/factory-store";
 
 const ALL_LAYERS = { stations: true, routes: true, noGoZones: true } as const;
 const SNAP_METRES = 0.5;
@@ -99,6 +102,29 @@ function RouteStepper({
       ))}
     </ol>
   );
+}
+
+/**
+ * A candidate is not stored anywhere: the newest scenario benchmarked on this
+ * exact layout version stands in for it, so the editor can say where the
+ * revision currently sits in review without a new endpoint.
+ */
+function VersionCandidate({ layoutId, version }: { layoutId: string; version: number }) {
+  const scenarios = useFactoryStore((state) => state.scenarios);
+  const candidate = candidateForLayoutVersion(scenarios, layoutId, version);
+
+  if (!candidate) {
+    return <p className="form-help">
+      Version {version} has not been simulated yet, so no Monitor can review it.
+    </p>;
+  }
+
+  return <>
+    <p className="form-help">
+      Version {version} is represented by candidate <strong>{candidate.name}</strong>.
+    </p>
+    <WorkflowTimeline status={candidate.status}/>
+  </>;
 }
 
 function LayoutWorkspace() {
@@ -524,6 +550,7 @@ function LayoutWorkspace() {
             Saving stores an immutable revision. The live factory keeps running its current layout
             until a Monitor applies a simulated candidate built on this revision.
           </p>
+          {selected && <VersionCandidate layoutId={selected.layout_id} version={selected.version}/>}
           <div className="button-row">
             {selected && <button className="button" type="button" disabled={busy} onClick={() => void rename()}>Rename</button>}
             {selected && <button className="button" type="button" disabled={busy} onClick={() => void archive()}>Archive</button>}

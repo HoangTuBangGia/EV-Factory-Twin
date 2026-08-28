@@ -21,9 +21,10 @@ drawing gave no indication of which click came next.
 - `lib/workflow.ts` holds every derivation as pure functions: stage state from
   `ScenarioStatus`, apply phase from `Command.attempts`, queue filters, and the
   per-role next action. No endpoint, schema or migration changed.
-- A "candidate" stays a frontend-derived view model. `candidateForLayoutVersion`
-  joins `scenario.config.layout_id + layout_version` and picks the newest match,
-  because a layout version carries no workflow status of its own.
+- A "candidate" stays a frontend-derived view model. `candidateForLayoutVersion` joins
+  `scenario.config.layout_id + layout_version` and picks the newest match, because a layout
+  version carries no workflow status of its own. The Layouts editor uses it to report where the
+  open revision sits in review; it reads `scenarios` from the store rather than fetching again.
 - `REJECTED` is modelled as a terminal failed review, not a fifth stage, and the
   copy states that a rejected candidate cannot be resubmitted.
 - Apply progress reads `acknowledged_at` from the attempts rather than the
@@ -45,13 +46,14 @@ drawing gave no indication of which click came next.
 - New `apps/frontend/src/components/workflow/` — timeline, next-action strip and
   their component test.
 - Frontend store (`scenarios`, `setScenarios`, `updateScenario`), application
-  frame and its test, Scenarios page, Layouts page, global stylesheet, shared
-  test fixtures (`fixtureScenario`, `fixtureApplyCommand`).
+  frame and its test, Scenarios page, Layouts page and its test, global
+  stylesheet, shared test fixtures (`fixtureScenario`, `fixtureApplyCommand`).
 
 ## Verification
 
-Run from `apps/frontend`: `npm run lint`, `npm run typecheck`, `npm test`,
-`npm run build`. `npm run test:e2e` self-skips without hosted RBAC credentials
+Run from `apps/frontend`: `npm run lint` (clean), `npm run typecheck` (clean),
+`npm test` (32 files / 139 tests pass), `npm run build` (14/14 pages).
+`npm run test:e2e` self-skips without hosted RBAC credentials
 (`DESIGNER_EMAIL`, `MONITOR_EMAIL`), so it must be confirmed in CI.
 
 ## CI / Build Impact

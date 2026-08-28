@@ -11,6 +11,7 @@ import {
   ScenarioStatusBadge,
 } from "@/components/scenarios/scenario-comparison";
 import { OptimizationPanel } from "@/components/scenarios/optimization-panel";
+import { LayoutComparison } from "@/components/scenarios/layout-comparison";
 import { WorkflowTimeline } from "@/components/workflow/workflow-timeline";
 import { apiClient } from "@/lib/api-client";
 import { can } from "@/lib/auth/permissions";
@@ -206,6 +207,7 @@ export default function ScenariosPage() {
   const mayRun = can(user.role, "scenarios:run");
   const mayReview = can(user.role, "scenarios:review");
   const mayApply = can(user.role, "scenarios:apply");
+  const mayViewLayout = can(user.role, "layout:view");
   const visibleScenarios = newestFirst(filterQueue(scenarios, queue, user.id));
 
   async function runScenario(event: FormEvent<HTMLFormElement>) {
@@ -485,6 +487,7 @@ export default function ScenariosPage() {
               ) : (
                 <div className="notice">Baseline is unavailable for comparison.</div>
               )}
+              {mayViewLayout && <LayoutComparison candidate={candidate} />}
               <ScenarioProvenance scenario={candidate} />
               <ScenarioActions
                 role={user.role}

@@ -1,5 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fixtureScenario } from "@/lib/fixtures";
+import { useFactoryStore } from "@/stores/factory-store";
 import LayoutsPage from "./page";
 
 const state = vi.hoisted(() => ({ role: "DESIGNER" as "DESIGNER" | "MONITOR" }));
@@ -17,9 +19,20 @@ vi.mock("@/components/auth/auth-provider", () => ({
 }));
 vi.mock("@/lib/api-client", () => ({ apiClient: api }));
 
+const savedLayout = async (request: { name: string; content: object }) => ({
+  ...request.content,
+  layout_id: "LAYOUT-0001",
+  name: request.name,
+  version: 1,
+  created_by: "11111111-1111-4111-8111-111111111111",
+  created_at: "2026-08-24T00:00:00Z",
+  archived_at: null,
+});
+
 describe("LayoutsPage", () => {
   beforeEach(() => {
     state.role = "DESIGNER";
+    useFactoryStore.getState().reset();
     api.getLayouts.mockResolvedValue([]);
     vi.clearAllMocks();
   });
@@ -34,15 +47,7 @@ describe("LayoutsPage", () => {
   });
 
   it("creates a persisted layout from a valid draft", async () => {
-    api.createLayout.mockImplementation(async (request) => ({
-      ...request.content,
-      layout_id: "LAYOUT-0001",
-      name: request.name,
-      version: 1,
-      created_by: "11111111-1111-4111-8111-111111111111",
-      created_at: "2026-08-24T00:00:00Z",
-      archived_at: null,
-    }));
+    api.createLayout.mockImplementation(savedLayout);
     render(<LayoutsPage/>);
 
     fireEvent.click(screen.getByRole("button", { name: "Create layout" }));
@@ -76,6 +81,32 @@ describe("LayoutsPage", () => {
 
     expect(screen.getByRole("radio", { name: /BATTERY_DELIVERY_3/ })).toBeChecked();
     expect(screen.getByRole("status")).toHaveTextContent("BATTERY_DELIVERY_3 added");
+  });
+
+  it("reports where the saved revision sits in candidate review", async () => {
+    api.createLayout.mockImplementation(savedLayout);
+    useFactoryStore.getState().setScenarios([{
+      ...fixtureScenario,
+      name: "battery-flow-v1",
+      status: "SUBMITTED",
+      config: { ...fixtureScenario.config, layout_id: "LAYOUT-0001", layout_version: 1 },
+    }]);
+    render(<LayoutsPage/>);
+
+    expect(screen.queryByText(/is represented by candidate/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Create layout" }));
+
+    expect(await screen.findByText("battery-flow-v1")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Candidate review progress" })).toBeInTheDocument();
+  });
+
+  it("says an unsimulated revision cannot be reviewed yet", async () => {
+    api.createLayout.mockImplementation(savedLayout);
+    render(<LayoutsPage/>);
+
+    fireEvent.click(screen.getByRole("button", { name: "Create layout" }));
+
+    expect(await screen.findByText(/has not been simulated yet/)).toBeInTheDocument();
   });
 
   it("blocks non-Designer roles", () => {

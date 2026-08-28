@@ -1,5 +1,6 @@
 import type { FactoryAlert } from "@/schemas/alert";
 import type { Command } from "@/schemas/command";
+import type { LayoutVersion } from "@/schemas/layout";
 import type { FactoryMetrics } from "@/schemas/metric";
 import type { Robot } from "@/schemas/robot";
 import type { Scenario } from "@/schemas/scenario";
@@ -53,6 +54,31 @@ export const fixtureScenario: Scenario = {
   duration_ms: 2.4, created_at: "2026-08-14T00:00:00.000Z",
   created_by: "11111111-1111-4111-8111-111111111111",
   reviewed_at: null, reviewed_by: null, applied_at: null, applied_by: null, version: 1,
+};
+
+export const fixtureLayoutVersion: LayoutVersion = {
+  layout_id: "LAYOUT-DEFAULT", name: "Battery logistics baseline", version: 1,
+  width: 120, height: 40,
+  stations: [
+    { id: "BATTERY_BUFFER", type: "BATTERY_BUFFER", x: 30, y: 20 },
+    { id: "MARRIAGE_STATION", type: "MARRIAGE_STATION", x: 60, y: 20 },
+    { id: "CHARGING_STATION", type: "CHARGING_STATION", x: 30, y: 10 },
+  ],
+  routes: [{
+    id: "BATTERY_DELIVERY", kind: "DELIVERY",
+    start_station_id: "BATTERY_BUFFER", end_station_id: "MARRIAGE_STATION",
+    waypoints: [{ x: 30, y: 20 }, { x: 60, y: 20 }],
+  }],
+  no_go_zones: [],
+  congestion_zones: [{
+    id: "WAREHOUSE_PRODUCTION_DOOR", delay_multiplier: 1.25,
+    points: [{ x: 38, y: 17.5 }, { x: 42, y: 17.5 }, { x: 42, y: 22.5 }],
+  }],
+  config: {
+    robot_count: 5, demand_interval_seconds: 8, robot_speed_mps: 1.2, charger_count: 2,
+  },
+  created_by: "11111111-1111-4111-8111-111111111111",
+  created_at: "2026-08-11T00:00:00.000Z", archived_at: null,
 };
 
 export const fixtureApplyCommand: Command = {
