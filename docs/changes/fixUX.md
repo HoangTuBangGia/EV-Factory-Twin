@@ -280,7 +280,10 @@ báo được zone bị đổi hình, không quy được delay cho zone.
 | # | Item | Trạng thái | Ghi chú |
 |---|---|---|---|
 | 1 | Contract request-revision có cấu trúc | Xong | Thêm `REVISION_REQUESTED`, review note bắt buộc và liên kết `revision_of`; giữ benchmark cũ bất biến. Chi tiết: `docs/changes/scenario-revision-workflow-p2.md`. |
-| 2 | UI Monitor yêu cầu sửa / Designer chạy revision | Chưa bắt đầu | Là checkpoint frontend riêng sau khi P2.1 được commit. |
+| 2 | UI Monitor yêu cầu sửa / Designer chạy revision | Xong | Monitor nhập feedback có cấu trúc; Designer tải đúng layout version, nhận cấu hình điền sẵn và chạy child candidate có `revision_of`. Chi tiết: `docs/changes/scenario-revision-ui-p2.md`. |
+
+**P2 hoàn thành 2/2 item.** Backend giữ benchmark gốc bất biến; frontend đã có happy path đầy đủ
+từ request changes đến chạy và submit lại child candidate.
 
 ## Tiêu chí thành công
 

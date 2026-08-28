@@ -66,6 +66,7 @@ function ScenarioProvenance({ scenario }: { scenario: Scenario }) {
       <dl>
         <div><dt>Created</dt><dd>{workflowTimestamp(scenario.created_at)}<small>{workflowActor(scenario.created_by)}</small></dd></div>
         <div><dt>Reviewed</dt><dd>{workflowTimestamp(scenario.reviewed_at)}<small>{workflowActor(scenario.reviewed_by)}</small></dd></div>
+        {scenario.revision_of && <div><dt>Revision of</dt><dd>{scenario.revision_of}</dd></div>}
         <div><dt>Applied</dt><dd>{workflowTimestamp(scenario.applied_at)}<small>{workflowActor(scenario.applied_by)}</small></dd></div>
       </dl>
     </details>
@@ -106,6 +107,7 @@ export default function ScenariosPage() {
   const { user } = useAuth();
   const [baseline, setBaseline] = useState<Scenario | null>(null);
   const [candidate, setCandidate] = useState<Scenario | null>(null);
+  const [revisionSource, setRevisionSource] = useState<Scenario | null>(null);
   const [layouts, setLayouts] = useState<LayoutSummary[]>([]);
   const [selectedLayout, setSelectedLayout] = useState<LayoutVersion | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -209,6 +211,7 @@ export default function ScenariosPage() {
   }, [candidateCommand?.status, loadScenarios]);
 
   if (!user) return null;
+  const currentUserId = user.id;
   const mayRun = can(user.role, "scenarios:run");
   const mayReview = can(user.role, "scenarios:review");
   const mayApply = can(user.role, "scenarios:apply");
@@ -239,6 +242,7 @@ export default function ScenariosPage() {
       const created = await apiClient.runScenario(parsed.data);
       updateScenario(created);
       setCandidate(created);
+      setRevisionSource(null);
     } catch (error) {
       setActionError(message(error));
     } finally {
@@ -246,23 +250,63 @@ export default function ScenariosPage() {
     }
   }
 
-  async function review(action: "approve" | "reject") {
+  async function approveScenario() {
     if (!candidate || candidate.status !== "SUBMITTED" || !mayReview) {
       setActionError("Only a Monitor can review a submitted scenario.");
       return;
     }
     setActionError(null);
-    setActiveAction(action);
+    setActiveAction("approve");
     try {
-      const updated = action === "approve"
-        ? await apiClient.approveScenario(candidate.id)
-        : await apiClient.rejectScenario(candidate.id);
+      const updated = await apiClient.approveScenario(candidate.id);
       setCandidate(updated);
       updateScenario(updated);
     } catch (error) {
       setActionError(message(error));
     } finally {
       setActiveAction(null);
+    }
+  }
+
+  async function requestRevision(note: string) {
+    if (!candidate || candidate.status !== "SUBMITTED" || !mayReview) {
+      setActionError("Only a Monitor can request changes to a submitted scenario.");
+      return;
+    }
+    setActionError(null);
+    setActiveAction("request-revision");
+    try {
+      const updated = await apiClient.requestScenarioRevision(candidate.id, { note });
+      setCandidate(updated);
+      updateScenario(updated);
+    } catch (error) {
+      setActionError(message(error));
+    } finally {
+      setActiveAction(null);
+    }
+  }
+
+  async function startRevision() {
+    if (
+      !candidate
+      || candidate.status !== "REVISION_REQUESTED"
+      || candidate.created_by !== currentUserId
+      || !mayRun
+    ) {
+      setActionError("Only the original Designer can revise this scenario.");
+      return;
+    }
+    setActionError(null);
+    try {
+      const layout = await apiClient.getLayoutVersion(
+        candidate.config.layout_id,
+        candidate.config.layout_version,
+      );
+      setSelectedLayout(layout);
+      setRevisionSource(candidate);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) {
+      setActionError(`Unable to prepare revision: ${message(error)}`);
     }
   }
 
@@ -355,7 +399,10 @@ export default function ScenariosPage() {
                 key={scenario.id}
                 className={candidate?.id === scenario.id ? "selected" : ""}
                 type="button"
-                onClick={() => setCandidate(scenario)}
+                onClick={() => {
+                  setCandidate(scenario);
+                  setRevisionSource(null);
+                }}
               >
                 <span>{scenario.name}</span>
                 <small>{scenario.id} · {scenario.status}</small>
@@ -372,9 +419,11 @@ export default function ScenariosPage() {
             <span>{mayRun ? "Designer · SimPy benchmark" : `${user.role} · Read only`}</span>
           </div>
           {mayRun ? (
-            <ScenarioRunForm key={`${selectedLayout?.layout_id}-${selectedLayout?.version}`}
+            <ScenarioRunForm
+              key={`${selectedLayout?.layout_id}-${selectedLayout?.version}-${revisionSource?.id ?? "new"}`}
               layouts={layouts}
               selectedLayout={selectedLayout}
+              revisionSource={revisionSource}
               fieldErrors={fieldErrors}
               running={activeAction !== null}
               onSelectLayout={(layoutId) => void selectLayout(layoutId)}
@@ -406,6 +455,12 @@ export default function ScenariosPage() {
                 status={candidate.status}
                 command={candidateCommand}
               />
+              {candidate.status === "REVISION_REQUESTED" && (
+                <div className="revision-feedback" role="status">
+                  <strong>Monitor requested changes</strong>
+                  <p>{candidate.review_note}</p>
+                </div>
+              )}
               {baseline ? (
                 <ScenarioComparison baseline={baseline.metrics} candidate={candidate.metrics} />
               ) : (
@@ -418,7 +473,10 @@ export default function ScenariosPage() {
                 status={candidate.status}
                 activeAction={activeAction}
                 onSubmitScenario={() => void submitScenario()}
-                onReview={(action) => void review(action)}
+                onApprove={() => void approveScenario()}
+                onRequestRevision={(note) => void requestRevision(note)}
+                onStartRevision={() => void startRevision()}
+                canStartRevision={candidate.created_by === user.id}
                 onApply={() => void applyScenario()}
               />
             </div>

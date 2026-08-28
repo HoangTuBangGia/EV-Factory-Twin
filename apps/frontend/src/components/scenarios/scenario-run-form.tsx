@@ -2,11 +2,28 @@
 
 import { type FormEvent, useState } from "react";
 import type { LayoutSummary, LayoutVersion } from "@/schemas/layout";
-import type { ScenarioRunRequest } from "@/schemas/scenario";
+import type { Scenario, ScenarioRunRequest } from "@/schemas/scenario";
 
 export type ScenarioFieldErrors = Partial<Record<keyof ScenarioRunRequest, string>>;
 
-export function scenarioDefaults(layout: LayoutVersion | null): ScenarioRunRequest {
+export function scenarioDefaults(
+  layout: LayoutVersion | null,
+  revisionSource: Scenario | null = null,
+): ScenarioRunRequest {
+  if (revisionSource) {
+    const routeId = layout?.routes.some((route) => route.id === revisionSource.config.route_id)
+      ? revisionSource.config.route_id
+      : layout?.routes.find((route) => route.kind === "DELIVERY")?.id
+        ?? revisionSource.config.route_id;
+    return {
+      name: `${revisionSource.name}-revision`.slice(0, 80),
+      ...revisionSource.config,
+      layout_id: layout?.layout_id ?? revisionSource.config.layout_id,
+      layout_version: layout?.version ?? revisionSource.config.layout_version,
+      route_id: routeId,
+      revision_of: revisionSource.id,
+    };
+  }
   return {
     name: "candidate-01",
     layout_id: layout?.layout_id ?? "",
@@ -25,6 +42,7 @@ export function scenarioDefaults(layout: LayoutVersion | null): ScenarioRunReque
 
 function readScenarioInput(form: HTMLFormElement): ScenarioRunRequest {
   const data = new FormData(form);
+  const revisionOf = String(data.get("revision_of") ?? "");
   return {
     name: String(data.get("name") ?? ""),
     layout_id: String(data.get("layout_id") ?? ""),
@@ -38,6 +56,7 @@ function readScenarioInput(form: HTMLFormElement): ScenarioRunRequest {
     simulation_time: Number(data.get("simulation_time")),
     robot_speed_mps: Number(data.get("robot_speed_mps")),
     charger_count: Number(data.get("charger_count")),
+    revision_of: revisionOf || undefined,
   };
 }
 
@@ -48,6 +67,7 @@ function FieldError({ error }: { error?: string }) {
 export function ScenarioRunForm({
   layouts,
   selectedLayout,
+  revisionSource = null,
   fieldErrors,
   running,
   onSelectLayout,
@@ -56,13 +76,14 @@ export function ScenarioRunForm({
 }: {
   layouts: LayoutSummary[];
   selectedLayout: LayoutVersion | null;
+  revisionSource?: Scenario | null;
   fieldErrors: ScenarioFieldErrors;
   running: boolean;
   onSelectLayout: (layoutId: string) => void;
   onSelectVersion: (version: number) => void;
   onRun: (request: ScenarioRunRequest) => void;
 }) {
-  const defaults = scenarioDefaults(selectedLayout);
+  const defaults = scenarioDefaults(selectedLayout, revisionSource);
   const [summary, setSummary] = useState(defaults);
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -73,6 +94,13 @@ export function ScenarioRunForm({
   return <form className="panel-body scenario-run-form" onSubmit={submit} noValidate
     onChange={(event) => setSummary(readScenarioInput(event.currentTarget))}
     onReset={() => setSummary(defaults)}>
+    {defaults.revision_of && <input type="hidden" name="revision_of" value={defaults.revision_of}/>}
+    {revisionSource && (
+      <div className="revision-source" role="status">
+        <strong>Revising {revisionSource.id}</strong>
+        <span>{revisionSource.review_note}</span>
+      </div>
+    )}
     <div className="scenario-setting-heading">
       <strong>Basic settings</strong>
       <span>Choose the factory flow and simulation scale.</span>

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fixtureApplyCommand,
@@ -37,7 +37,15 @@ vi.mock("@/components/scenarios/optimization-panel", () => ({
   OptimizationPanel: () => <div>Optimization</div>,
 }));
 vi.mock("@/components/scenarios/scenario-actions", () => ({
-  ScenarioActions: () => <div>Scenario actions</div>,
+  ScenarioActions: ({
+    status,
+    onStartRevision,
+  }: {
+    status: string;
+    onStartRevision: () => void;
+  }) => status === "REVISION_REQUESTED"
+    ? <button type="button" onClick={onStartRevision}>Create revised candidate</button>
+    : <div>Scenario actions</div>,
 }));
 
 const layoutSummary = {
@@ -96,5 +104,27 @@ describe("ScenariosPage command history", () => {
     await waitFor(() => expect(api.getScenarios).toHaveBeenCalled());
     expect(screen.getAllByText("flow-option-01").length).toBeGreaterThan(0);
     expect(screen.getByText("SCN-OPT-01")).toBeInTheDocument();
+  });
+
+  it("prepares the original Designer's requested revision from its immutable layout", async () => {
+    const requested = {
+      ...fixtureScenario,
+      status: "REVISION_REQUESTED" as const,
+      review_note: "Move charging away from the aisle.",
+      reviewed_at: "2026-08-14T00:05:00.000Z",
+      reviewed_by: "22222222-2222-4222-8222-222222222222",
+    };
+    api.getScenarios.mockResolvedValue([requested]);
+    window.scrollTo = vi.fn();
+
+    render(<ScenariosPage/>);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Create revised candidate" }));
+    await waitFor(() => expect(api.getLayoutVersion).toHaveBeenCalledWith(
+      requested.config.layout_id,
+      requested.config.layout_version,
+    ));
+    expect(screen.getByLabelText("Scenario name")).toHaveValue("candidate-01-revision");
+    expect(screen.getAllByText("Move charging away from the aisle.")).toHaveLength(2);
   });
 });

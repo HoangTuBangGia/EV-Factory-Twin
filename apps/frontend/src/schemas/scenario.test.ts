@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { scenarioSchema } from "./scenario";
+import { scenarioRevisionRequestSchema, scenarioSchema } from "./scenario";
 
 const scenarioResponse = {
   id: "SCN-0001",
@@ -74,5 +74,11 @@ describe("scenarioSchema backend contract", () => {
   it("accepts the authoritative submitted lifecycle state", () => {
     expect(scenarioSchema.parse({ ...scenarioResponse, status: "SUBMITTED" }).status)
       .toBe("SUBMITTED");
+  });
+
+  it("requires a non-blank structured revision note", () => {
+    expect(scenarioRevisionRequestSchema.parse({ note: "  Move charging.  " }))
+      .toEqual({ note: "Move charging." });
+    expect(scenarioRevisionRequestSchema.safeParse({ note: "   " }).success).toBe(false);
   });
 });

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { fixtureLayoutVersion } from "@/lib/fixtures";
+import { fixtureLayoutVersion, fixtureScenario } from "@/lib/fixtures";
 import { ScenarioRunForm } from "./scenario-run-form";
 
 const layoutSummary = {
@@ -12,10 +12,11 @@ const layoutSummary = {
   archived_at: null,
 };
 
-function renderForm(onRun = vi.fn()) {
+function renderForm(onRun = vi.fn(), revisionSource = null as typeof fixtureScenario | null) {
   render(<ScenarioRunForm
     layouts={[layoutSummary]}
     selectedLayout={fixtureLayoutVersion}
+    revisionSource={revisionSource}
     fieldErrors={{}}
     running={false}
     onSelectLayout={vi.fn()}
@@ -79,5 +80,22 @@ describe("ScenarioRunForm", () => {
 
     expect(screen.getByLabelText("Robot count")).toHaveValue(5);
     expect(screen.getByLabelText("Simulation summary")).toHaveTextContent("5 AMRs");
+  });
+
+  it("prefills a requested revision and preserves its source in the run payload", () => {
+    const onRun = renderForm(vi.fn(), {
+      ...fixtureScenario,
+      status: "REVISION_REQUESTED",
+      review_note: "Move charging away from the aisle.",
+    });
+
+    expect(screen.getByLabelText("Scenario name")).toHaveValue("candidate-01-revision");
+    expect(screen.getByRole("status")).toHaveTextContent("Move charging away from the aisle.");
+    fireEvent.click(screen.getByRole("button", { name: "Run benchmark" }));
+    expect(onRun).toHaveBeenCalledWith(expect.objectContaining({
+      revision_of: "SCN-0001",
+      num_robots: fixtureScenario.config.num_robots,
+      route_id: fixtureScenario.config.route_id,
+    }));
   });
 });

@@ -31,6 +31,10 @@ export const scenarioRunRequestSchema = scenarioConfigSchema.extend({
   revision_of: z.string().min(1).nullable().optional(),
 });
 
+export const scenarioRevisionRequestSchema = z.object({
+  note: z.string().trim().min(1, "Explain what the Designer should change").max(1000),
+});
+
 export const scenarioMetricsSchema = z.object({
   completed_tasks: z.number().int().nonnegative(),
   unfinished_tasks: z.number().int().nonnegative(),
@@ -71,5 +75,6 @@ export const scenarioSchema = z.object({
 export type ScenarioStatus = z.infer<typeof scenarioStatusSchema>;
 export type ScenarioConfig = z.infer<typeof scenarioConfigSchema>;
 export type ScenarioRunRequest = z.input<typeof scenarioRunRequestSchema>;
+export type ScenarioRevisionRequest = z.input<typeof scenarioRevisionRequestSchema>;
 export type ScenarioMetrics = z.infer<typeof scenarioMetricsSchema>;
 export type Scenario = z.infer<typeof scenarioSchema>;
