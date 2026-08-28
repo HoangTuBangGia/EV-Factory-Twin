@@ -34,8 +34,8 @@ const revisionNote = "Move charging away from the main aisle and rerun the bench
 
 async function login(page: Page, role: RoleName) {
   await page.goto("/login");
-  await page.getByLabel("Email").fill(credentials[role].email);
-  await page.getByLabel("Password").fill(credentials[role].password);
+  await page.locator("#login-email").fill(credentials[role].email);
+  await page.locator("#login-password").fill(credentials[role].password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.locator(".user-summary")).toContainText(role);
 }

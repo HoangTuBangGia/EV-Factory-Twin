@@ -22,6 +22,7 @@ dùng thật, không chỉ kiểm tra selector.
 ## Files Changed
 
 - `apps/frontend/e2e/hosted-rbac.spec.ts`
+- `apps/frontend/playwright.config.ts`
 - `apps/backend/tests/api/test_auth_rbac.py`
 - `docs/runbooks/workflow-usability-acceptance.md`
 - `docs/development.md`
@@ -34,8 +35,11 @@ dùng thật, không chỉ kiểm tra selector.
 - Ruff: pass.
 - Frontend ESLint và TypeScript: pass.
 - `npm run test:e2e:list`: nhận 5 test trong 2 file, gồm scene smoke và 4 bước hosted revision.
-- Hosted suite được liệt kê nhưng skip đúng thiết kế vì môi trường local không có bốn role
-  credentials. Không có staging request hoặc database mutation nào được thực hiện.
+- Scene smoke pass cả khi chạy riêng và trong full E2E sau khi suite mặc định dùng cùng SwiftShader
+  flags với frontend smoke suite.
+- Lần chạy hosted đầu tiên với đủ bốn biến credential đã đi vào flow nhưng dừng ở selector email:
+  các nút copy credential cũng khớp `getByLabel("Email")`. Helper login nay định vị trực tiếp hai
+  input ổn định `#login-email` và `#login-password`; cần chạy lại để xác nhận toàn bộ flow.
 - Hosted E2E execution và sáu phiên human usability vẫn pending.
 
 ## CI / Build Impact
