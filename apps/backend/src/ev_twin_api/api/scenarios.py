@@ -5,7 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from ev_twin_api.api.dependencies import READ_ROLES, CurrentUserDep, require_roles
 from ev_twin_api.schemas.auth import AppRole
 from ev_twin_api.schemas.command import ApplyScenarioRequest, Command
-from ev_twin_api.schemas.scenario import Scenario, ScenarioRunRequest
+from ev_twin_api.schemas.scenario import (
+    Scenario,
+    ScenarioRevisionRequest,
+    ScenarioRunRequest,
+)
 from ev_twin_api.services.command_service import CommandConflictError, CommandServiceDep
 from ev_twin_api.services.scenario_service import (
     InvalidScenarioConfigurationError,
@@ -105,6 +109,22 @@ async def reject_scenario(
     current_user: CurrentUserDep,
 ) -> Scenario:
     return await _scenario_action(lambda: scenario_service.reject(scenario_id, current_user))
+
+
+@router.post(
+    "/{scenario_id}/request-revision",
+    response_model=Scenario,
+    dependencies=[Depends(require_roles(AppRole.MONITOR))],
+)
+async def request_scenario_revision(
+    scenario_id: str,
+    request: ScenarioRevisionRequest,
+    scenario_service: ScenarioServiceDep,
+    current_user: CurrentUserDep,
+) -> Scenario:
+    return await _scenario_action(
+        lambda: scenario_service.request_revision(scenario_id, request, current_user)
+    )
 
 
 @router.post(

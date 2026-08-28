@@ -6,6 +6,7 @@ export const scenarioStatusSchema = z.enum([
   "SUBMITTED",
   "APPROVED",
   "REJECTED",
+  "REVISION_REQUESTED",
   "APPLIED",
 ]);
 
@@ -27,6 +28,7 @@ export const scenarioConfigSchema = z.object({
 
 export const scenarioRunRequestSchema = scenarioConfigSchema.extend({
   name: z.string().trim().min(1, "Name is required").max(80),
+  revision_of: z.string().min(1).nullable().optional(),
 });
 
 export const scenarioMetricsSchema = z.object({
@@ -59,6 +61,8 @@ export const scenarioSchema = z.object({
   created_by: z.string().uuid().nullable(),
   reviewed_at: utcDateTimeSchema.nullable(),
   reviewed_by: z.string().uuid().nullable(),
+  review_note: z.string().max(1000).nullable().optional(),
+  revision_of: z.string().min(1).nullable().optional(),
   applied_at: utcDateTimeSchema.nullable(),
   applied_by: z.string().uuid().nullable(),
   version: z.number().int().min(1),

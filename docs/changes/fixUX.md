@@ -275,7 +275,12 @@ Còn nợ trong P1 item 1: khi không có candidate nào APPLIED thì không có
 thẳng điều đó chứ không dựng baseline giả. Congestion vẫn là một số tổng (C5) nên change list chỉ
 báo được zone bị đổi hình, không quy được delay cho zone.
 
-P2: chưa bắt đầu.
+### P2
+
+| # | Item | Trạng thái | Ghi chú |
+|---|---|---|---|
+| 1 | Contract request-revision có cấu trúc | Xong | Thêm `REVISION_REQUESTED`, review note bắt buộc và liên kết `revision_of`; giữ benchmark cũ bất biến. Chi tiết: `docs/changes/scenario-revision-workflow-p2.md`. |
+| 2 | UI Monitor yêu cầu sửa / Designer chạy revision | Chưa bắt đầu | Là checkpoint frontend riêng sau khi P2.1 được commit. |
 
 ## Tiêu chí thành công
 

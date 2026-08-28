@@ -4,7 +4,7 @@ import type { Scenario, ScenarioStatus } from "@/schemas/scenario";
 
 /**
  * Review stages a candidate walks through. Mirrors the backend transition
- * table (SIMULATED -> SUBMITTED -> APPROVED -> APPLIED); REJECTED is terminal
+ * table (SIMULATED -> SUBMITTED -> APPROVED -> APPLIED); review outcomes are terminal
  * and therefore rendered as a failed review rather than a fifth stage.
  */
 export const WORKFLOW_STAGES = ["SIMULATED", "SUBMITTED", "APPROVED", "APPLIED"] as const;
@@ -44,7 +44,8 @@ function reachedStage(status: ScenarioStatus) {
     case "DRAFT": return -1;
     case "SIMULATED": return 0;
     case "SUBMITTED":
-    case "REJECTED": return 1;
+    case "REJECTED":
+    case "REVISION_REQUESTED": return 1;
     case "APPROVED": return 2;
     case "APPLIED": return 3;
   }
@@ -55,7 +56,7 @@ export function stageState(status: ScenarioStatus, stage: WorkflowStage): StageS
   const index = WORKFLOW_STAGES.indexOf(stage);
   if (index > reached) return "pending";
   if (index < reached) return "done";
-  if (status === "REJECTED") return "rejected";
+  if (status === "REJECTED" || status === "REVISION_REQUESTED") return "rejected";
   return status === "APPLIED" ? "done" : "current";
 }
 

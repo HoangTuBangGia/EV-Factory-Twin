@@ -18,6 +18,7 @@ from ev_twin_api.schemas.scenario import (
     Scenario,
     ScenarioConfig,
     ScenarioMetrics,
+    ScenarioRevisionRequest,
     ScenarioRunRequest,
     ScenarioStatus,
 )
@@ -117,6 +118,12 @@ class ScenarioService:
         self._baseline: Scenario | None = None
 
     async def run(self, request: ScenarioRunRequest, actor: CurrentUser) -> Scenario:
+        if request.revision_of is not None:
+            source = await self.get(request.revision_of)
+            if source.status != ScenarioStatus.REVISION_REQUESTED or source.created_by != actor.id:
+                raise InvalidScenarioTransitionError(
+                    f"Scenario '{request.revision_of}' cannot be revised by this actor"
+                )
         config = request.to_config()
         # The bounded MVP workload (at most 10,000 tasks) completes quickly
         # enough to run inline. Keeping it local also makes sequential runs
@@ -130,6 +137,7 @@ class ScenarioService:
             metrics=metrics,
             duration_ms=duration_ms,
             actor=actor,
+            revision_of=request.revision_of,
             request_id=uuid4(),
             created_at=datetime.now(UTC),
         )
@@ -229,6 +237,19 @@ class ScenarioService:
     async def reject(self, scenario_id: str, actor: CurrentUser) -> Scenario:
         return await self._review(scenario_id, ScenarioStatus.REJECTED, actor)
 
+    async def request_revision(
+        self,
+        scenario_id: str,
+        request: ScenarioRevisionRequest,
+        actor: CurrentUser,
+    ) -> Scenario:
+        return await self._review(
+            scenario_id,
+            ScenarioStatus.REVISION_REQUESTED,
+            actor,
+            review_note=request.note,
+        )
+
     async def complete_apply(self, scenario_id: str, actor: CurrentUser) -> Scenario:
         scenario = await self.get(scenario_id)
         if scenario.status != ScenarioStatus.APPROVED:
@@ -304,6 +325,7 @@ class ScenarioService:
         scenario_id: str,
         status: ScenarioStatus,
         actor: CurrentUser,
+        review_note: str | None = None,
     ) -> Scenario:
         scenario = await self.get(scenario_id)
         if scenario.status != ScenarioStatus.SUBMITTED:
@@ -319,6 +341,7 @@ class ScenarioService:
                 actor=actor,
                 request_id=uuid4(),
                 occurred_at=datetime.now(UTC),
+                review_note=review_note,
             )
         except Exception as error:
             self._raise_domain_repository_error(error)

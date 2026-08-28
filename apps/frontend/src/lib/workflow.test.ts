@@ -51,6 +51,7 @@ describe("stageState", () => {
     expect(stageState("REJECTED", "SIMULATED")).toBe("done");
     expect(stageState("REJECTED", "SUBMITTED")).toBe("rejected");
     expect(stageState("REJECTED", "APPROVED")).toBe("pending");
+    expect(stageState("REVISION_REQUESTED", "SUBMITTED")).toBe("rejected");
   });
 
   it("leaves every stage pending for a draft that was never simulated", () => {
