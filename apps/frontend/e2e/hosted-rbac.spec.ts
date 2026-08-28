@@ -61,6 +61,7 @@ test.describe(hostedSuiteTitle, () => {
     await page.getByLabel("Robot count").fill(String(candidateRobotCount));
     await page.getByLabel("Number of tasks").fill("30");
     await page.getByLabel("Task arrival interval (s)").fill("3");
+    await page.getByText("Advanced settings", { exact: true }).click();
     await page.getByLabel("Travel time (s)").fill("8");
     await page.getByLabel("Loading time (s)").fill("2");
     await page.getByLabel("Simulation time (s)").fill("120");

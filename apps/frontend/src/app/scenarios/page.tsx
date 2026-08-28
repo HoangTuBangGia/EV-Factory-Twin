@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
   ScenarioActions,
@@ -12,6 +12,10 @@ import {
 } from "@/components/scenarios/scenario-comparison";
 import { OptimizationPanel } from "@/components/scenarios/optimization-panel";
 import { LayoutComparison } from "@/components/scenarios/layout-comparison";
+import {
+  ScenarioRunForm,
+  type ScenarioFieldErrors,
+} from "@/components/scenarios/scenario-run-form";
 import { WorkflowTimeline } from "@/components/workflow/workflow-timeline";
 import { apiClient } from "@/lib/api-client";
 import { can } from "@/lib/auth/permissions";
@@ -31,26 +35,7 @@ import {
   type ScenarioRunRequest,
 } from "@/schemas/scenario";
 
-type FieldErrors = Partial<Record<keyof ScenarioRunRequest, string>>;
 type LoadState = "loading" | "ready" | "error";
-
-function readScenarioInput(form: HTMLFormElement): ScenarioRunRequest {
-  const data = new FormData(form);
-  return {
-    name: String(data.get("name") ?? ""),
-    layout_id: String(data.get("layout_id") ?? ""),
-    layout_version: Number(data.get("layout_version")),
-    route_id: String(data.get("route_id") ?? ""),
-    num_robots: Number(data.get("num_robots")),
-    num_tasks: Number(data.get("num_tasks")),
-    task_arrival_interval: Number(data.get("task_arrival_interval")),
-    travel_time: Number(data.get("travel_time")),
-    loading_time: Number(data.get("loading_time")),
-    simulation_time: Number(data.get("simulation_time")),
-    robot_speed_mps: Number(data.get("robot_speed_mps")),
-    charger_count: Number(data.get("charger_count")),
-  };
-}
 
 function message(error: unknown) {
   return error instanceof Error ? error.message : "An unexpected error occurred.";
@@ -124,7 +109,7 @@ export default function ScenariosPage() {
   const [selectedLayout, setSelectedLayout] = useState<LayoutVersion | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [queue, setQueue] = useState<QueueKey>("all");
-  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [fieldErrors, setFieldErrors] = useState<ScenarioFieldErrors>({});
   const [actionError, setActionError] = useState<string | null>(null);
   const [activeAction, setActiveAction] = useState<ScenarioAction | null>(null);
   const [operationId, setOperationId] = useState<string | null>(null);
@@ -210,16 +195,15 @@ export default function ScenariosPage() {
   const mayViewLayout = can(user.role, "layout:view");
   const visibleScenarios = newestFirst(filterQueue(scenarios, queue, user.id));
 
-  async function runScenario(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function runScenario(request: ScenarioRunRequest) {
     if (!mayRun) {
       setActionError("Your role cannot run scenarios.");
       return;
     }
 
-    const parsed = scenarioRunRequestSchema.safeParse(readScenarioInput(event.currentTarget));
+    const parsed = scenarioRunRequestSchema.safeParse(request);
     if (!parsed.success) {
-      const errors: FieldErrors = {};
+      const errors: ScenarioFieldErrors = {};
       for (const issue of parsed.error.issues) {
         const field = issue.path[0] as keyof ScenarioRunRequest | undefined;
         if (field && !errors[field]) errors[field] = issue.message;
@@ -369,95 +353,15 @@ export default function ScenariosPage() {
             <span>{mayRun ? "Designer · SimPy benchmark" : `${user.role} · Read only`}</span>
           </div>
           {mayRun ? (
-            <form key={`${selectedLayout?.layout_id}-${selectedLayout?.version}`}
-              className="panel-body" onSubmit={runScenario} noValidate>
-              <div className="form-grid">
-                <div className="field field-wide">
-                  <label htmlFor="scenario-name">Scenario name</label>
-                  <input id="scenario-name" name="name" defaultValue="candidate-01" required />
-                  {fieldErrors.name && <span className="field-error">{fieldErrors.name}</span>}
-                </div>
-                <div className="field field-wide">
-                  <label htmlFor="scenario-layout">Layout</label>
-                  <select id="scenario-layout" name="layout_id" required
-                    value={selectedLayout?.layout_id ?? ""}
-                    onChange={(event) => void selectLayout(event.target.value)}>
-                    <option value="" disabled>Select a layout</option>
-                    {layouts.map((layout) => <option value={layout.id} key={layout.id}>
-                      {layout.name} · v{layout.latest_version}
-                    </option>)}
-                  </select>
-                  {fieldErrors.layout_id && <span className="field-error">{fieldErrors.layout_id}</span>}
-                </div>
-                <div className="field">
-                  <label htmlFor="scenario-layout-version">Layout version</label>
-                  <input id="scenario-layout-version" name="layout_version" type="number" min="1"
-                    max={layouts.find((layout) => layout.id === selectedLayout?.layout_id)?.latest_version}
-                    value={selectedLayout?.version ?? ""}
-                    onChange={(event) => void selectLayoutVersion(Number(event.target.value))}/>
-                  {fieldErrors.layout_version && <span className="field-error">{fieldErrors.layout_version}</span>}
-                </div>
-                <div className="field field-wide">
-                  <label htmlFor="scenario-route">Route</label>
-                  <select id="scenario-route" name="route_id" required disabled={!selectedLayout}>
-                    {selectedLayout?.routes.filter((route) => route.kind === "DELIVERY")
-                      .map((route) => <option value={route.id} key={route.id}>
-                      {route.id} · {route.start_station_id} → {route.end_station_id}
-                    </option>)}
-                  </select>
-                  {fieldErrors.route_id && <span className="field-error">{fieldErrors.route_id}</span>}
-                </div>
-                <div className="field">
-                  <label htmlFor="num-robots">Robot count</label>
-                  <input id="num-robots" name="num_robots" type="number" min="1" max="10" defaultValue={selectedLayout?.config.robot_count ?? 2} />
-                  {fieldErrors.num_robots && <span className="field-error">{fieldErrors.num_robots}</span>}
-                </div>
-                <div className="field">
-                  <label htmlFor="num-tasks">Number of tasks</label>
-                  <input id="num-tasks" name="num_tasks" type="number" min="1" max="10000" defaultValue="500" />
-                  {fieldErrors.num_tasks && <span className="field-error">{fieldErrors.num_tasks}</span>}
-                </div>
-                <div className="field">
-                  <label htmlFor="robot-speed">Robot speed (m/s)</label>
-                  <input id="robot-speed" name="robot_speed_mps" type="number" min="0.1" max="10" step="0.1"
-                    defaultValue={selectedLayout?.config.robot_speed_mps ?? 1}/>
-                  {fieldErrors.robot_speed_mps && <span className="field-error">{fieldErrors.robot_speed_mps}</span>}
-                </div>
-                <div className="field">
-                  <label htmlFor="charger-count">Charger count</label>
-                  <input id="charger-count" name="charger_count" type="number" min="1" max="20"
-                    defaultValue={selectedLayout?.config.charger_count ?? 1}/>
-                  {fieldErrors.charger_count && <span className="field-error">{fieldErrors.charger_count}</span>}
-                </div>
-                <div className="field">
-                  <label htmlFor="task-interval">Task arrival interval (s)</label>
-                  <input id="task-interval" name="task_arrival_interval" type="number" min="1" max="60" step="0.1" defaultValue="5" />
-                  {fieldErrors.task_arrival_interval && <span className="field-error">{fieldErrors.task_arrival_interval}</span>}
-                </div>
-                <div className="field">
-                  <label htmlFor="travel-time">Travel time (s)</label>
-                  <input id="travel-time" name="travel_time" type="number" min="0.1" max="86400" step="0.1" defaultValue="30" />
-                  {fieldErrors.travel_time && <span className="field-error">{fieldErrors.travel_time}</span>}
-                </div>
-                <div className="field">
-                  <label htmlFor="loading-time">Loading time (s)</label>
-                  <input id="loading-time" name="loading_time" type="number" min="0.1" max="86400" step="0.1" defaultValue="10" />
-                  {fieldErrors.loading_time && <span className="field-error">{fieldErrors.loading_time}</span>}
-                </div>
-                <div className="field">
-                  <label htmlFor="simulation-time">Simulation time (s)</label>
-                  <input id="simulation-time" name="simulation_time" type="number" min="0.1" max="86400" step="0.1" defaultValue="3600" />
-                  {fieldErrors.simulation_time && <span className="field-error">{fieldErrors.simulation_time}</span>}
-                </div>
-              </div>
-              <p className="form-help">Route distance and congestion are resolved authoritatively from the immutable layout version.</p>
-              <div className="button-row">
-                <button className="button" type="reset" disabled={activeAction !== null}>Reset form</button>
-                <button className="button primary" type="submit" disabled={activeAction !== null}>
-                  {activeAction === "run" ? "Running…" : "Run benchmark"}
-                </button>
-              </div>
-            </form>
+            <ScenarioRunForm key={`${selectedLayout?.layout_id}-${selectedLayout?.version}`}
+              layouts={layouts}
+              selectedLayout={selectedLayout}
+              fieldErrors={fieldErrors}
+              running={activeAction !== null}
+              onSelectLayout={(layoutId) => void selectLayout(layoutId)}
+              onSelectVersion={(version) => void selectLayoutVersion(version)}
+              onRun={(request) => void runScenario(request)}
+            />
           ) : <ReadOnlyConfiguration scenario={candidate} />}
         </section>
 
