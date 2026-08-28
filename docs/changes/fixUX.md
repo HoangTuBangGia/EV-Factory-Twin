@@ -285,6 +285,17 @@ báo được zone bị đổi hình, không quy được delay cho zone.
 **P2 hoàn thành 2/2 item.** Backend giữ benchmark gốc bất biến; frontend đã có happy path đầy đủ
 từ request changes đến chạy và submit lại child candidate.
 
+### P3 — Hosted revision workflow acceptance
+
+| # | Item | Trạng thái | Ghi chú |
+|---|---|---|---|
+| 1 | Hosted E2E hai role cho revision workflow | Sẵn sàng chạy | Serial suite kiểm tra run/submit → request changes → child revision → approve/apply. Cần staging credentials và migrations P2.1. |
+| 2 | RBAC regression cho request-revision | Xong | Endpoint mới nằm trong cả unauthenticated và Designer-forbidden matrices; targeted RBAC 67/67 pass. |
+| 3 | Usability acceptance 3 Designer + 3 Monitor | Chưa chạy | Checklist và biểu mẫu ẩn danh: `docs/runbooks/workflow-usability-acceptance.md`. Không thể thay bằng automated test. |
+
+**P3 chưa được phép đánh dấu hoàn thành** cho đến khi hosted E2E pass và sáu phiên usability có
+kết quả/sign-off thực tế.
+
 ## Tiêu chí thành công
 
 Test với ít nhất 3 Designer và 3 Monitor đại diện. Mỗi người phải hoàn thành các task sau không cần hướng dẫn trực tiếp:
