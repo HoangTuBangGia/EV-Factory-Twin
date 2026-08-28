@@ -53,6 +53,7 @@ describe("ScenariosPage command history", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useFactoryStore.getState().reset();
+    window.history.replaceState({}, "", "/scenarios");
     api.getBaselineScenario.mockResolvedValue(fixtureScenario);
     api.getLayouts.mockResolvedValue([layoutSummary]);
     api.getScenarios.mockResolvedValue([{ ...fixtureScenario, status: "APPROVED" }]);
@@ -78,5 +79,22 @@ describe("ScenariosPage command history", () => {
     expect(await screen.findByText(/Command history is unavailable: offline/)).toBeInTheDocument();
     expect(screen.getAllByText("candidate-01").length).toBeGreaterThan(0);
     expect(screen.getByText("Metrics comparison")).toBeInTheDocument();
+  });
+
+  it("selects a recommended candidate from the query string", async () => {
+    const recommendation = {
+      ...fixtureScenario,
+      id: "SCN-OPT-01",
+      name: "flow-option-01",
+      created_at: "2026-08-14T00:01:00.000Z",
+    };
+    api.getScenarios.mockResolvedValue([fixtureScenario, recommendation]);
+    window.history.replaceState({}, "", "/scenarios?candidate=SCN-OPT-01");
+
+    render(<ScenariosPage/>);
+
+    await waitFor(() => expect(api.getScenarios).toHaveBeenCalled());
+    expect(screen.getAllByText("flow-option-01").length).toBeGreaterThan(0);
+    expect(screen.getByText("SCN-OPT-01")).toBeInTheDocument();
   });
 });

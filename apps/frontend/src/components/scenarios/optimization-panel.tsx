@@ -3,6 +3,7 @@
 import { type FormEvent, useState } from "react";
 import { apiClient } from "@/lib/api-client";
 import {
+  optimizationCandidateCount,
   optimizationRequestSchema,
   type OptimizationResult,
 } from "@/schemas/optimization";
@@ -16,6 +17,22 @@ function message(error: unknown) {
   return error instanceof Error ? error.message : "An unexpected error occurred.";
 }
 
+function values(value: FormDataEntryValue | null) {
+  return String(value ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function candidateCount(form: HTMLFormElement) {
+  const data = new FormData(form);
+  return optimizationCandidateCount({
+    layouts: data.getAll("optimization_layouts"),
+    route_ids: values(data.get("route_ids")),
+    robot_counts: values(data.get("robot_counts")),
+    robot_speeds_mps: values(data.get("robot_speeds_mps")),
+    charger_counts: values(data.get("charger_counts")),
+    demand_intervals: values(data.get("demand_intervals")),
+  });
+}
+
 export function OptimizationPanel({
   layouts,
   selectedLayout,
@@ -26,6 +43,7 @@ export function OptimizationPanel({
   const [result, setResult] = useState<OptimizationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [candidates, setCandidates] = useState(layouts.length > 0 ? 8 : 0);
 
   async function run(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -60,12 +78,14 @@ export function OptimizationPanel({
     }
   }
 
-  return <section className="panel scenario-queue">
-    <div className="panel-head">
-      <h3>Bounded flow optimization</h3>
-      <span>Deterministic · maximum 64 candidates</span>
-    </div>
-    <form className="panel-body" onSubmit={run}>
+  return <details className="panel scenario-queue optimization-workspace">
+    <summary className="panel-head">
+      <div><h3>Advanced · Optimize multiple options</h3>
+        <small>Deterministic bounded search across layouts and operating assumptions.</small></div>
+      <span>{candidates} combinations · maximum 64</span>
+    </summary>
+    <form className="panel-body" onSubmit={run}
+      onChange={(event) => setCandidates(candidateCount(event.currentTarget))}>
       <div className="form-grid">
         <div className="field"><label htmlFor="optimization-prefix">Name prefix</label>
           <input id="optimization-prefix" name="name_prefix" defaultValue="flow-option"/></div>
@@ -93,15 +113,26 @@ export function OptimizationPanel({
         <div className="field"><label htmlFor="optimization-duration">Simulation time (s)</label>
           <input id="optimization-duration" name="optimization_duration" type="number" defaultValue="3600"/></div>
       </div>
-      <p className="form-help">Comma-separated dimensions form a Cartesian product. Every route must exist in every selected layout.</p>
+      <p className="form-help">
+        Comma-separated values form a Cartesian product. Every route must exist in every selected
+        layout. This is deterministic search, not an autonomous apply action.
+      </p>
+      <div className={`optimization-count${candidates > 64 ? " invalid" : ""}`} role="status">
+        <strong>{candidates} candidate{candidates === 1 ? "" : "s"}</strong>
+        <span>{candidates > 64 ? "Reduce the dimensions to 64 or fewer." : "Ready to evaluate within the bounded limit."}</span>
+      </div>
       {error && <div className="scenario-error" role="alert">{error}</div>}
-      <button className="button primary" type="submit" disabled={running || layouts.length === 0}>
+      <button className="button primary" type="submit"
+        disabled={running || layouts.length === 0 || candidates === 0 || candidates > 64}>
         {running ? "Evaluating…" : "Evaluate candidates"}
       </button>
     </form>
     {result && <div className="table-wrap">
       <div className="review-note" role="status">
         Recommendation: <strong>{result.recommendation.name}</strong> from {result.evaluated_candidates} candidates
+        <a className="button" href={`/scenarios?candidate=${encodeURIComponent(result.recommendation.id)}`}>
+          Open recommended candidate
+        </a>
       </div>
       <table className="data-table"><thead><tr>
         <th>Rank</th><th>Scenario</th><th>Robots</th><th>Speed</th><th>Chargers</th><th>Completion</th><th>Throughput</th>
@@ -112,5 +143,5 @@ export function OptimizationPanel({
         <td>{scenario.metrics.throughput_per_hour.toFixed(1)} tasks/h</td>
       </tr>)}</tbody></table>
     </div>}
-  </section>;
+  </details>;
 }

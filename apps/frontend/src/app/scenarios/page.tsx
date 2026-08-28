@@ -135,6 +135,7 @@ export default function ScenariosPage() {
       }
       return newestUsefulScenario(loaded);
     });
+    return loaded;
   }, [setScenarios]);
 
   const loadCommands = useCallback(async () => {
@@ -150,7 +151,7 @@ export default function ScenariosPage() {
     setLoadState("loading");
     setActionError(null);
     try {
-      const [loadedBaseline, loadedLayouts] = await Promise.all([
+      const [loadedBaseline, loadedLayouts, loadedScenarios] = await Promise.all([
         apiClient.getBaselineScenario(),
         apiClient.getLayouts(),
         loadScenarios(),
@@ -161,6 +162,9 @@ export default function ScenariosPage() {
       const query = new URLSearchParams(window.location.search);
       const requestedQueue = query.get("queue");
       if (isQueueKey(requestedQueue)) setQueue(requestedQueue);
+      const requestedCandidate = query.get("candidate");
+      const linkedCandidate = loadedScenarios.find((scenario) => scenario.id === requestedCandidate);
+      if (linkedCandidate) setCandidate(linkedCandidate);
       const requestedId = query.get("layout");
       const requestedVersion = Number(query.get("version"));
       const requested = loadedLayouts.find((layout) => layout.id === requestedId);
