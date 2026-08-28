@@ -1655,3 +1655,5 @@ The first technical checkpoint is:
 > **Five mock AMRs move in realtime on the browser, users can inspect their current state, and the UI remains usable if the WebSocket disconnects temporarily.**
 
 Do not block this milestone on 3D, ROS2, Gazebo, authentication, or database work.
+
+---
