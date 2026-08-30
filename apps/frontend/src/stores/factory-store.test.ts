@@ -114,6 +114,22 @@ describe("factory store realtime updates", () => {
     expect(useFactoryStore.getState().alerts).toEqual([event.data]);
   });
 
+  it("keeps local acknowledgement separate and clears it with the alert lifecycle", () => {
+    const active = fixtureAlerts[0];
+    useFactoryStore.getState().setAlerts([active]);
+    useFactoryStore.getState().acknowledgeAlert(active.id);
+    useFactoryStore.getState().acknowledgeAlert(active.id);
+    expect(useFactoryStore.getState().acknowledgedAlertIds).toEqual([active.id]);
+
+    useFactoryStore.getState().addAlert({
+      ...active,
+      status: "CLEARED",
+      last_seen_at: "2026-08-13T08:01:00.000Z",
+      cleared_at: "2026-08-13T08:01:00.000Z",
+    });
+    expect(useFactoryStore.getState().acknowledgedAlertIds).toEqual([]);
+  });
+
   it("updates current metrics immediately but samples chart history every five seconds", () => {
     useFactoryStore.getState().setMetrics({
       ...fixtureMetrics,
@@ -204,6 +220,7 @@ describe("factory store realtime updates", () => {
     expect(state.metrics).toBeNull();
     expect(state.metricsHistory).toEqual([]);
     expect(state.alerts).toEqual([]);
+    expect(state.acknowledgedAlertIds).toEqual([]);
     expect(state.commands).toEqual({});
     expect(state.selectedRobotId).toBeNull();
     expect(state.connectionStatus).toBe("OFFLINE");

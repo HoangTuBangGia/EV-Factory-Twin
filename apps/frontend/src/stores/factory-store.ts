@@ -30,6 +30,7 @@ interface FactoryStore {
   metrics: FactoryMetrics | null;
   metricsHistory: MetricsSample[];
   alerts: FactoryAlert[];
+  acknowledgedAlertIds: string[];
   commands: Record<string, Command>;
   scenarios: Scenario[];
   factoryRevision: number;
@@ -44,6 +45,7 @@ interface FactoryStore {
   clearMetricsHistory: () => void;
   setAlerts: (alerts: FactoryAlert[]) => void;
   addAlert: (alert: FactoryAlert) => void;
+  acknowledgeAlert: (id: string) => void;
   setCommands: (commands: Command[]) => void;
   updateCommand: (command: Command) => void;
   setScenarios: (scenarios: Scenario[]) => void;
@@ -57,7 +59,7 @@ interface FactoryStore {
 }
 
 export const useFactoryStore = create<FactoryStore>((set) => ({
-  robots: {}, tasks: {}, metrics: null, metricsHistory: [], alerts: [], commands: {}, scenarios: [], factoryRevision: 0, selectedRobotId: null,
+  robots: {}, tasks: {}, metrics: null, metricsHistory: [], alerts: [], acknowledgedAlertIds: [], commands: {}, scenarios: [], factoryRevision: 0, selectedRobotId: null,
   connectionStatus: "CONNECTING", paused: false,
   setRobots: (robots) => set({ robots: Object.fromEntries(robots.map((robot) => [robot.id, robot])) }),
   updateRobotTelemetry: (telemetry) => set((state) => {
@@ -94,11 +96,22 @@ export const useFactoryStore = create<FactoryStore>((set) => ({
     return { metrics, metricsHistory };
   }),
   clearMetricsHistory: () => set({ metricsHistory: [] }),
-  setAlerts: (alerts) => set({ alerts }),
+  setAlerts: (alerts) => set((state) => ({
+    alerts,
+    acknowledgedAlertIds: state.acknowledgedAlertIds.filter((id) => (
+      alerts.some((alert) => alert.id === id && alert.status === "ACTIVE")
+    )),
+  })),
   addAlert: (alert) => set((state) => ({
     alerts: [alert, ...state.alerts.filter((current) => current.dedupe_key !== alert.dedupe_key)]
       .slice(0, 50),
+    acknowledgedAlertIds: alert.status === "CLEARED"
+      ? state.acknowledgedAlertIds.filter((id) => id !== alert.id)
+      : state.acknowledgedAlertIds,
   })),
+  acknowledgeAlert: (id) => set((state) => state.acknowledgedAlertIds.includes(id)
+    ? state
+    : { acknowledgedAlertIds: [...state.acknowledgedAlertIds, id] }),
   setCommands: (commands) => set((state) => ({
     commands: {
       ...state.commands,
@@ -131,6 +144,7 @@ export const useFactoryStore = create<FactoryStore>((set) => ({
     metrics: null,
     metricsHistory: [],
     alerts: [],
+    acknowledgedAlertIds: [],
     commands: {},
     scenarios: [],
     factoryRevision: 0,

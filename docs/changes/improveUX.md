@@ -408,6 +408,6 @@ Những vấn đề architectural (KHÔNG nằm trong scope):
 | CP5 Sim Progress | Completed | 2026-08-30 | 2026-08-30 | 42 files / 196 tests; lint, typecheck, build and manual smoke passed. |
 | CP6 Confirm Dialog | Completed | 2026-08-30 | 2026-08-30 | 43 files / 201 tests; lint, typecheck, build and manual smoke passed. |
 | CP7 KPI Tooltips | Completed | 2026-08-30 | 2026-08-30 | 44 files / 205 tests; lint, typecheck, build and manual smoke passed. |
-| CP8 Alert Mgmt | Pending | — | — | — |
+| CP8 Alert Mgmt | Completed | 2026-08-30 | 2026-08-30 | 44 files / 209 tests; lint, typecheck, build and manual smoke passed. |
 | CP9 Breadcrumbs | Pending | — | — | — |
 | CP10 Freshness | Pending | — | — | — |
