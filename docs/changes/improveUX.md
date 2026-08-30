@@ -404,7 +404,7 @@ Những vấn đề architectural (KHÔNG nằm trong scope):
 | CP1 Toast | Completed | 2026-08-30 | 2026-08-30 | 38 files / 176 tests; lint, typecheck, build passed. |
 | CP2 Offline Banner | Completed | 2026-08-30 | 2026-08-30 | 39 files / 182 tests; lint, typecheck, build and manual smoke passed. |
 | CP3 Onboarding | Completed | 2026-08-30 | 2026-08-30 | 40 files / 186 tests; lint, typecheck, build and role-aware manual smoke passed. |
-| CP4 Pause/Resume | Pending | — | — | — |
+| CP4 Pause/Resume | Completed | 2026-08-30 | 2026-08-30 | 42 files / 193 tests; lint, typecheck, build and MOCK/API manual smoke passed. |
 | CP5 Sim Progress | Pending | — | — | — |
 | CP6 Confirm Dialog | Pending | — | — | — |
 | CP7 KPI Tooltips | Pending | — | — | — |

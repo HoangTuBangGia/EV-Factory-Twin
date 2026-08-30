@@ -35,6 +35,7 @@ interface FactoryStore {
   factoryRevision: number;
   selectedRobotId: string | null;
   connectionStatus: ConnectionStatus;
+  paused: boolean;
   setRobots: (robots: Robot[]) => void;
   updateRobotTelemetry: (telemetry: RobotTelemetry) => void;
   setTasks: (tasks: Task[]) => void;
@@ -50,12 +51,14 @@ interface FactoryStore {
   bumpFactoryRevision: () => void;
   selectRobot: (id: string | null) => void;
   setConnectionStatus: (status: ConnectionStatus) => void;
+  setPaused: (paused: boolean) => void;
+  togglePaused: () => void;
   reset: () => void;
 }
 
 export const useFactoryStore = create<FactoryStore>((set) => ({
   robots: {}, tasks: {}, metrics: null, metricsHistory: [], alerts: [], commands: {}, scenarios: [], factoryRevision: 0, selectedRobotId: null,
-  connectionStatus: "CONNECTING",
+  connectionStatus: "CONNECTING", paused: false,
   setRobots: (robots) => set({ robots: Object.fromEntries(robots.map((robot) => [robot.id, robot])) }),
   updateRobotTelemetry: (telemetry) => set((state) => {
     const current = state.robots[telemetry.robot_id];
@@ -120,6 +123,8 @@ export const useFactoryStore = create<FactoryStore>((set) => ({
   bumpFactoryRevision: () => set((state) => ({ factoryRevision: state.factoryRevision + 1 })),
   selectRobot: (selectedRobotId) => set({ selectedRobotId }),
   setConnectionStatus: (connectionStatus) => set({ connectionStatus }),
+  setPaused: (paused) => set({ paused }),
+  togglePaused: () => set((state) => ({ paused: !state.paused })),
   reset: () => set({
     robots: {},
     tasks: {},
@@ -131,5 +136,6 @@ export const useFactoryStore = create<FactoryStore>((set) => ({
     factoryRevision: 0,
     selectedRobotId: null,
     connectionStatus: "OFFLINE",
+    paused: false,
   }),
 }));

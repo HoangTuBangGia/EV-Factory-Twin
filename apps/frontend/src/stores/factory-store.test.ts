@@ -182,6 +182,17 @@ describe("factory store realtime updates", () => {
     expect(useFactoryStore.getState().factoryRevision).toBe(before + 1);
   });
 
+  it("toggles live-update pause and clears it on reset", () => {
+    useFactoryStore.getState().togglePaused();
+    expect(useFactoryStore.getState().paused).toBe(true);
+    useFactoryStore.getState().setPaused(false);
+    expect(useFactoryStore.getState().paused).toBe(false);
+    useFactoryStore.getState().setPaused(true);
+
+    useFactoryStore.getState().reset();
+    expect(useFactoryStore.getState().paused).toBe(false);
+  });
+
   it("clears user-scoped factory data on logout", () => {
     useFactoryStore.getState().setMetrics(fixtureMetrics);
     useFactoryStore.getState().selectRobot(fixtureRobots[0].id);

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
+import { LivePauseButton } from "@/components/layout/live-pause-button";
 import { useFactoryStore } from "@/stores/factory-store";
 
 export function Topbar() {
@@ -25,6 +26,7 @@ export function Topbar() {
         <h1>EV Factory Digital Twin</h1>
       </div>
       <div className="top-actions">
+        <LivePauseButton />
         <span className={`status ${status}`}><i className="status-dot" />{status}</span>
         {user && (
           <div className="user-summary">

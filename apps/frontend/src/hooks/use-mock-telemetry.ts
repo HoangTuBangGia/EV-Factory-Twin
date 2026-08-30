@@ -11,6 +11,7 @@ export function useMockTelemetry() {
     const timer = setInterval(() => {
       tick += 1;
       const store = useFactoryStore.getState();
+      if (store.paused) return;
       for (const robot of Object.values(store.robots)) {
         if (!["DELIVERING", "MOVING_TO_PICKUP"].includes(robot.status)) continue;
         store.updateRobotTelemetry({

@@ -5,6 +5,7 @@ import { AlertList } from "@/components/alerts/alert-list";
 import { OperationsChart, OPERATIONS_TREND_LIVE_LABEL } from "@/components/charts/operations-chart";
 import { KpiGrid } from "@/components/dashboard/kpi-grid";
 import { FleetTable } from "@/components/fleet/fleet-table";
+import { LivePauseButton } from "@/components/layout/live-pause-button";
 import { usesMockData } from "@/lib/env";
 import { useFactoryStore } from "@/stores/factory-store";
 
@@ -72,6 +73,7 @@ export function OverviewToolDock() {
 
   return <div className="overview-tool-dock" ref={dockRef}>
     <div className="cockpit-tool-buttons" role="toolbar" aria-label="Operations panels">
+      <LivePauseButton cockpit/>
       <ToolButton tool="metrics" active={activeTool === "metrics"} label="Open operations statistics" onClick={() => toggle("metrics")}><MetricsIcon/></ToolButton>
       <ToolButton tool="fleet" active={activeTool === "fleet"} label="Open fleet" badge={robotCount} onClick={() => toggle("fleet")}><RobotIcon/></ToolButton>
       <ToolButton tool="alerts" active={activeTool === "alerts"} label="Open alerts" badge={alertCount} onClick={() => toggle("alerts")}><AlertIcon/></ToolButton>
