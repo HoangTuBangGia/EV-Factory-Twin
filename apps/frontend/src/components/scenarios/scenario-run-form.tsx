@@ -1,8 +1,16 @@
 "use client";
 
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import type { LayoutSummary, LayoutVersion } from "@/schemas/layout";
 import type { Scenario, ScenarioRunRequest } from "@/schemas/scenario";
+import { toastInfo } from "@/stores/toast-store";
+
+export const SIMULATION_SLOW_WARNING_MS = 60_000;
+
+export function formatElapsedTime(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  return `${minutes}:${String(totalSeconds % 60).padStart(2, "0")}`;
+}
 
 export type ScenarioFieldErrors = Partial<Record<keyof ScenarioRunRequest, string>>;
 
@@ -69,6 +77,7 @@ export function ScenarioRunForm({
   selectedLayout,
   revisionSource = null,
   fieldErrors,
+  busy,
   running,
   onSelectLayout,
   onSelectVersion,
@@ -78,6 +87,7 @@ export function ScenarioRunForm({
   selectedLayout: LayoutVersion | null;
   revisionSource?: Scenario | null;
   fieldErrors: ScenarioFieldErrors;
+  busy: boolean;
   running: boolean;
   onSelectLayout: (layoutId: string) => void;
   onSelectVersion: (version: number) => void;
@@ -85,6 +95,20 @@ export function ScenarioRunForm({
 }) {
   const defaults = scenarioDefaults(selectedLayout, revisionSource);
   const [summary, setSummary] = useState(defaults);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!running) return;
+    setElapsedSeconds(0);
+    const timer = setInterval(() => setElapsedSeconds((value) => value + 1), 1000);
+    const warning = setTimeout(() => {
+      toastInfo("Simulation still running… Results will appear when the benchmark completes.");
+    }, SIMULATION_SLOW_WARNING_MS);
+    return () => {
+      clearInterval(timer);
+      clearTimeout(warning);
+    };
+  }, [running]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -206,9 +230,33 @@ export function ScenarioRunForm({
       <span>Simulate {summary.simulation_time}s</span>
     </div>
     <p className="form-help">Route distance and congestion are resolved authoritatively from the immutable layout version.</p>
+    {running && (
+      <div className="simulation-progress">
+        <div className="simulation-progress-head">
+          <span>Simulation in progress</span>
+          <strong role="timer">{formatElapsedTime(elapsedSeconds)}</strong>
+        </div>
+        <div
+          className="simulation-progress-track"
+          role="progressbar"
+          aria-label="Simulation running"
+          aria-valuetext={`Elapsed ${elapsedSeconds} seconds`}
+        ><i/></div>
+        <span id="simulation-cancel-help" className="sr-only">Cannot cancel mid-run.</span>
+      </div>
+    )}
     <div className="button-row">
-      <button className="button" type="reset" disabled={running}>Reset to layout defaults</button>
-      <button className="button primary" type="submit" disabled={running}>
+      <button className="button" type="reset" disabled={busy}>Reset to layout defaults</button>
+      {running && (
+        <button
+          className="button"
+          type="button"
+          disabled
+          title="Cannot cancel mid-run"
+          aria-describedby="simulation-cancel-help"
+        >Cancel</button>
+      )}
+      <button className="button primary" type="submit" disabled={busy}>
         {running ? "Running…" : "Run benchmark"}
       </button>
     </div>

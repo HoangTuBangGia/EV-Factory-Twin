@@ -1,7 +1,12 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fixtureLayoutVersion, fixtureScenario } from "@/lib/fixtures";
-import { ScenarioRunForm } from "./scenario-run-form";
+import { useToastStore } from "@/stores/toast-store";
+import {
+  formatElapsedTime,
+  ScenarioRunForm,
+  SIMULATION_SLOW_WARNING_MS,
+} from "./scenario-run-form";
 
 const layoutSummary = {
   id: fixtureLayoutVersion.layout_id,
@@ -18,6 +23,7 @@ function renderForm(onRun = vi.fn(), revisionSource = null as typeof fixtureScen
     selectedLayout={fixtureLayoutVersion}
     revisionSource={revisionSource}
     fieldErrors={{}}
+    busy={false}
     running={false}
     onSelectLayout={vi.fn()}
     onSelectVersion={vi.fn()}
@@ -27,6 +33,13 @@ function renderForm(onRun = vi.fn(), revisionSource = null as typeof fixtureScen
 }
 
 describe("ScenarioRunForm", () => {
+  beforeEach(() => useToastStore.setState({ toasts: [] }));
+  afterEach(() => vi.useRealTimers());
+
+  it("formats elapsed time as minutes and zero-padded seconds", () => {
+    expect(formatElapsedTime(65)).toBe("1:05");
+  });
+
   it("keeps advanced assumptions collapsed and uses layout defaults", () => {
     renderForm();
 
@@ -97,5 +110,58 @@ describe("ScenarioRunForm", () => {
       num_robots: fixtureScenario.config.num_robots,
       route_id: fixtureScenario.config.route_id,
     }));
+  });
+
+  it("shows elapsed progress and warns when a simulation takes over a minute", () => {
+    vi.useFakeTimers();
+    render(<ScenarioRunForm
+      layouts={[layoutSummary]}
+      selectedLayout={fixtureLayoutVersion}
+      fieldErrors={{}}
+      busy
+      running
+      onSelectLayout={vi.fn()}
+      onSelectVersion={vi.fn()}
+      onRun={vi.fn()}
+    />);
+
+    expect(screen.getByRole("timer")).toHaveTextContent("0:00");
+    expect(screen.getByRole("progressbar", { name: "Simulation running" }))
+      .toHaveAttribute("aria-valuetext", "Elapsed 0 seconds");
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "title",
+      "Cannot cancel mid-run",
+    );
+
+    act(() => vi.advanceTimersByTime(5_000));
+    expect(screen.getByRole("timer")).toHaveTextContent("0:05");
+    act(() => vi.advanceTimersByTime(SIMULATION_SLOW_WARNING_MS - 5_000));
+    expect(screen.getByRole("timer")).toHaveTextContent("1:00");
+    expect(useToastStore.getState().toasts).toEqual([
+      expect.objectContaining({ type: "info", message: expect.stringContaining("still running") }),
+    ]);
+  });
+
+  it("cleans up progress and the slow warning when a run finishes", () => {
+    vi.useFakeTimers();
+    const props = {
+      layouts: [layoutSummary],
+      selectedLayout: fixtureLayoutVersion,
+      fieldErrors: {},
+      busy: true,
+      running: true,
+      onSelectLayout: vi.fn(),
+      onSelectVersion: vi.fn(),
+      onRun: vi.fn(),
+    };
+    const { rerender } = render(<ScenarioRunForm {...props}/>);
+    act(() => vi.advanceTimersByTime(5_000));
+
+    rerender(<ScenarioRunForm {...props} busy={false} running={false}/>);
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run benchmark" })).toBeEnabled();
+    act(() => vi.advanceTimersByTime(SIMULATION_SLOW_WARNING_MS));
+    expect(useToastStore.getState().toasts).toEqual([]);
   });
 });

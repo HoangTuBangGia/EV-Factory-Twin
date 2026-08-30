@@ -149,7 +149,7 @@ fixUX.md đã giải quyết "bước tiếp theo là gì?" và "candidate đang
 - Trong `scenario-run-form.tsx` hoặc nơi trigger run: khi running, hiện elapsed timer (`0:00`, `0:05`, ...) bên cạnh button.
 - Indeterminate progress bar (CSS animation) dưới form.
 - Nếu backend trả về estimated duration trong tương lai, dùng nó. Hiện tại: chỉ elapsed time.
-- Cancel button: nếu backend hỗ trợ cancel endpoint, wire vào. Nếu không, disable + tooltip "Cannot cancel mid-run".
+- Cancel button: backend hiện không có cancel endpoint; disable + tooltip "Cannot cancel mid-run".
 - Timeout warning: nếu > 60s, hiện toast info "Simulation still running..." (dùng CP1).
 
 **Không làm:**
@@ -405,7 +405,7 @@ Những vấn đề architectural (KHÔNG nằm trong scope):
 | CP2 Offline Banner | Completed | 2026-08-30 | 2026-08-30 | 39 files / 182 tests; lint, typecheck, build and manual smoke passed. |
 | CP3 Onboarding | Completed | 2026-08-30 | 2026-08-30 | 40 files / 186 tests; lint, typecheck, build and role-aware manual smoke passed. |
 | CP4 Pause/Resume | Completed | 2026-08-30 | 2026-08-30 | 42 files / 193 tests; lint, typecheck, build and MOCK/API manual smoke passed. |
-| CP5 Sim Progress | Pending | — | — | — |
+| CP5 Sim Progress | Completed | 2026-08-30 | 2026-08-30 | 42 files / 196 tests; lint, typecheck, build and manual smoke passed. |
 | CP6 Confirm Dialog | Pending | — | — | — |
 | CP7 KPI Tooltips | Pending | — | — | — |
 | CP8 Alert Mgmt | Pending | — | — | — |

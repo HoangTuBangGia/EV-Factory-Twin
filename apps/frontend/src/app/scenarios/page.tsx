@@ -443,7 +443,8 @@ export default function ScenariosPage() {
               selectedLayout={selectedLayout}
               revisionSource={revisionSource}
               fieldErrors={fieldErrors}
-              running={activeAction !== null}
+              busy={activeAction !== null}
+              running={activeAction === "run"}
               onSelectLayout={(layoutId) => void selectLayout(layoutId)}
               onSelectVersion={(version) => void selectLayoutVersion(version)}
               onRun={(request) => void runScenario(request)}
