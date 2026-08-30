@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fixtureScenario } from "@/lib/fixtures";
 import { useFactoryStore } from "@/stores/factory-store";
+import { useToastStore } from "@/stores/toast-store";
 import LayoutsPage from "./page";
 
 const state = vi.hoisted(() => ({ role: "DESIGNER" as "DESIGNER" | "MONITOR" }));
@@ -33,6 +34,7 @@ describe("LayoutsPage", () => {
   beforeEach(() => {
     state.role = "DESIGNER";
     useFactoryStore.getState().reset();
+    useToastStore.setState({ toasts: [] });
     api.getLayouts.mockResolvedValue([]);
     vi.clearAllMocks();
   });
@@ -61,6 +63,24 @@ describe("LayoutsPage", () => {
       },
     });
     expect(await screen.findByText("Created LAYOUT-0001.")).toBeInTheDocument();
+    expect(useToastStore.getState().toasts).toEqual([
+      expect.objectContaining({ type: "success", message: "Created LAYOUT-0001." }),
+    ]);
+  });
+
+  it("keeps the save error in context and raises an error toast", async () => {
+    api.createLayout.mockRejectedValue(new Error("database unavailable"));
+    render(<LayoutsPage/>);
+
+    fireEvent.click(screen.getByRole("button", { name: "Create layout" }));
+
+    expect(await screen.findByText("Unable to save layout: database unavailable")).toBeInTheDocument();
+    expect(useToastStore.getState().toasts).toEqual([
+      expect.objectContaining({
+        type: "error",
+        message: "Unable to save layout: database unavailable",
+      }),
+    ]);
   });
 
   it("draws the battery route by selecting its endpoint stations", () => {

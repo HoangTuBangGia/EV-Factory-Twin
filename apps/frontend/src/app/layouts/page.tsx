@@ -23,6 +23,7 @@ import {
   type LayoutVersionContent,
 } from "@/schemas/layout";
 import { useFactoryStore } from "@/stores/factory-store";
+import { toastError, toastSuccess } from "@/stores/toast-store";
 
 const ALL_LAYERS = { stations: true, routes: true, noGoZones: true } as const;
 const SNAP_METRES = 0.5;
@@ -478,9 +479,15 @@ function LayoutWorkspace() {
       setName(saved.name);
       setDraft(layoutVersionContentSchema.parse(saved));
       await refreshLayouts();
-      setNotice(creatingVersion ? `Created immutable version ${saved.version}.` : `Created ${saved.layout_id}.`);
+      const successMessage = creatingVersion
+        ? `Created immutable version ${saved.version}.`
+        : `Created ${saved.layout_id}.`;
+      setNotice(successMessage);
+      toastSuccess(successMessage);
     } catch (error) {
-      setNotice(`Unable to save layout: ${errorMessage(error)}`);
+      const failureMessage = `Unable to save layout: ${errorMessage(error)}`;
+      setNotice(failureMessage);
+      toastError(failureMessage);
     } finally {
       setBusy(false);
     }

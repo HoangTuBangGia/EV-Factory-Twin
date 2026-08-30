@@ -6,6 +6,7 @@ import {
   fixtureScenario,
 } from "@/lib/fixtures";
 import { useFactoryStore } from "@/stores/factory-store";
+import { useToastStore } from "@/stores/toast-store";
 import ScenariosPage from "./page";
 
 const api = vi.hoisted(() => ({
@@ -15,6 +16,7 @@ const api = vi.hoisted(() => ({
   getCommands: vi.fn(),
   getLayout: vi.fn(),
   getLayoutVersion: vi.fn(),
+  runScenario: vi.fn(),
 }));
 
 vi.mock("@/components/auth/auth-provider", () => ({
@@ -61,6 +63,7 @@ describe("ScenariosPage command history", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useFactoryStore.getState().reset();
+    useToastStore.setState({ toasts: [] });
     window.history.replaceState({}, "", "/scenarios");
     api.getBaselineScenario.mockResolvedValue(fixtureScenario);
     api.getLayouts.mockResolvedValue([layoutSummary]);
@@ -68,6 +71,7 @@ describe("ScenariosPage command history", () => {
     api.getCommands.mockResolvedValue([fixtureApplyCommand]);
     api.getLayout.mockResolvedValue(fixtureLayoutVersion);
     api.getLayoutVersion.mockResolvedValue(fixtureLayoutVersion);
+    api.runScenario.mockResolvedValue(fixtureScenario);
   });
 
   it("hydrates the selected candidate timeline from durable commands", async () => {
@@ -104,6 +108,21 @@ describe("ScenariosPage command history", () => {
     await waitFor(() => expect(api.getScenarios).toHaveBeenCalled());
     expect(screen.getAllByText("flow-option-01").length).toBeGreaterThan(0);
     expect(screen.getByText("SCN-OPT-01")).toBeInTheDocument();
+  });
+
+  it("reports the KPI summary when a simulation completes", async () => {
+    render(<ScenariosPage/>);
+
+    await waitFor(() => expect(screen.getByLabelText("Layout")).toHaveValue("LAYOUT-DEFAULT"));
+    fireEvent.click(screen.getByRole("button", { name: "Run benchmark" }));
+
+    await waitFor(() => expect(api.runScenario).toHaveBeenCalledOnce());
+    expect(useToastStore.getState().toasts).toEqual([
+      expect.objectContaining({
+        type: "success",
+        message: "Scenario \"candidate-01\" simulated · 355.0 tasks/h · 900.0s avg cycle · 3 starvation",
+      }),
+    ]);
   });
 
   it("prepares the original Designer's requested revision from its immutable layout", async () => {

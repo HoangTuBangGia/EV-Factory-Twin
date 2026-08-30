@@ -29,6 +29,7 @@ import {
   type QueueKey,
 } from "@/lib/workflow";
 import { useFactoryStore } from "@/stores/factory-store";
+import { toastSuccess, toastError, toastInfo } from "@/stores/toast-store";
 import type { LayoutSummary, LayoutVersion } from "@/schemas/layout";
 import {
   scenarioRunRequestSchema,
@@ -243,8 +244,15 @@ export default function ScenariosPage() {
       updateScenario(created);
       setCandidate(created);
       setRevisionSource(null);
+      toastSuccess(
+        `Scenario "${created.name}" simulated · `
+        + `${created.metrics.throughput_per_hour.toFixed(1)} tasks/h · `
+        + `${created.metrics.average_cycle_time.toFixed(1)}s avg cycle · `
+        + `${created.metrics.starvation_events} starvation`,
+      );
     } catch (error) {
       setActionError(message(error));
+      toastError(message(error));
     } finally {
       setActiveAction(null);
     }
@@ -261,8 +269,10 @@ export default function ScenariosPage() {
       const updated = await apiClient.approveScenario(candidate.id);
       setCandidate(updated);
       updateScenario(updated);
+      toastSuccess("Scenario approved");
     } catch (error) {
       setActionError(message(error));
+      toastError(message(error));
     } finally {
       setActiveAction(null);
     }
@@ -279,8 +289,10 @@ export default function ScenariosPage() {
       const updated = await apiClient.requestScenarioRevision(candidate.id, { note });
       setCandidate(updated);
       updateScenario(updated);
+      toastSuccess("Revision requested");
     } catch (error) {
       setActionError(message(error));
+      toastError(message(error));
     } finally {
       setActiveAction(null);
     }
@@ -305,8 +317,10 @@ export default function ScenariosPage() {
       setSelectedLayout(layout);
       setRevisionSource(candidate);
       window.scrollTo({ top: 0, behavior: "smooth" });
+      toastInfo("Revision prepared — edit configuration above");
     } catch (error) {
       setActionError(`Unable to prepare revision: ${message(error)}`);
+      toastError(`Unable to prepare revision: ${message(error)}`);
     }
   }
 
@@ -321,8 +335,10 @@ export default function ScenariosPage() {
       const updated = await apiClient.submitScenario(candidate.id);
       setCandidate(updated);
       updateScenario(updated);
+      toastSuccess("Scenario submitted for review");
     } catch (error) {
       setActionError(message(error));
+      toastError(message(error));
     } finally {
       setActiveAction(null);
     }
@@ -347,8 +363,10 @@ export default function ScenariosPage() {
         max_retries: 1,
       });
       updateCommand(createdCommand);
+      toastInfo(`Apply command queued for "${candidate.name}"`);
     } catch (error) {
       setActionError(message(error));
+      toastError(message(error));
     } finally {
       setActiveAction(null);
     }

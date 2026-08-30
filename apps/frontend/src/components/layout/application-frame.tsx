@@ -7,6 +7,7 @@ import { DataProvider } from "@/components/layout/data-provider";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { NextActionStrip } from "@/components/workflow/next-action-strip";
+import { ToastContainer } from "@/components/ui/toast";
 
 function ProtectedAppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -39,6 +40,7 @@ function ProtectedAppShell({ children }: { children: ReactNode }) {
             {children}
           </main>
         </div>
+        <ToastContainer />
       </div>
     </DataProvider>
   );
