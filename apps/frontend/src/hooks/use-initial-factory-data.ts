@@ -10,7 +10,7 @@ export function useInitialFactoryData() {
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const generationRef = useRef(0);
   const activeRequestRef = useRef<AbortController | null>(null);
-  const { setRobots, setTasks, setMetrics, setAlerts, setConnectionStatus } = useFactoryStore();
+  const setConnectionStatus = useFactoryStore((store) => store.setConnectionStatus);
 
   const load = useCallback(async () => {
     const generation = ++generationRef.current;
@@ -21,7 +21,12 @@ export function useInitialFactoryData() {
     try {
       if (usesMockData) {
         if (generation !== generationRef.current) return;
-        setRobots(fixtureRobots); setTasks(fixtureTasks); setMetrics(fixtureMetrics); setAlerts(fixtureAlerts);
+        commitFactorySnapshot({
+          robots: fixtureRobots,
+          tasks: fixtureTasks,
+          metrics: fixtureMetrics,
+          alerts: fixtureAlerts,
+        });
         setConnectionStatus("MOCK");
       } else {
         const snapshot = await fetchFactorySnapshot({ signal: controller.signal });
@@ -35,7 +40,7 @@ export function useInitialFactoryData() {
     } finally {
       if (activeRequestRef.current === controller) activeRequestRef.current = null;
     }
-  }, [setAlerts, setConnectionStatus, setMetrics, setRobots, setTasks]);
+  }, [setConnectionStatus]);
 
   useEffect(() => {
     void load();

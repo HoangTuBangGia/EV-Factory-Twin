@@ -7,6 +7,8 @@ vi.mock("@/stores/factory-store", () => ({
     robots: { "AMR-01": {}, "AMR-02": {} },
     alerts: [{ id: "ALERT-01" }],
     paused: false,
+    lastUpdateAt: null,
+    connectionStatus: "MOCK",
     togglePaused: vi.fn(),
   }),
 }));

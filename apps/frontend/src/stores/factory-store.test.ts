@@ -198,6 +198,13 @@ describe("factory store realtime updates", () => {
     expect(useFactoryStore.getState().factoryRevision).toBe(before + 1);
   });
 
+  it("records and resets the latest applied data timestamp", () => {
+    useFactoryStore.getState().markDataUpdated(1234);
+    expect(useFactoryStore.getState().lastUpdateAt).toBe(1234);
+    useFactoryStore.getState().reset();
+    expect(useFactoryStore.getState().lastUpdateAt).toBeNull();
+  });
+
   it("toggles live-update pause and clears it on reset", () => {
     useFactoryStore.getState().togglePaused();
     expect(useFactoryStore.getState().paused).toBe(true);
@@ -222,6 +229,7 @@ describe("factory store realtime updates", () => {
     expect(state.alerts).toEqual([]);
     expect(state.acknowledgedAlertIds).toEqual([]);
     expect(state.commands).toEqual({});
+    expect(state.lastUpdateAt).toBeNull();
     expect(state.selectedRobotId).toBeNull();
     expect(state.connectionStatus).toBe("OFFLINE");
   });

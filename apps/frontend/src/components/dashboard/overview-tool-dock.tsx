@@ -6,6 +6,7 @@ import { OperationsChart, OPERATIONS_TREND_LIVE_LABEL } from "@/components/chart
 import { KpiGrid } from "@/components/dashboard/kpi-grid";
 import { FleetTable } from "@/components/fleet/fleet-table";
 import { LivePauseButton } from "@/components/layout/live-pause-button";
+import { DataFreshnessIndicator } from "@/components/layout/data-freshness-indicator";
 import { usesMockData } from "@/lib/env";
 import { useFactoryStore } from "@/stores/factory-store";
 
@@ -78,6 +79,7 @@ export function OverviewToolDock() {
       <ToolButton tool="fleet" active={activeTool === "fleet"} label="Open fleet" badge={robotCount} onClick={() => toggle("fleet")}><RobotIcon/></ToolButton>
       <ToolButton tool="alerts" active={activeTool === "alerts"} label="Open alerts" badge={alertCount} onClick={() => toggle("alerts")}><AlertIcon/></ToolButton>
     </div>
+    <DataFreshnessIndicator cockpit/>
 
     {activeTool === "metrics" && <section className="overview-popup metrics-popup" id="overview-metrics-panel" role="dialog" aria-labelledby="overview-metrics-title">
       <div className="overview-popup-head"><div><span>Live operations</span><h2 id="overview-metrics-title">Statistics</h2></div><button type="button" aria-label="Close statistics" onClick={() => setActiveTool(null)}>×</button></div>

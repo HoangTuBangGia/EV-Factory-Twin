@@ -151,8 +151,10 @@ describe("useFactorySocket", () => {
     act(() => useFactoryStore.getState().setPaused(true));
     onEvent(telemetry);
     expect(updateRobotTelemetry).not.toHaveBeenCalled();
+    expect(useFactoryStore.getState().lastUpdateAt).toBeNull();
     act(() => useFactoryStore.getState().setPaused(false));
     expect(updateRobotTelemetry).toHaveBeenCalledWith(telemetry.data);
+    expect(useFactoryStore.getState().lastUpdateAt).not.toBeNull();
 
     unmount();
     useFactoryStore.setState({ updateRobotTelemetry: originalUpdate });

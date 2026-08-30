@@ -410,4 +410,4 @@ Những vấn đề architectural (KHÔNG nằm trong scope):
 | CP7 KPI Tooltips | Completed | 2026-08-30 | 2026-08-30 | 44 files / 205 tests; lint, typecheck, build and manual smoke passed. |
 | CP8 Alert Mgmt | Completed | 2026-08-30 | 2026-08-30 | 44 files / 209 tests; lint, typecheck, build and manual smoke passed. |
 | CP9 Breadcrumbs | Completed | 2026-08-30 | 2026-08-30 | 45 files / 212 tests; lint, typecheck, build and manual smoke passed. |
-| CP10 Freshness | Pending | — | — | — |
+| CP10 Freshness | Completed | 2026-08-30 | 2026-08-30 | 46 files / 217 tests; lint, typecheck, build and manual smoke passed. |

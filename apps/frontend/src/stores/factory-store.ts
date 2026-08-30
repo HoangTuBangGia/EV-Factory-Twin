@@ -34,6 +34,7 @@ interface FactoryStore {
   commands: Record<string, Command>;
   scenarios: Scenario[];
   factoryRevision: number;
+  lastUpdateAt: number | null;
   selectedRobotId: string | null;
   connectionStatus: ConnectionStatus;
   paused: boolean;
@@ -51,6 +52,7 @@ interface FactoryStore {
   setScenarios: (scenarios: Scenario[]) => void;
   updateScenario: (scenario: Scenario) => void;
   bumpFactoryRevision: () => void;
+  markDataUpdated: (at?: number) => void;
   selectRobot: (id: string | null) => void;
   setConnectionStatus: (status: ConnectionStatus) => void;
   setPaused: (paused: boolean) => void;
@@ -59,7 +61,7 @@ interface FactoryStore {
 }
 
 export const useFactoryStore = create<FactoryStore>((set) => ({
-  robots: {}, tasks: {}, metrics: null, metricsHistory: [], alerts: [], acknowledgedAlertIds: [], commands: {}, scenarios: [], factoryRevision: 0, selectedRobotId: null,
+  robots: {}, tasks: {}, metrics: null, metricsHistory: [], alerts: [], acknowledgedAlertIds: [], commands: {}, scenarios: [], factoryRevision: 0, lastUpdateAt: null, selectedRobotId: null,
   connectionStatus: "CONNECTING", paused: false,
   setRobots: (robots) => set({ robots: Object.fromEntries(robots.map((robot) => [robot.id, robot])) }),
   updateRobotTelemetry: (telemetry) => set((state) => {
@@ -134,6 +136,7 @@ export const useFactoryStore = create<FactoryStore>((set) => ({
       : [scenario, ...state.scenarios],
   })),
   bumpFactoryRevision: () => set((state) => ({ factoryRevision: state.factoryRevision + 1 })),
+  markDataUpdated: (lastUpdateAt = Date.now()) => set({ lastUpdateAt }),
   selectRobot: (selectedRobotId) => set({ selectedRobotId }),
   setConnectionStatus: (connectionStatus) => set({ connectionStatus }),
   setPaused: (paused) => set({ paused }),
@@ -148,6 +151,7 @@ export const useFactoryStore = create<FactoryStore>((set) => ({
     commands: {},
     scenarios: [],
     factoryRevision: 0,
+    lastUpdateAt: null,
     selectedRobotId: null,
     connectionStatus: "OFFLINE",
     paused: false,

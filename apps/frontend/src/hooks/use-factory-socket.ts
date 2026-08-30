@@ -60,6 +60,7 @@ export function useFactorySocket(
       if (event.type === "alert.created") current.addAlert(event.data);
       if (event.type === "alert.updated") current.addAlert(event.data);
       if (event.type === "command.updated") current.updateCommand(event.data);
+      current.markDataUpdated();
     }
 
     function bufferPausedEvent(event: FactoryEvent) {
