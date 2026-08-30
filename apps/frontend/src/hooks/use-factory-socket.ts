@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   commitFactorySnapshot,
   fetchFactorySnapshot,
@@ -25,6 +25,8 @@ export function useFactorySocket(
 ) {
   const refreshAttemptedForToken = useRef<string | null>(null);
   const lifecycleGeneration = useRef(0);
+  const socketRef = useRef<FactorySocket | null>(null);
+  const reconnect = useCallback(() => socketRef.current?.reconnect(), []);
 
   useEffect(() => {
     if (usesMockData || !enabled || !accessToken) return;
@@ -181,11 +183,15 @@ export function useFactorySocket(
         }
       },
     );
+    socketRef.current = socket;
     socket.connect();
     return () => {
       lifecycleGeneration.current += 1;
       cancelSynchronization("Socket lifecycle ended");
       socket.disconnect();
+      if (socketRef.current === socket) socketRef.current = null;
     };
   }, [accessToken, enabled, invalidateSession, refreshSession, refreshUser]);
+
+  return reconnect;
 }

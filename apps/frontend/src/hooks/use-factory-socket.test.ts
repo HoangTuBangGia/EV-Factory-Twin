@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     args: unknown[];
     connect: ReturnType<typeof vi.fn>;
     disconnect: ReturnType<typeof vi.fn>;
+    reconnect: ReturnType<typeof vi.fn>;
     requestRecovery: ReturnType<typeof vi.fn>;
   }>,
   fetchSnapshot: vi.fn(),
@@ -33,6 +34,7 @@ vi.mock("@/lib/websocket-client", () => ({
   FactorySocket: class FactorySocket {
     connect = vi.fn();
     disconnect = vi.fn();
+    reconnect = vi.fn();
     requestRecovery = vi.fn();
 
     constructor(...args: unknown[]) {
@@ -40,6 +42,7 @@ vi.mock("@/lib/websocket-client", () => ({
         args,
         connect: this.connect,
         disconnect: this.disconnect,
+        reconnect: this.reconnect,
         requestRecovery: this.requestRecovery,
       });
     }
@@ -100,6 +103,20 @@ describe("useFactorySocket", () => {
     rerender({ token: null, enabled: false });
     expect(mocks.instances[0].disconnect).toHaveBeenCalledOnce();
     expect(mocks.instances).toHaveLength(1);
+  });
+
+  it("exposes manual reconnect for the active socket", () => {
+    const { result, rerender } = renderHook(
+      ({ token }) => useFactorySocket(true, token, vi.fn(), vi.fn(), vi.fn()),
+      { initialProps: { token: "active-token" as string | null } },
+    );
+
+    result.current();
+    expect(mocks.instances[0].reconnect).toHaveBeenCalledOnce();
+
+    rerender({ token: null });
+    result.current();
+    expect(mocks.instances[0].reconnect).toHaveBeenCalledOnce();
   });
 
   it("does not commit an old snapshot after the access token changes", async () => {

@@ -402,7 +402,7 @@ Những vấn đề architectural (KHÔNG nằm trong scope):
 | CP | Status | Started | Completed | Notes |
 |----|--------|---------|-----------|-------|
 | CP1 Toast | Completed | 2026-08-30 | 2026-08-30 | 38 files / 176 tests; lint, typecheck, build passed. |
-| CP2 Offline Banner | Pending | — | — | — |
+| CP2 Offline Banner | Completed | 2026-08-30 | 2026-08-30 | 39 files / 182 tests; lint, typecheck, build and manual smoke passed. |
 | CP3 Onboarding | Pending | — | — | — |
 | CP4 Pause/Resume | Pending | — | — | — |
 | CP5 Sim Progress | Pending | — | — | — |
