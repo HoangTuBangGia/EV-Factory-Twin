@@ -8,6 +8,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { NextActionStrip } from "@/components/workflow/next-action-strip";
 import { ToastContainer } from "@/components/ui/toast";
+import { OnboardingTour } from "@/components/onboarding/onboarding-tour";
 
 function ProtectedAppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -40,6 +41,7 @@ function ProtectedAppShell({ children }: { children: ReactNode }) {
             {children}
           </main>
         </div>
+        <OnboardingTour user={user} />
         <ToastContainer />
       </div>
     </DataProvider>

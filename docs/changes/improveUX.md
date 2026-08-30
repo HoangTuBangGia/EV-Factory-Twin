@@ -94,7 +94,7 @@ fixUX.md đã giải quyết "bước tiếp theo là gì?" và "candidate đang
   2. "Your role: {DESIGNER|MONITOR}" — giải thích trách nhiệm, link đến page chính
   3. "The cockpit" — giải thích overview panels (KPI, alerts, fleet, map)
   4. "Your first task" — hướng dẫn đến NextActionStrip, giải thích workflow cơ bản
-- Persistence: `localStorage.setItem("ft-onboarding-done", "1")`. Check trong `application-frame.tsx`.
+- Persistence: `localStorage.setItem("ft-onboarding-done:<user-id>", "1")` để Designer và Monitor dùng chung browser không che tour của nhau.
 - Skip button trên mỗi step. "Don't show again" checkbox.
 - Role-aware content: step 2-4 khác nhau cho DESIGNER vs MONITOR.
 - Styling: modal overlay dùng CSS, không dialog element (focus trap thủ công bằng useEffect).
@@ -403,7 +403,7 @@ Những vấn đề architectural (KHÔNG nằm trong scope):
 |----|--------|---------|-----------|-------|
 | CP1 Toast | Completed | 2026-08-30 | 2026-08-30 | 38 files / 176 tests; lint, typecheck, build passed. |
 | CP2 Offline Banner | Completed | 2026-08-30 | 2026-08-30 | 39 files / 182 tests; lint, typecheck, build and manual smoke passed. |
-| CP3 Onboarding | Pending | — | — | — |
+| CP3 Onboarding | Completed | 2026-08-30 | 2026-08-30 | 40 files / 186 tests; lint, typecheck, build and role-aware manual smoke passed. |
 | CP4 Pause/Resume | Pending | — | — | — |
 | CP5 Sim Progress | Pending | — | — | — |
 | CP6 Confirm Dialog | Pending | — | — | — |
