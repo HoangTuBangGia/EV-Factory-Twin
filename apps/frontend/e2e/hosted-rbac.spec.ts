@@ -129,8 +129,10 @@ test.describe(hostedSuiteTitle, () => {
     await page.reload();
     await openScenario(page, revisedCandidateName);
     await expect(page.locator(".scenario-status")).toHaveText("APPROVED");
-    page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Apply to factory" }).click();
+    const confirmation = page.getByRole("dialog", { name: /Apply .* to the factory/ });
+    await expect(confirmation).toBeVisible();
+    await confirmation.getByRole("button", { name: "Apply to factory" }).click();
     await expect(page.getByRole("status")).toContainText("PENDING");
   });
 });

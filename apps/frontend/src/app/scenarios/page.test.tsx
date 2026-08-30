@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fixtureApplyCommand,
@@ -17,13 +17,19 @@ const api = vi.hoisted(() => ({
   getLayout: vi.fn(),
   getLayoutVersion: vi.fn(),
   runScenario: vi.fn(),
+  applyScenario: vi.fn(),
+}));
+
+const auth = vi.hoisted(() => ({
+  id: "11111111-1111-4111-8111-111111111111",
+  role: "DESIGNER" as "DESIGNER" | "MONITOR",
 }));
 
 vi.mock("@/components/auth/auth-provider", () => ({
   useAuth: () => ({
     user: {
-      id: "11111111-1111-4111-8111-111111111111",
-      role: "DESIGNER",
+      id: auth.id,
+      role: auth.role,
     },
   }),
 }));
@@ -40,13 +46,19 @@ vi.mock("@/components/scenarios/optimization-panel", () => ({
 }));
 vi.mock("@/components/scenarios/scenario-actions", () => ({
   ScenarioActions: ({
+    role,
     status,
     onStartRevision,
+    onApply,
   }: {
+    role: "DESIGNER" | "MONITOR";
     status: string;
     onStartRevision: () => void;
+    onApply: () => void;
   }) => status === "REVISION_REQUESTED"
     ? <button type="button" onClick={onStartRevision}>Create revised candidate</button>
+    : role === "MONITOR" && status === "APPROVED"
+      ? <button type="button" onClick={onApply}>Apply to factory</button>
     : <div>Scenario actions</div>,
 }));
 
@@ -62,6 +74,8 @@ const layoutSummary = {
 describe("ScenariosPage command history", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    auth.id = "11111111-1111-4111-8111-111111111111";
+    auth.role = "DESIGNER";
     useFactoryStore.getState().reset();
     useToastStore.setState({ toasts: [] });
     window.history.replaceState({}, "", "/scenarios");
@@ -72,6 +86,7 @@ describe("ScenariosPage command history", () => {
     api.getLayout.mockResolvedValue(fixtureLayoutVersion);
     api.getLayoutVersion.mockResolvedValue(fixtureLayoutVersion);
     api.runScenario.mockResolvedValue(fixtureScenario);
+    api.applyScenario.mockResolvedValue(fixtureApplyCommand);
   });
 
   it("hydrates the selected candidate timeline from durable commands", async () => {
@@ -145,5 +160,32 @@ describe("ScenariosPage command history", () => {
     ));
     expect(screen.getByLabelText("Scenario name")).toHaveValue("candidate-01-revision");
     expect(screen.getAllByText("Move charging away from the aisle.")).toHaveLength(2);
+  });
+
+  it("applies an approved scenario only after styled confirmation", async () => {
+    auth.id = "22222222-2222-4222-8222-222222222222";
+    auth.role = "MONITOR";
+    render(<ScenariosPage/>);
+
+    const apply = await screen.findByRole("button", { name: "Apply to factory" });
+    apply.focus();
+    fireEvent.click(apply);
+    const dialog = screen.getByRole("dialog", { name: /Apply "candidate-01" to the factory/ });
+    expect(api.applyScenario).not.toHaveBeenCalled();
+    expect(dialog).toHaveTextContent("factory runtime resets AMRs, tasks, alerts and metrics");
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(apply).toHaveFocus();
+
+    fireEvent.click(apply);
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole(
+      "button",
+      { name: "Apply to factory" },
+    ));
+    await waitFor(() => expect(api.applyScenario).toHaveBeenCalledWith(fixtureScenario.id, {
+      timeout_seconds: 30,
+      max_retries: 1,
+    }));
   });
 });

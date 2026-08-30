@@ -10,6 +10,7 @@ import {
   type ZoneSelection,
 } from "@/components/layout/layout-zone-editor";
 import { WorkflowTimeline } from "@/components/workflow/workflow-timeline";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { apiClient } from "@/lib/api-client";
 import { can } from "@/lib/auth/permissions";
 import { defaultFactoryLayout } from "@/lib/factory-layout";
@@ -162,6 +163,7 @@ function LayoutWorkspace() {
   const [routeDrawing, setRouteDrawing] = useState(false);
   const [routeDraft, setRouteDraft] = useState<WorldPoint[]>([]);
   const [selectedRouteId, setSelectedRouteId] = useState("BATTERY_DELIVERY");
+  const [archiveConfirmationOpen, setArchiveConfirmationOpen] = useState(false);
   const parsed = layoutVersionContentSchema.safeParse(draft);
   const zoneError = zoneValidationError(draft);
   const preview = useMemo<FactoryLayout | null>(() => parsed.success
@@ -509,7 +511,8 @@ function LayoutWorkspace() {
   }
 
   async function archive() {
-    if (!selected || !window.confirm(`Archive ${selected.layout_id}?`)) return;
+    if (!selected) return;
+    setArchiveConfirmationOpen(false);
     setBusy(true);
     try {
       await apiClient.archiveLayout(selected.layout_id);
@@ -670,7 +673,8 @@ function LayoutWorkspace() {
           {selected && <VersionCandidate layoutId={selected.layout_id} version={selected.version}/>}
           <div className="button-row">
             {selected && <button className="button" type="button" disabled={busy} onClick={() => void rename()}>Rename</button>}
-            {selected && <button className="button" type="button" disabled={busy} onClick={() => void archive()}>Archive</button>}
+            {selected && <button className="button" type="button" disabled={busy}
+              onClick={() => setArchiveConfirmationOpen(true)}>Archive</button>}
             <button className="button primary" type="submit"
               disabled={busy || !parsed.success || Boolean(zoneError) || Boolean(zoneDrawing)}>
               {busy ? "Saving…" : selected ? "Save candidate revision" : "Create layout"}
@@ -708,6 +712,18 @@ function LayoutWorkspace() {
         </div>
       </section>
     </div>
+    <ConfirmDialog
+      open={archiveConfirmationOpen}
+      title="Archive layout?"
+      message={<p>
+        Archive <strong>{selected?.layout_id}</strong>? Existing scenario references remain valid,
+        but the layout will no longer appear in the active list.
+      </p>}
+      confirmLabel="Archive layout"
+      variant="danger"
+      onCancel={() => setArchiveConfirmationOpen(false)}
+      onConfirm={() => void archive()}
+    />
   </>;
 }
 

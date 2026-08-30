@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fixtureScenario } from "@/lib/fixtures";
+import { fixtureLayoutVersion, fixtureScenario } from "@/lib/fixtures";
 import { useFactoryStore } from "@/stores/factory-store";
 import { useToastStore } from "@/stores/toast-store";
 import LayoutsPage from "./page";
@@ -198,6 +198,37 @@ describe("LayoutsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create layout" }));
 
     expect(await screen.findByText(/has not been simulated yet/)).toBeInTheDocument();
+  });
+
+  it("archives a loaded layout only after styled confirmation", async () => {
+    api.getLayouts.mockResolvedValue([{
+      id: fixtureLayoutVersion.layout_id,
+      name: fixtureLayoutVersion.name,
+      latest_version: fixtureLayoutVersion.version,
+      created_by: fixtureLayoutVersion.created_by,
+      created_at: fixtureLayoutVersion.created_at,
+      archived_at: null,
+    }]);
+    api.getLayout.mockResolvedValue(fixtureLayoutVersion);
+    api.archiveLayout.mockResolvedValue(undefined);
+    render(<LayoutsPage/>);
+
+    const archive = await screen.findByRole("button", { name: "Archive" });
+    archive.focus();
+    fireEvent.click(archive);
+    const dialog = screen.getByRole("dialog", { name: "Archive layout?" });
+    expect(api.archiveLayout).not.toHaveBeenCalled();
+    expect(dialog).toHaveTextContent(fixtureLayoutVersion.layout_id);
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(archive).toHaveFocus();
+
+    fireEvent.click(archive);
+    fireEvent.click(screen.getByRole("button", { name: "Archive layout" }));
+    await waitFor(() => expect(api.archiveLayout).toHaveBeenCalledWith(
+      fixtureLayoutVersion.layout_id,
+    ));
   });
 
   it("blocks non-Designer roles", () => {

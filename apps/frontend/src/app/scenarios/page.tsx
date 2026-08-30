@@ -17,6 +17,7 @@ import {
   type ScenarioFieldErrors,
 } from "@/components/scenarios/scenario-run-form";
 import { WorkflowTimeline } from "@/components/workflow/workflow-timeline";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { apiClient } from "@/lib/api-client";
 import { can } from "@/lib/auth/permissions";
 import {
@@ -117,6 +118,7 @@ export default function ScenariosPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [commandLoadError, setCommandLoadError] = useState<string | null>(null);
   const [activeAction, setActiveAction] = useState<ScenarioAction | null>(null);
+  const [applyConfirmationOpen, setApplyConfirmationOpen] = useState(false);
   const scenarios = useFactoryStore((state) => state.scenarios);
   const commands = useFactoryStore((state) => state.commands);
   const setScenarios = useFactoryStore((state) => state.setScenarios);
@@ -344,17 +346,17 @@ export default function ScenariosPage() {
     }
   }
 
-  async function applyScenario() {
+  function requestApplyScenario() {
     if (!candidate || candidate.status !== "APPROVED" || !mayApply) {
       setActionError("Only a Monitor can apply an approved scenario.");
       return;
     }
-    if (!window.confirm(
-      `Apply "${candidate.name}" to the factory?\n\n`
-      + "A command is queued for the Fleet Manager bridge. When the bridge completes it, "
-      + "factory runtime resets AMRs, tasks, alerts and metrics.",
-    )) return;
+    setApplyConfirmationOpen(true);
+  }
 
+  async function applyScenario() {
+    if (!candidate || candidate.status !== "APPROVED" || !mayApply) return;
+    setApplyConfirmationOpen(false);
     setActionError(null);
     setActiveAction("apply");
     try {
@@ -496,7 +498,7 @@ export default function ScenariosPage() {
                 onRequestRevision={(note) => void requestRevision(note)}
                 onStartRevision={() => void startRevision()}
                 canStartRevision={candidate.created_by === user.id}
-                onApply={() => void applyScenario()}
+                onApply={requestApplyScenario}
               />
             </div>
           )}
@@ -504,6 +506,18 @@ export default function ScenariosPage() {
       </div>
       {mayRun && <OptimizationPanel key={`${selectedLayout?.layout_id}-${selectedLayout?.version}`}
         layouts={layouts} selectedLayout={selectedLayout}/>}
+      <ConfirmDialog
+        open={applyConfirmationOpen}
+        title={`Apply "${candidate?.name ?? "scenario"}" to the factory?`}
+        message={<>
+          <p>A command will be queued for the Fleet Manager bridge.</p>
+          <p>When the bridge completes it, factory runtime resets AMRs, tasks, alerts and metrics.</p>
+        </>}
+        confirmLabel="Apply to factory"
+        variant="danger"
+        onCancel={() => setApplyConfirmationOpen(false)}
+        onConfirm={() => void applyScenario()}
+      />
     </>
   );
 }
