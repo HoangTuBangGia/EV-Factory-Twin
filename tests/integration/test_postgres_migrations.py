@@ -68,9 +68,7 @@ def test_default_layout_repair_creates_parent_before_version() -> None:
 
 
 def test_scenario_revision_workflow_is_persisted_and_audited() -> None:
-    status_sql = (MIGRATIONS / "0014_add_revision_requested_status.sql").read_text(
-        encoding="utf-8"
-    )
+    status_sql = (MIGRATIONS / "0014_add_revision_requested_status.sql").read_text(encoding="utf-8")
     workflow_sql = (MIGRATIONS / "0015_add_scenario_revision_workflow.sql").read_text(
         encoding="utf-8"
     )
