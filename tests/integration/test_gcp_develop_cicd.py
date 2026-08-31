@@ -19,7 +19,9 @@ def test_develop_deployment_is_branch_and_ci_gated() -> None:
     assert "github.ref == 'refs/heads/main'" in production
     assert "needs: [database, backend, frontend]" in ci_workflow
     assert "uses: ./.github/workflows/deploy-gcp-develop.yml" in ci_workflow
-    assert "github.event_name == 'push' && github.ref == 'refs/heads/develop'" in ci_workflow
+    assert "github.ref == 'refs/heads/develop' &&" in ci_workflow
+    assert "github.event_name == 'push' || github.event_name == 'workflow_dispatch'" in ci_workflow
+    assert "migrations_applied: ${{ inputs.migrations_applied || false }}" in ci_workflow
     assert "uses: ./.github/workflows/deploy-gcp-production.yml" in ci_workflow
     assert "github.event_name == 'push' && github.ref == 'refs/heads/main'" in ci_workflow
 
