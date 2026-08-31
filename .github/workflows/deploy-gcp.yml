@@ -165,20 +165,12 @@ jobs:
           EDGE_VM: ${{ inputs.edge_vm }}
           EDGE_ZONE: ${{ inputs.edge_zone }}
         run: |
-          gcloud compute ssh "$EDGE_VM" \
-            --project="$GCP_PROJECT" \
-            --zone="$EDGE_ZONE" \
-            --tunnel-through-iap \
-            --ssh-key-expire-after=5m \
-            --quiet \
-            --command="sudo /usr/local/sbin/ev-twin-deploy '$GITHUB_SHA'"
-
           deployed_sha="$(gcloud compute ssh "$EDGE_VM" \
             --project="$GCP_PROJECT" \
             --zone="$EDGE_ZONE" \
             --tunnel-through-iap \
             --ssh-key-expire-after=5m \
             --quiet \
-            --command='cat /var/lib/ev-twin-deploy/current-sha')"
+            --command="sudo /usr/local/sbin/ev-twin-deploy '$GITHUB_SHA' >&2 && cat /var/lib/ev-twin-deploy/current-sha")"
           test "$deployed_sha" = "$GITHUB_SHA"
           echo "$EDGE_VM ready at $deployed_sha"
