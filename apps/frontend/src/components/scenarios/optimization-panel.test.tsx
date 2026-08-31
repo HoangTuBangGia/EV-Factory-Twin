@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LayoutVersion } from "@/schemas/layout";
 import { OptimizationPanel } from "./optimization-panel";
 
@@ -28,12 +28,7 @@ const layout = {
   archived_at: null,
 } satisfies LayoutVersion;
 
-it("submits a bounded deterministic optimization request", async () => {
-  runOptimization.mockResolvedValue({
-    evaluated_candidates: 8,
-    recommendation: { name: "flow-option-01" },
-    ranking: [],
-  });
+function renderPanel() {
   render(<OptimizationPanel
     layouts={[{
       id: layout.layout_id,
@@ -45,16 +40,57 @@ it("submits a bounded deterministic optimization request", async () => {
     }]}
     selectedLayout={layout}
   />);
+}
 
-  fireEvent.click(screen.getByRole("button", { name: "Evaluate candidates" }));
-
-  await waitFor(() => expect(runOptimization).toHaveBeenCalledOnce());
-  expect(runOptimization.mock.calls[0]?.[0]).toMatchObject({
-    layouts: [{ layout_id: "LAYOUT-DEFAULT", layout_version: 1 }],
-    route_ids: ["BATTERY_DELIVERY"],
-    robot_counts: [2, 3],
-    robot_speeds_mps: [0.8, 1],
-    charger_counts: [1, 2],
+describe("OptimizationPanel", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    runOptimization.mockResolvedValue({
+      evaluated_candidates: 8,
+      recommendation: { id: "SCN-OPT-01", name: "flow-option-01" },
+      ranking: [],
+    });
   });
-  expect(await screen.findByText(/from 8 candidates/)).toBeInTheDocument();
+
+  it("stays collapsed until a Designer opens the advanced workflow", () => {
+    renderPanel();
+
+    expect(screen.getByText("Advanced · Optimize multiple options").closest("details"))
+      .not.toHaveAttribute("open");
+    expect(screen.getByText("8 combinations · maximum 64")).toBeInTheDocument();
+  });
+
+  it("submits a bounded deterministic optimization request", async () => {
+    renderPanel();
+    fireEvent.click(screen.getByText("Advanced · Optimize multiple options"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Evaluate candidates" }));
+
+    await waitFor(() => expect(runOptimization).toHaveBeenCalledOnce());
+    expect(runOptimization.mock.calls[0]?.[0]).toMatchObject({
+      layouts: [{ layout_id: "LAYOUT-DEFAULT", layout_version: 1 }],
+      route_ids: ["BATTERY_DELIVERY"],
+      robot_counts: [2, 3],
+      robot_speeds_mps: [0.8, 1],
+      charger_counts: [1, 2],
+    });
+    expect(await screen.findByText(/from 8 candidates/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open recommended candidate" }))
+      .toHaveAttribute("href", "/scenarios?candidate=SCN-OPT-01");
+  });
+
+  it("blocks a Cartesian product above the backend limit", () => {
+    renderPanel();
+    fireEvent.click(screen.getByText("Advanced · Optimize multiple options"));
+    fireEvent.change(screen.getByLabelText("Robot counts"), {
+      target: { value: "1,2,3,4,5,6,7,8" },
+    });
+    fireEvent.change(screen.getByLabelText("Demand intervals (s)"), {
+      target: { value: "4,5,6" },
+    });
+
+    expect(screen.getByRole("status")).toHaveTextContent("96 candidates");
+    expect(screen.getByText(/Reduce the dimensions/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Evaluate candidates" })).toBeDisabled();
+  });
 });

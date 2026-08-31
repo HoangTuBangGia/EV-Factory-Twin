@@ -24,8 +24,10 @@ import {
   type OptimizationRequest,
 } from "@/schemas/optimization";
 import {
+  scenarioRevisionRequestSchema,
   scenarioRunRequestSchema,
   scenarioSchema,
+  type ScenarioRevisionRequest,
   type ScenarioRunRequest,
 } from "@/schemas/scenario";
 import { taskSchema } from "@/schemas/task";
@@ -181,6 +183,11 @@ export const apiClient = {
   rejectScenario: (id: string) =>
     request(`/api/v1/scenarios/${encodeURIComponent(id)}/reject`, scenarioSchema, {
       method: "POST",
+    }),
+  requestScenarioRevision: (id: string, input: ScenarioRevisionRequest) =>
+    request(`/api/v1/scenarios/${encodeURIComponent(id)}/request-revision`, scenarioSchema, {
+      method: "POST",
+      body: JSON.stringify(scenarioRevisionRequestSchema.parse(input)),
     }),
   applyScenario: (id: string, input: ApplyScenarioRequest = {}) =>
     request(`/api/v1/scenarios/${encodeURIComponent(id)}/apply`, commandSchema, {

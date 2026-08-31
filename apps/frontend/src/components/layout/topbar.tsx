@@ -1,7 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
+import { Breadcrumbs } from "@/components/layout/breadcrumbs";
+import { DataFreshnessIndicator } from "@/components/layout/data-freshness-indicator";
+import { LivePauseButton } from "@/components/layout/live-pause-button";
 import { useFactoryStore } from "@/stores/factory-store";
 
 export function Topbar() {
@@ -22,9 +25,13 @@ export function Topbar() {
     <header className="topbar">
       <div>
         <div className="eyebrow">Battery intralogistics</div>
-        <h1>EV Factory Digital Twin</h1>
+        <Suspense fallback={<div className="breadcrumb-fallback">EV Factory Digital Twin</div>}>
+          <Breadcrumbs/>
+        </Suspense>
       </div>
       <div className="top-actions">
+        <LivePauseButton />
+        <DataFreshnessIndicator/>
         <span className={`status ${status}`}><i className="status-dot" />{status}</span>
         {user && (
           <div className="user-summary">

@@ -3,10 +3,19 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { FactoryPlantMap2D } from "@/components/factory/factory-plant-map-2d";
+import {
+  LayoutZoneEditor,
+  type ZoneDrawing,
+  type ZoneKind,
+  type ZoneSelection,
+} from "@/components/layout/layout-zone-editor";
+import { WorkflowTimeline } from "@/components/workflow/workflow-timeline";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { apiClient } from "@/lib/api-client";
 import { can } from "@/lib/auth/permissions";
 import { defaultFactoryLayout } from "@/lib/factory-layout";
 import { projectLayoutVersion } from "@/lib/layout-projection";
+import { candidateForLayoutVersion } from "@/lib/workflow";
 import type { FactoryLayout, WorldPoint } from "@/schemas/factory";
 import {
   layoutVersionContentSchema,
@@ -14,6 +23,8 @@ import {
   type LayoutVersion,
   type LayoutVersionContent,
 } from "@/schemas/layout";
+import { useFactoryStore } from "@/stores/factory-store";
+import { toastError, toastSuccess } from "@/stores/toast-store";
 
 const ALL_LAYERS = { stations: true, routes: true, noGoZones: true } as const;
 const SNAP_METRES = 0.5;
@@ -68,6 +79,77 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "An unexpected error occurred.";
 }
 
+function zoneValidationError(content: LayoutVersionContent) {
+  const zones = [...content.no_go_zones, ...content.congestion_zones];
+  const ids = new Set<string>();
+  for (const zone of zones) {
+    if (ids.has(zone.id)) return `Zone ID ${zone.id} is duplicated.`;
+    ids.add(zone.id);
+    for (const point of zone.points) {
+      if (point.x < 0 || point.x > content.width || point.y < 0 || point.y > content.height) {
+        return `${zone.id} has a point outside the factory footprint.`;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Route drawing has an order the map cannot express on its own, so the steps
+ * are shown with live state instead of a transient one-line notice.
+ */
+function RouteStepper({
+  route,
+  placed,
+}: {
+  route: LayoutVersionContent["routes"][number];
+  placed: number;
+}) {
+  const steps = [
+    `Select ${route.start_station_id}`,
+    placed > 1 ? `Add waypoints · ${placed - 1} placed` : "Add waypoints",
+    `Select ${route.end_station_id}`,
+  ];
+  const current = placed === 0 ? 0 : 1;
+
+  return (
+    <ol className="route-stepper" aria-label={`Drawing ${route.id}`}>
+      {steps.map((step, index) => (
+        <li
+          key={step}
+          className={index < current ? "done" : index === current ? "current" : "pending"}
+          aria-current={index === current ? "step" : undefined}
+        >
+          <b aria-hidden="true">{index + 1}</b>{step}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/**
+ * A candidate is not stored anywhere: the newest scenario benchmarked on this
+ * exact layout version stands in for it, so the editor can say where the
+ * revision currently sits in review without a new endpoint.
+ */
+function VersionCandidate({ layoutId, version }: { layoutId: string; version: number }) {
+  const scenarios = useFactoryStore((state) => state.scenarios);
+  const candidate = candidateForLayoutVersion(scenarios, layoutId, version);
+
+  if (!candidate) {
+    return <p className="form-help">
+      Version {version} has not been simulated yet, so no Monitor can review it.
+    </p>;
+  }
+
+  return <>
+    <p className="form-help">
+      Version {version} is represented by candidate <strong>{candidate.name}</strong>.
+    </p>
+    <WorkflowTimeline status={candidate.status}/>
+  </>;
+}
+
 function LayoutWorkspace() {
   const { user } = useAuth();
   const [layouts, setLayouts] = useState<LayoutSummary[]>([]);
@@ -76,11 +158,14 @@ function LayoutWorkspace() {
   const [draft, setDraft] = useState<LayoutVersionContent>(initialContent);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [zoneError, setZoneError] = useState<string | null>(null);
+  const [selectedZone, setSelectedZone] = useState<ZoneSelection | null>(null);
+  const [zoneDrawing, setZoneDrawing] = useState<ZoneDrawing | null>(null);
   const [routeDrawing, setRouteDrawing] = useState(false);
   const [routeDraft, setRouteDraft] = useState<WorldPoint[]>([]);
   const [selectedRouteId, setSelectedRouteId] = useState("BATTERY_DELIVERY");
+  const [archiveConfirmationOpen, setArchiveConfirmationOpen] = useState(false);
   const parsed = layoutVersionContentSchema.safeParse(draft);
+  const zoneError = zoneValidationError(draft);
   const preview = useMemo<FactoryLayout | null>(() => parsed.success
     ? contentToMap(
         parsed.data,
@@ -107,6 +192,8 @@ function LayoutWorkspace() {
       setSelectedRouteId(loaded.routes[0]?.id ?? "");
       setRouteDrawing(false);
       setRouteDraft([]);
+      setSelectedZone(null);
+      setZoneDrawing(null);
     } catch (error) {
       setNotice(`Unable to load layout: ${errorMessage(error)}`);
     } finally {
@@ -134,7 +221,8 @@ function LayoutWorkspace() {
     setName("Battery logistics candidate");
     setDraft(initialContent());
     setNotice(null);
-    setZoneError(null);
+    setSelectedZone(null);
+    setZoneDrawing(null);
     setRouteDrawing(false);
     setRouteDraft([]);
     setSelectedRouteId("BATTERY_DELIVERY");
@@ -167,7 +255,8 @@ function LayoutWorkspace() {
     if (!route) return;
     setRouteDrawing(true);
     setRouteDraft([]);
-    setNotice(`Select ${route.start_station_id}, add waypoints, then select ${route.end_station_id}.`);
+    setZoneDrawing(null);
+    setNotice(null);
   }
 
   function addRoutePoint(point: WorldPoint) {
@@ -188,7 +277,7 @@ function LayoutWorkspace() {
         return;
       }
       setRouteDraft([{ x: station.x, y: station.y }]);
-      setNotice(`Add waypoints on the floor, then select ${route.end_station_id}.`);
+      setNotice(null);
       return;
     }
     if (stationId !== route.end_station_id) {
@@ -293,19 +382,94 @@ function LayoutWorkspace() {
     }));
   }
 
-  function updateZones(field: "no_go_zones" | "congestion_zones", value: string) {
-    try {
-      const zones: unknown = JSON.parse(value);
-      setDraft((current) => layoutVersionContentSchema.parse({ ...current, [field]: zones }));
-      setZoneError(null);
-    } catch (error) {
-      setZoneError(`${field.replaceAll("_", " ")}: ${errorMessage(error)}`);
-    }
+  function startZoneDrawing(kind: ZoneKind) {
+    const prefix = kind === "no_go_zones" ? "NO_GO_ZONE" : "CONGESTION_ZONE";
+    const used = new Set([...draft.no_go_zones, ...draft.congestion_zones].map((zone) => zone.id));
+    let suffix = 1;
+    while (used.has(`${prefix}_${suffix}`)) suffix += 1;
+    setRouteDrawing(false);
+    setRouteDraft([]);
+    setSelectedZone(null);
+    setZoneDrawing({ kind, id: `${prefix}_${suffix}`, points: [] });
+    setNotice(null);
+  }
+
+  function addZonePoint(point: WorldPoint) {
+    setZoneDrawing((current) => current && current.points.length < 100
+      ? { ...current, points: [...current.points, point] }
+      : current);
+  }
+
+  function finishZoneDrawing() {
+    if (!zoneDrawing || zoneDrawing.points.length < 3) return;
+    const index = draft[zoneDrawing.kind].length;
+    setDraft((current) => ({
+      ...current,
+      [zoneDrawing.kind]: [
+        ...current[zoneDrawing.kind],
+        zoneDrawing.kind === "congestion_zones"
+          ? { id: zoneDrawing.id, points: zoneDrawing.points, delay_multiplier: 1.25 }
+          : { id: zoneDrawing.id, points: zoneDrawing.points },
+      ],
+    }));
+    setSelectedZone({ kind: zoneDrawing.kind, index });
+    setNotice(`${zoneDrawing.id} added to the candidate layout.`);
+    setZoneDrawing(null);
+  }
+
+  function updateZoneId(selection: ZoneSelection, id: string) {
+    setDraft((current) => ({
+      ...current,
+      [selection.kind]: current[selection.kind].map((zone, index) => (
+        index === selection.index ? { ...zone, id } : zone
+      )),
+    }));
+  }
+
+  function updateZoneDelay(selection: ZoneSelection, value: number) {
+    if (selection.kind !== "congestion_zones") return;
+    setDraft((current) => ({
+      ...current,
+      congestion_zones: current.congestion_zones.map((zone, index) => (
+        index === selection.index ? { ...zone, delay_multiplier: value } : zone
+      )),
+    }));
+  }
+
+  function updateZonePoint(
+    selection: ZoneSelection,
+    pointIndex: number,
+    field: "x" | "y",
+    value: number,
+  ) {
+    const maximum = field === "x" ? draft.width : draft.height;
+    const snapped = Math.min(maximum, Math.max(0, numberValue(String(value))));
+    setDraft((current) => ({
+      ...current,
+      [selection.kind]: current[selection.kind].map((zone, zoneIndex) => zoneIndex === selection.index
+        ? {
+            ...zone,
+            points: zone.points.map((point, index) => (
+              index === pointIndex ? { ...point, [field]: snapped } : point
+            )),
+          }
+        : zone),
+    }));
+  }
+
+  function removeZone(selection: ZoneSelection) {
+    const zone = draft[selection.kind][selection.index];
+    setDraft((current) => ({
+      ...current,
+      [selection.kind]: current[selection.kind].filter((_, index) => index !== selection.index),
+    }));
+    setSelectedZone(null);
+    setNotice(zone ? `${zone.id} removed from the candidate layout.` : null);
   }
 
   async function save(event: FormEvent) {
     event.preventDefault();
-    if (!parsed.success || zoneError) return;
+    if (!parsed.success || zoneError || zoneDrawing) return;
     setBusy(true);
     setNotice(null);
     try {
@@ -317,9 +481,15 @@ function LayoutWorkspace() {
       setName(saved.name);
       setDraft(layoutVersionContentSchema.parse(saved));
       await refreshLayouts();
-      setNotice(creatingVersion ? `Created immutable version ${saved.version}.` : `Created ${saved.layout_id}.`);
+      const successMessage = creatingVersion
+        ? `Created immutable version ${saved.version}.`
+        : `Created ${saved.layout_id}.`;
+      setNotice(successMessage);
+      toastSuccess(successMessage);
     } catch (error) {
-      setNotice(`Unable to save layout: ${errorMessage(error)}`);
+      const failureMessage = `Unable to save layout: ${errorMessage(error)}`;
+      setNotice(failureMessage);
+      toastError(failureMessage);
     } finally {
       setBusy(false);
     }
@@ -341,7 +511,8 @@ function LayoutWorkspace() {
   }
 
   async function archive() {
-    if (!selected || !window.confirm(`Archive ${selected.layout_id}?`)) return;
+    if (!selected) return;
+    setArchiveConfirmationOpen(false);
     setBusy(true);
     try {
       await apiClient.archiveLayout(selected.layout_id);
@@ -354,6 +525,8 @@ function LayoutWorkspace() {
       setBusy(false);
     }
   }
+
+  const drawingRoute = draft.routes.find((route) => route.id === selectedRouteId);
 
   return <>
     <header className="page-head">
@@ -436,6 +609,8 @@ function LayoutWorkspace() {
               setNotice(null);
             }}>Cancel drawing</button>}
           </div>
+          {routeDrawing && drawingRoute
+            && <RouteStepper route={drawingRoute} placed={routeDraft.length}/>}
           <div className="layout-editor-items">{draft.routes.map((route, routeIndex) => <fieldset
             key={route.id} className={route.id === selectedRouteId ? "selected-route" : ""}
             onClick={() => setSelectedRouteId(route.id)}
@@ -469,25 +644,40 @@ function LayoutWorkspace() {
             </div>)}</div>
           </fieldset>)}</div>
 
-          <h4 className="editor-section-title">Zones (JSON)</h4>
-          <div className="field"><label htmlFor="no-go-zones">No-go zones</label>
-            <textarea id="no-go-zones" rows={5} key={`no-go-${selected?.layout_id}-${selected?.version}`}
-              defaultValue={JSON.stringify(draft.no_go_zones, null, 2)}
-              onBlur={(event) => updateZones("no_go_zones", event.target.value)}/></div>
-          <div className="field"><label htmlFor="congestion-zones">Congestion zones</label>
-            <textarea id="congestion-zones" rows={5} key={`congestion-${selected?.layout_id}-${selected?.version}`}
-              defaultValue={JSON.stringify(draft.congestion_zones, null, 2)}
-              onBlur={(event) => updateZones("congestion_zones", event.target.value)}/></div>
+          <h4 className="editor-section-title">Safety and congestion zones</h4>
+          <LayoutZoneEditor
+            content={draft}
+            selection={selectedZone}
+            drawing={zoneDrawing}
+            onSelect={setSelectedZone}
+            onBegin={startZoneDrawing}
+            onUpdateId={updateZoneId}
+            onUpdateDelay={updateZoneDelay}
+            onUpdatePoint={updateZonePoint}
+            onRemove={removeZone}
+            onUndo={() => setZoneDrawing((current) => current
+              ? { ...current, points: current.points.slice(0, -1) }
+              : null)}
+            onCancel={() => setZoneDrawing(null)}
+            onFinish={finishZoneDrawing}
+          />
 
           {(zoneError || !parsed.success) && <div className="scenario-error" role="alert">
             {zoneError ?? parsed.error?.issues[0]?.message ?? "Layout is invalid."}
           </div>}
           {notice && <div className="review-note" role="status">{notice}</div>}
+          <p className="form-help">
+            Saving stores an immutable revision. The live factory keeps running its current layout
+            until a Monitor applies a simulated candidate built on this revision.
+          </p>
+          {selected && <VersionCandidate layoutId={selected.layout_id} version={selected.version}/>}
           <div className="button-row">
             {selected && <button className="button" type="button" disabled={busy} onClick={() => void rename()}>Rename</button>}
-            {selected && <button className="button" type="button" disabled={busy} onClick={() => void archive()}>Archive</button>}
-            <button className="button primary" type="submit" disabled={busy || !parsed.success || Boolean(zoneError)}>
-              {busy ? "Saving…" : selected ? "Create new version" : "Create layout"}
+            {selected && <button className="button" type="button" disabled={busy}
+              onClick={() => setArchiveConfirmationOpen(true)}>Archive</button>}
+            <button className="button primary" type="submit"
+              disabled={busy || !parsed.success || Boolean(zoneError) || Boolean(zoneDrawing)}>
+              {busy ? "Saving…" : selected ? "Save candidate revision" : "Create layout"}
             </button>
             {selected && <a className="button primary" href={`/scenarios?layout=${encodeURIComponent(selected.layout_id)}&version=${selected.version}`}>
               Simulate this version
@@ -506,15 +696,34 @@ function LayoutWorkspace() {
                 routeDrawing,
                 routeDraft,
                 selectedRouteId,
+                zoneDrawing: Boolean(zoneDrawing),
+                zoneDraft: zoneDrawing?.points ?? [],
+                congestionZones: draft.congestion_zones,
+                selectedZone: selectedZone && draft[selectedZone.kind][selectedZone.index]
+                  ? { kind: selectedZone.kind, id: draft[selectedZone.kind][selectedZone.index].id }
+                  : null,
                 onStationMove: moveStation,
                 onRoutePoint: addRoutePoint,
                 onRouteStation: selectRouteStation,
+                onZonePoint: addZonePoint,
               }}
             />
           : <div className="empty">Preview pauses while the draft is invalid.</div>}
         </div>
       </section>
     </div>
+    <ConfirmDialog
+      open={archiveConfirmationOpen}
+      title="Archive layout?"
+      message={<p>
+        Archive <strong>{selected?.layout_id}</strong>? Existing scenario references remain valid,
+        but the layout will no longer appear in the active list.
+      </p>}
+      confirmLabel="Archive layout"
+      variant="danger"
+      onCancel={() => setArchiveConfirmationOpen(false)}
+      onConfirm={() => void archive()}
+    />
   </>;
 }
 

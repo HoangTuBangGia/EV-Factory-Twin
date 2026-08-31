@@ -52,6 +52,7 @@ PROTECTED_REQUESTS: list[tuple[str, str, dict[str, object] | None]] = [
     ("POST", "/api/v1/scenarios/SCN-9999/submit", None),
     ("POST", "/api/v1/scenarios/SCN-9999/approve", None),
     ("POST", "/api/v1/scenarios/SCN-9999/reject", None),
+    ("POST", "/api/v1/scenarios/SCN-9999/request-revision", {"note": "Change route"}),
     ("POST", "/api/v1/scenarios/SCN-9999/apply", None),
     ("POST", "/api/v1/mock/start", None),
     ("POST", "/api/v1/mock/stop", None),
@@ -155,6 +156,7 @@ async def test_only_designer_can_submit_scenario(client: AsyncClient) -> None:
     [
         "/api/v1/scenarios/SCN-9999/approve",
         "/api/v1/scenarios/SCN-9999/reject",
+        "/api/v1/scenarios/SCN-9999/request-revision",
         "/api/v1/scenarios/SCN-9999/apply",
         "/api/v1/mock/start",
         "/api/v1/mock/stop",
@@ -168,6 +170,8 @@ async def test_only_monitor_can_mutate_review_or_factory(
 ) -> None:
     use_role(AppRole.DESIGNER)
     payload = MOCK_CONFIG if path.endswith("/config") else None
+    if path.endswith("/request-revision"):
+        payload = {"note": "Change route"}
 
     response = await request(client, "POST", path, payload)
 

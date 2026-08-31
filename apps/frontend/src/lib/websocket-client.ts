@@ -149,6 +149,22 @@ export class FactorySocket {
     }
   }
 
+  reconnect() {
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.clearAuthTimer();
+    const socket = this.socket;
+    this.socket = null;
+    this.authenticated = false;
+    this.synchronized = false;
+    this.pendingEvents = [];
+    this.retry = 0;
+    if (socket && socket.readyState < WebSocket.CLOSING) {
+      socket.close(1_000, "Manual reconnect");
+    }
+    this.connect();
+  }
+
   requestRecovery(reason = "Factory snapshot resynchronization required") {
     const socket = this.socket;
     this.pendingEvents = [];

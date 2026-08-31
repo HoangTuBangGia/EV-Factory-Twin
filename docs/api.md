@@ -79,6 +79,7 @@ string/log/frontend và không được tái sử dụng service-role key.
 | POST | `/api/v1/optimizations/run` | `OptimizationResult` | Đánh giá và xếp hạng tối đa 64 candidate |
 | POST | `/api/v1/scenarios/{scenario_id}/approve` | [`Scenario`](#scenario) | Phê duyệt candidate đã mô phỏng |
 | POST | `/api/v1/scenarios/{scenario_id}/reject` | [`Scenario`](#scenario) | Từ chối candidate đã mô phỏng |
+| POST | `/api/v1/scenarios/{scenario_id}/request-revision` | [`Scenario`](#scenario) | MONITOR yêu cầu Designer sửa candidate, bắt buộc có `note` |
 | POST | `/api/v1/scenarios/{scenario_id}/apply` | `Command` | Tạo durable apply command PENDING |
 | GET | `/api/v1/commands` | `Command[]` | Danh sách command/attempt |
 | GET | `/api/v1/commands/{operation_id}` | `Command` | Chi tiết command |
@@ -95,7 +96,7 @@ Ma trận quyền REST hiện tại:
 | GET auth/factory/robot/task/KPI/alert/scenario/layout | Có | Có |
 | Create/version/rename/archive layout | Có | Không |
 | `POST /scenarios/run` | Có | Không |
-| Approve/Reject/Apply scenario | Không | Có |
+| Approve/Reject/Request revision/Apply scenario | Không | Có |
 | Start/Stop/Reset/Config MockFactory | Không | Có |
 
 MVP chỉ có hai application role. User provisioning dùng `make user-create`.
@@ -480,7 +481,7 @@ Giá trị ngoài khoảng cho phép → **422**.
 Nhóm endpoint này tạo vòng MVP human-in-the-loop:
 
 ```text
-chạy benchmark → xem KPI → approve/reject → apply nếu đã approve
+chạy benchmark → xem KPI → approve/reject/request revision → apply nếu đã approve
 ```
 
 `POST /api/v1/scenarios/run` chạy mô phỏng battery logistics SimPy nhưng **không thay đổi** mock
@@ -520,6 +521,7 @@ Body của `POST /api/v1/scenarios/run`. Mỗi run bắt buộc tham chiếu đ�
 | Field | Type | Giới hạn | Ý nghĩa |
 |---|---|---|---|
 | `name` | string | 1–80 ký tự, không được chỉ có khoảng trắng | Tên candidate |
+| `revision_of` | string hoặc null | ID scenario hợp lệ | Chỉ dùng khi chạy lại candidate đang `REVISION_REQUESTED` |
 | `num_robots` | int | 1–10 | Số robot khả dụng |
 | `num_tasks` | int | 1–10.000 | Tổng task cần tạo trong benchmark |
 | `task_arrival_interval` | float | 1,0–60,0 giây | Khoảng cách giữa hai task mới |
@@ -637,6 +639,8 @@ Tất cả endpoint scenario trả về schema này (endpoint list trả về m�
   "created_by": "00000000-0000-0000-0000-000000000001",
   "reviewed_at": null,
   "reviewed_by": null,
+  "review_note": null,
+  "revision_of": null,
   "applied_at": null,
   "applied_by": null,
   "version": 1
@@ -660,6 +664,8 @@ Tất cả endpoint scenario trả về schema này (endpoint list trả về m�
 | `created_by` | UUID | có với baseline | Người chạy candidate; baseline không có actor |
 | `reviewed_at` | datetime | có (mặc định `null`) | Được gán UTC khi approve hoặc reject |
 | `reviewed_by` | UUID | có (mặc định `null`) | Monitor approve hoặc reject |
+| `review_note` | string | có (mặc định `null`) | Feedback 1–1000 ký tự, bắt buộc khi status là `REVISION_REQUESTED` |
+| `revision_of` | string | có (mặc định `null`) | ID candidate `REVISION_REQUESTED` mà run mới kế thừa |
 | `applied_at` | datetime | có (mặc định `null`) | Được gán UTC khi apply thành công |
 | `applied_by` | UUID | có (mặc định `null`) | Monitor apply |
 | `version` | int | không | Optimistic-concurrency token, tăng sau mỗi transition |
@@ -686,7 +692,9 @@ Apply sẽ reset robot, task, alert, metrics và phát WebSocket event
 Backend update scenario bằng điều kiện đồng thời trên `status` và `version`, nên
 nếu hai Monitor gửi transition cùng lúc chỉ một request thành công; request còn
 lại nhận **409**. Người tạo scenario không được review hoặc apply chính scenario
-đó. Scenario transition và audit liên quan dùng chung một SQL transaction.
+đó. Monitor có thể yêu cầu sửa bằng body `{ "note": "..." }`; chỉ creator của candidate đó
+được chạy candidate kế tiếp với `revision_of`. Benchmark gốc không bị sửa. Scenario transition và
+audit liên quan dùng chung một SQL transaction.
 
 Trong một backend process, apply và các lệnh mock `start/stop/reset/config` dùng
 chung một control lock. Vì vậy reset/config thủ công không thể chen giữa lúc một
@@ -704,7 +712,8 @@ Audit chưa có browser endpoint trong MVP hiện tại. Mỗi event durable có
 `actor_id`, snapshot `actor_role`, `action`, `before_data`, `after_data`,
 `request_id` và `created_at`. Bảng này append-only; chỉ Monitor active được đọc
 qua Backend audit API khi cần điều tra. Các action scenario hiện có là `SCENARIO_RUN`,
-`SCENARIO_APPROVED`, `SCENARIO_REJECTED`, `SCENARIO_APPLIED`; reset thủ công và
+`SCENARIO_APPROVED`, `SCENARIO_REJECTED`, `SCENARIO_REVISION_REQUESTED`,
+`SCENARIO_APPLIED`; reset thủ công và
 reset do apply đều tạo `FACTORY_RESET`. Reset/config thủ công ghi event
 `*_REQUESTED` trước side effect và event hoàn tất dùng cùng `request_id`; nhờ đó
 nếu side effect hoặc audit hoàn tất lỗi vẫn còn durable intent để điều tra. Các

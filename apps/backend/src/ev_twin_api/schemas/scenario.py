@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from twin_core.default_layout import DEFAULT_LAYOUT_ID, DEFAULT_LAYOUT_VERSION, DEFAULT_ROUTE_ID
 
 from ev_twin_api.schemas.base import UtcDatetime
@@ -14,6 +14,7 @@ class ScenarioStatus(StrEnum):
     SUBMITTED = "SUBMITTED"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
+    REVISION_REQUESTED = "REVISION_REQUESTED"
     APPLIED = "APPLIED"
 
 
@@ -44,6 +45,7 @@ class ScenarioConfig(BaseModel):
 
 class ScenarioRunRequest(ScenarioConfig):
     name: str = Field(min_length=1, max_length=80)
+    revision_of: str | None = Field(default=None, min_length=1, max_length=80)
 
     @field_validator("name")
     @classmethod
@@ -53,7 +55,20 @@ class ScenarioRunRequest(ScenarioConfig):
         return value
 
     def to_config(self) -> ScenarioConfig:
-        return ScenarioConfig.model_validate(self.model_dump(exclude={"name"}))
+        return ScenarioConfig.model_validate(self.model_dump(exclude={"name", "revision_of"}))
+
+
+class ScenarioRevisionRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    note: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("note")
+    @classmethod
+    def reject_blank_note(cls, value: str) -> str:
+        if not value:
+            raise ValueError("note must not be blank")
+        return value
 
 
 class ScenarioMetrics(BaseModel):
@@ -81,9 +96,17 @@ class Scenario(BaseModel):
     created_by: UUID | None = None
     reviewed_at: UtcDatetime | None = None
     reviewed_by: UUID | None = None
+    review_note: str | None = Field(default=None, max_length=1000)
+    revision_of: str | None = None
     applied_at: UtcDatetime | None = None
     applied_by: UUID | None = None
     version: int = Field(default=1, ge=1)
+
+    @model_validator(mode="after")
+    def validate_revision_note(self) -> "Scenario":
+        if self.status == ScenarioStatus.REVISION_REQUESTED and not self.review_note:
+            raise ValueError("REVISION_REQUESTED requires review_note")
+        return self
 
     def with_status(
         self,
@@ -91,6 +114,7 @@ class Scenario(BaseModel):
         *,
         reviewed_at: datetime | None = None,
         reviewed_by: UUID | None = None,
+        review_note: str | None = None,
         applied_at: datetime | None = None,
         applied_by: UUID | None = None,
     ) -> "Scenario":
@@ -102,6 +126,8 @@ class Scenario(BaseModel):
             updates["reviewed_at"] = reviewed_at
         if reviewed_by is not None:
             updates["reviewed_by"] = reviewed_by
+        if review_note is not None:
+            updates["review_note"] = review_note
         if applied_at is not None:
             updates["applied_at"] = applied_at
         if applied_by is not None:

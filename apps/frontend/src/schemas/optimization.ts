@@ -6,6 +6,26 @@ export const layoutCandidateSchema = z.object({
   layout_version: z.number().int().min(1),
 });
 
+interface OptimizationDimensions {
+  layouts: unknown[];
+  route_ids: unknown[];
+  robot_counts: unknown[];
+  robot_speeds_mps: unknown[];
+  charger_counts: unknown[];
+  demand_intervals: unknown[];
+}
+
+export function optimizationCandidateCount(request: OptimizationDimensions) {
+  return [
+    request.layouts,
+    request.route_ids,
+    request.robot_counts,
+    request.robot_speeds_mps,
+    request.charger_counts,
+    request.demand_intervals,
+  ].reduce((count, dimension) => count * dimension.length, 1);
+}
+
 export const optimizationRequestSchema = z.object({
   name_prefix: z.string().trim().min(1).max(50),
   layouts: z.array(layoutCandidateSchema).min(1).max(8),
@@ -18,14 +38,7 @@ export const optimizationRequestSchema = z.object({
   loading_time: z.number().positive().max(86_400).default(5),
   simulation_time: z.number().positive().max(86_400).default(3_600),
 }).superRefine((request, context) => {
-  const candidates = [
-    request.layouts,
-    request.route_ids,
-    request.robot_counts,
-    request.robot_speeds_mps,
-    request.charger_counts,
-    request.demand_intervals,
-  ].reduce((count, dimension) => count * dimension.length, 1);
+  const candidates = optimizationCandidateCount(request);
   if (candidates > 64) {
     context.addIssue({ code: "custom", message: "Optimization is limited to 64 candidates" });
   }

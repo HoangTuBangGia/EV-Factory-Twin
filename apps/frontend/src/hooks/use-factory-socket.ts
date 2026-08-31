@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   commitFactorySnapshot,
   fetchFactorySnapshot,
+  type FactorySnapshot,
 } from "@/lib/factory-snapshot";
 import { env, usesMockData } from "@/lib/env";
 import {
@@ -15,6 +16,9 @@ import {
 } from "@/lib/websocket-client";
 import type { FactoryEvent } from "@/schemas/websocket-event";
 import { useFactoryStore } from "@/stores/factory-store";
+import { toastInfo } from "@/stores/toast-store";
+
+export const PAUSED_FACTORY_EVENT_LIMIT = 500;
 
 export function useFactorySocket(
   enabled: boolean,
@@ -25,6 +29,8 @@ export function useFactorySocket(
 ) {
   const refreshAttemptedForToken = useRef<string | null>(null);
   const lifecycleGeneration = useRef(0);
+  const socketRef = useRef<FactorySocket | null>(null);
+  const reconnect = useCallback(() => socketRef.current?.reconnect(), []);
 
   useEffect(() => {
     if (usesMockData || !enabled || !accessToken) return;
@@ -35,6 +41,10 @@ export function useFactorySocket(
     let activeSynchronization: Promise<void> | null = null;
     let activeSnapshotController: AbortController | null = null;
     let recoveryRequested = false;
+    let pausedEvents: FactoryEvent[] = [];
+    let pausedSnapshot: FactorySnapshot | null = null;
+    let pauseOverflowWarned = false;
+    let pausedBufferIncomplete = false;
     const store = useFactoryStore.getState();
 
     function isCurrent(generation: number) {
@@ -50,6 +60,19 @@ export function useFactorySocket(
       if (event.type === "alert.created") current.addAlert(event.data);
       if (event.type === "alert.updated") current.addAlert(event.data);
       if (event.type === "command.updated") current.updateCommand(event.data);
+      current.markDataUpdated();
+    }
+
+    function bufferPausedEvent(event: FactoryEvent) {
+      if (pausedEvents.length >= PAUSED_FACTORY_EVENT_LIMIT) {
+        pausedEvents.shift();
+        pausedBufferIncomplete = true;
+        if (!pauseOverflowWarned) {
+          pauseOverflowWarned = true;
+          toastInfo("Live update buffer is full; the oldest paused updates are being discarded.");
+        }
+      }
+      pausedEvents.push(event);
     }
 
     function synchronizeSnapshot() {
@@ -73,8 +96,6 @@ export function useFactorySocket(
               if (activeSnapshotController === controller) activeSnapshotController = null;
             }
             if (!isCurrent(generation)) return;
-            commitFactorySnapshot(snapshot);
-
             const pending = bufferedEvents;
             bufferedEvents = [];
             let latestReset = -1;
@@ -86,6 +107,16 @@ export function useFactorySocket(
               bufferedEvents = pending.slice(latestReset + 1);
               continue;
             }
+
+            if (useFactoryStore.getState().paused) {
+              pausedSnapshot = snapshot;
+              synchronizing = false;
+              for (const event of pending) bufferPausedEvent(event);
+              useFactoryStore.getState().setConnectionStatus("LIVE");
+              return;
+            }
+
+            commitFactorySnapshot(snapshot);
 
             synchronizing = false;
             for (const event of pending) applyEvent(event);
@@ -126,6 +157,10 @@ export function useFactorySocket(
     }
 
     function receiveEvent(event: FactoryEvent) {
+      if (useFactoryStore.getState().paused) {
+        bufferPausedEvent(event);
+        return;
+      }
       if (synchronizing) {
         if (bufferedEvents.length >= SOCKET_PENDING_EVENT_LIMIT) {
           requestRecovery("Factory event buffer overflow during snapshot recovery");
@@ -145,6 +180,37 @@ export function useFactorySocket(
       applyEvent(event);
     }
 
+    const unsubscribePause = useFactoryStore.subscribe((state, previous) => {
+      if (!previous.paused && state.paused) {
+        pauseOverflowWarned = false;
+        pausedBufferIncomplete = false;
+        return;
+      }
+      if (!previous.paused || state.paused) return;
+      pauseOverflowWarned = false;
+      if (state.connectionStatus === "OFFLINE") {
+        pausedSnapshot = null;
+        pausedEvents = [];
+        pausedBufferIncomplete = false;
+        return;
+      }
+      if (pausedBufferIncomplete) {
+        pausedSnapshot = null;
+        pausedEvents = [];
+        pausedBufferIncomplete = false;
+        void synchronizeSnapshot().catch(() => {
+          requestRecovery("Paused event overflow snapshot synchronization failed");
+        });
+        return;
+      }
+      const snapshot = pausedSnapshot;
+      const pending = pausedEvents;
+      pausedSnapshot = null;
+      pausedEvents = [];
+      if (snapshot) commitFactorySnapshot(snapshot);
+      for (const event of pending) receiveEvent(event);
+    });
+
     const socket = new FactorySocket(
       env.wsUrl,
       accessToken,
@@ -153,6 +219,10 @@ export function useFactorySocket(
         store.setConnectionStatus(status);
         if (status === "OFFLINE") {
           cancelSynchronization("WebSocket disconnected during snapshot synchronization");
+          pausedSnapshot = null;
+          pausedEvents = [];
+          pauseOverflowWarned = false;
+          pausedBufferIncomplete = false;
         }
       },
       async () => {
@@ -181,11 +251,16 @@ export function useFactorySocket(
         }
       },
     );
+    socketRef.current = socket;
     socket.connect();
     return () => {
       lifecycleGeneration.current += 1;
       cancelSynchronization("Socket lifecycle ended");
+      unsubscribePause();
       socket.disconnect();
+      if (socketRef.current === socket) socketRef.current = null;
     };
   }, [accessToken, enabled, invalidateSession, refreshSession, refreshUser]);
+
+  return reconnect;
 }

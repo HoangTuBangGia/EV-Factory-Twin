@@ -10,6 +10,7 @@ from ev_twin_api.api.scenarios import (
     get_scenario,
     list_scenarios,
     reject_scenario,
+    request_scenario_revision,
     run_scenario,
     submit_scenario,
 )
@@ -23,7 +24,11 @@ from ev_twin_api.schemas.command import (
 )
 from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.schemas.layout import CreateLayoutRequest
-from ev_twin_api.schemas.scenario import ScenarioRunRequest, ScenarioStatus
+from ev_twin_api.schemas.scenario import (
+    ScenarioRevisionRequest,
+    ScenarioRunRequest,
+    ScenarioStatus,
+)
 from ev_twin_api.services.audit_service import InMemoryAuditRepository
 from ev_twin_api.services.command_service import CommandService, InMemoryCommandRepository
 from ev_twin_api.services.factory_state import FactoryState
@@ -160,6 +165,45 @@ async def test_rejected_scenario_cannot_be_approved_or_applied() -> None:
     assert rejected.reviewed_at is not None
     with pytest.raises(HTTPException) as error:
         await approve_scenario(scenario.id, service, MONITOR)
+    assert error.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_monitor_requests_revision_and_creator_runs_linked_candidate() -> None:
+    service, _, _, _ = build_scenario_service()
+    scenario = await run_scenario(scenario_request(), service, DESIGNER)
+    await submit_scenario(scenario.id, service, DESIGNER)
+
+    requested = await request_scenario_revision(
+        scenario.id,
+        ScenarioRevisionRequest(note="Move the charging zone away from the aisle."),
+        service,
+        MONITOR,
+    )
+    revised = await run_scenario(
+        scenario_request(name="candidate-02", revision_of=scenario.id),
+        service,
+        DESIGNER,
+    )
+
+    assert requested.status == ScenarioStatus.REVISION_REQUESTED
+    assert requested.review_note == "Move the charging zone away from the aisle."
+    assert revised.status == ScenarioStatus.SIMULATED
+    assert revised.revision_of == scenario.id
+
+
+@pytest.mark.asyncio
+async def test_revision_must_reference_owned_revision_requested_scenario() -> None:
+    service, _, _, _ = build_scenario_service()
+    scenario = await run_scenario(scenario_request(), service, DESIGNER)
+
+    with pytest.raises(HTTPException) as error:
+        await run_scenario(
+            scenario_request(name="invalid-revision", revision_of=scenario.id),
+            service,
+            DESIGNER,
+        )
+
     assert error.value.status_code == 409
 
 
@@ -344,4 +388,5 @@ def test_openapi_exposes_scenario_workflow() -> None:
     assert "/api/v1/scenarios/{scenario_id}/submit" in paths
     assert "/api/v1/scenarios/{scenario_id}/approve" in paths
     assert "/api/v1/scenarios/{scenario_id}/reject" in paths
+    assert "/api/v1/scenarios/{scenario_id}/request-revision" in paths
     assert "/api/v1/scenarios/{scenario_id}/apply" in paths

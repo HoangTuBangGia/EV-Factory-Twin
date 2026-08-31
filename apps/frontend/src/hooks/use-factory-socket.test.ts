@@ -1,14 +1,16 @@
-import { renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FactoryEvent } from "@/schemas/websocket-event";
 import { useFactoryStore } from "@/stores/factory-store";
-import { useFactorySocket } from "./use-factory-socket";
+import { useToastStore } from "@/stores/toast-store";
+import { PAUSED_FACTORY_EVENT_LIMIT, useFactorySocket } from "./use-factory-socket";
 
 const mocks = vi.hoisted(() => ({
   instances: [] as Array<{
     args: unknown[];
     connect: ReturnType<typeof vi.fn>;
     disconnect: ReturnType<typeof vi.fn>;
+    reconnect: ReturnType<typeof vi.fn>;
     requestRecovery: ReturnType<typeof vi.fn>;
   }>,
   fetchSnapshot: vi.fn(),
@@ -33,6 +35,7 @@ vi.mock("@/lib/websocket-client", () => ({
   FactorySocket: class FactorySocket {
     connect = vi.fn();
     disconnect = vi.fn();
+    reconnect = vi.fn();
     requestRecovery = vi.fn();
 
     constructor(...args: unknown[]) {
@@ -40,6 +43,7 @@ vi.mock("@/lib/websocket-client", () => ({
         args,
         connect: this.connect,
         disconnect: this.disconnect,
+        reconnect: this.reconnect,
         requestRecovery: this.requestRecovery,
       });
     }
@@ -52,6 +56,7 @@ describe("useFactorySocket", () => {
     mocks.instances = [];
     mocks.fetchSnapshot.mockResolvedValue({ marker: "snapshot" });
     useFactoryStore.getState().reset();
+    useToastStore.setState({ toasts: [] });
   });
 
   it("reconnects with a refreshed token and refetches after each auth.ok", async () => {
@@ -100,6 +105,116 @@ describe("useFactorySocket", () => {
     rerender({ token: null, enabled: false });
     expect(mocks.instances[0].disconnect).toHaveBeenCalledOnce();
     expect(mocks.instances).toHaveLength(1);
+  });
+
+  it("exposes manual reconnect for the active socket", () => {
+    const { result, rerender } = renderHook(
+      ({ token }) => useFactorySocket(true, token, vi.fn(), vi.fn(), vi.fn()),
+      { initialProps: { token: "active-token" as string | null } },
+    );
+
+    result.current();
+    expect(mocks.instances[0].reconnect).toHaveBeenCalledOnce();
+
+    rerender({ token: null });
+    result.current();
+    expect(mocks.instances[0].reconnect).toHaveBeenCalledOnce();
+  });
+
+  it("buffers realtime events while paused and replays them on resume", async () => {
+    const updateRobotTelemetry = vi.fn();
+    const originalUpdate = useFactoryStore.getState().updateRobotTelemetry;
+    useFactoryStore.setState({ updateRobotTelemetry });
+    const { unmount } = renderHook(() => useFactorySocket(
+      true,
+      "active-token",
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+    ));
+    await (mocks.instances[0].args[4] as () => Promise<void>)();
+    const onEvent = mocks.instances[0].args[2] as (event: FactoryEvent) => void;
+    const telemetry = {
+      type: "robot.telemetry",
+      data: {
+        timestamp: "2026-08-14T00:00:00.000Z",
+        robot_id: "AMR-01",
+        pose: { x: 1, y: 2, yaw: 0 },
+        velocity: { linear: 1, angular: 0 },
+        battery: 90,
+        status: "DELIVERING",
+        task_id: "TASK-0001",
+        payload_id: "BP-0001",
+      },
+    } satisfies FactoryEvent;
+
+    act(() => useFactoryStore.getState().setPaused(true));
+    onEvent(telemetry);
+    expect(updateRobotTelemetry).not.toHaveBeenCalled();
+    expect(useFactoryStore.getState().lastUpdateAt).toBeNull();
+    act(() => useFactoryStore.getState().setPaused(false));
+    expect(updateRobotTelemetry).toHaveBeenCalledWith(telemetry.data);
+    expect(useFactoryStore.getState().lastUpdateAt).not.toBeNull();
+
+    unmount();
+    useFactoryStore.setState({ updateRobotTelemetry: originalUpdate });
+  });
+
+  it("defers a reconnect snapshot until live updates resume", async () => {
+    renderHook(() => useFactorySocket(
+      true,
+      "active-token",
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+    ));
+    act(() => useFactoryStore.getState().setPaused(true));
+
+    await (mocks.instances[0].args[4] as () => Promise<void>)();
+    expect(mocks.commitSnapshot).not.toHaveBeenCalled();
+    act(() => useFactoryStore.getState().setPaused(false));
+    expect(mocks.commitSnapshot).toHaveBeenCalledWith({ marker: "snapshot" });
+  });
+
+  it("caps the paused buffer and warns only once per pause", async () => {
+    const updateRobotTelemetry = vi.fn();
+    const originalUpdate = useFactoryStore.getState().updateRobotTelemetry;
+    useFactoryStore.setState({ updateRobotTelemetry });
+    const { unmount } = renderHook(() => useFactorySocket(
+      true,
+      "active-token",
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+    ));
+    await (mocks.instances[0].args[4] as () => Promise<void>)();
+    const onEvent = mocks.instances[0].args[2] as (event: FactoryEvent) => void;
+    const event = {
+      type: "robot.telemetry",
+      data: {
+        timestamp: "2026-08-14T00:00:00.000Z",
+        robot_id: "AMR-01",
+        pose: { x: 1, y: 2, yaw: 0 },
+        velocity: { linear: 1, angular: 0 },
+        battery: 90,
+        status: "DELIVERING",
+        task_id: "TASK-0001",
+        payload_id: "BP-0001",
+      },
+    } satisfies FactoryEvent;
+
+    act(() => useFactoryStore.getState().setPaused(true));
+    for (let index = 0; index < PAUSED_FACTORY_EVENT_LIMIT + 2; index += 1) onEvent(event);
+
+    expect(useToastStore.getState().toasts).toEqual([
+      expect.objectContaining({ type: "info", message: expect.stringContaining("buffer is full") }),
+    ]);
+    act(() => useFactoryStore.getState().setPaused(false));
+    await vi.waitFor(() => expect(mocks.fetchSnapshot).toHaveBeenCalledTimes(2));
+    expect(updateRobotTelemetry).not.toHaveBeenCalled();
+
+    unmount();
+    useFactoryStore.setState({ updateRobotTelemetry: originalUpdate });
   });
 
   it("does not commit an old snapshot after the access token changes", async () => {
