@@ -183,6 +183,29 @@ async def test_only_one_concurrent_review_transition_wins() -> None:
 
 
 @pytest.mark.asyncio
+async def test_revision_request_persists_note_and_audit() -> None:
+    audit = InMemoryAuditRepository()
+    repository = InMemoryScenarioRepository(audit)
+    scenario = await submit(repository)
+
+    revised = await repository.transition(
+        before=scenario,
+        expected_status=ScenarioStatus.SUBMITTED,
+        new_status=ScenarioStatus.REVISION_REQUESTED,
+        actor=MONITOR,
+        request_id=uuid4(),
+        occurred_at=NOW,
+        review_note="Move the charging zone away from the aisle.",
+    )
+
+    events = await audit.list(limit=10)
+    assert revised.review_note == "Move the charging zone away from the aisle."
+    assert events[0].action == AuditAction.SCENARIO_REVISION_REQUESTED
+    assert events[0].after_data is not None
+    assert events[0].after_data["review_note"] == revised.review_note
+
+
+@pytest.mark.asyncio
 async def test_apply_records_scenario_and_factory_reset_with_same_request_id() -> None:
     audit = InMemoryAuditRepository()
     repository = InMemoryScenarioRepository(audit)
@@ -332,6 +355,8 @@ def scenario_row(**updates: object) -> dict[str, object]:
         "created_by": DESIGNER.id,
         "reviewed_at": None,
         "reviewed_by": None,
+        "review_note": None,
+        "revision_of": None,
         "applied_at": None,
         "applied_by": None,
         "version": 1,

@@ -6,6 +6,10 @@ vi.mock("@/stores/factory-store", () => ({
   useFactoryStore: (select: (state: unknown) => unknown) => select({
     robots: { "AMR-01": {}, "AMR-02": {} },
     alerts: [{ id: "ALERT-01" }],
+    paused: false,
+    lastUpdateAt: null,
+    connectionStatus: "MOCK",
+    togglePaused: vi.fn(),
   }),
 }));
 vi.mock("@/components/dashboard/kpi-grid", () => ({ KpiGrid: () => <div>kpi content</div> }));
@@ -22,6 +26,7 @@ describe("OverviewToolDock", () => {
 
     const toolbar = screen.getByRole("toolbar", { name: "Operations panels" });
     expect(within(toolbar).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+      "Pause live updates",
       "Open operations statistics",
       "Open fleet",
       "Open alerts",

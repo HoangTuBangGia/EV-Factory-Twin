@@ -4,10 +4,12 @@ import { ScenarioActions } from "./scenario-actions";
 
 function renderActions(
   role: "DESIGNER" | "MONITOR",
-  status: "SIMULATED" | "SUBMITTED" | "APPROVED",
+  status: "SIMULATED" | "SUBMITTED" | "APPROVED" | "REVISION_REQUESTED",
 ) {
   const onSubmitScenario = vi.fn();
-  const onReview = vi.fn();
+  const onApprove = vi.fn();
+  const onRequestRevision = vi.fn();
+  const onStartRevision = vi.fn();
   const onApply = vi.fn();
   render(
     <ScenarioActions
@@ -15,11 +17,14 @@ function renderActions(
       status={status}
       activeAction={null}
       onSubmitScenario={onSubmitScenario}
-      onReview={onReview}
+      onApprove={onApprove}
+      onRequestRevision={onRequestRevision}
+      onStartRevision={onStartRevision}
+      canStartRevision
       onApply={onApply}
     />,
   );
-  return { onSubmitScenario, onReview, onApply };
+  return { onSubmitScenario, onApprove, onRequestRevision, onStartRevision, onApply };
 }
 
 describe("ScenarioActions", () => {
@@ -36,13 +41,24 @@ describe("ScenarioActions", () => {
     expect(screen.getByText(/Waiting for Monitor review/i)).toBeInTheDocument();
   });
 
-  it("lets a Monitor approve or reject a submitted scenario", () => {
-    const { onReview } = renderActions("MONITOR", "SUBMITTED");
+  it("lets a Monitor approve or request a revision with a note", () => {
+    const { onApprove, onRequestRevision } = renderActions("MONITOR", "SUBMITTED");
+    const requestButton = screen.getByRole("button", { name: "Request changes" });
+    expect(requestButton).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Revision request"), {
+      target: { value: "  Move charging away from the aisle.  " },
+    });
+    fireEvent.click(requestButton);
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
-    fireEvent.click(screen.getByRole("button", { name: "Reject" }));
-    expect(onReview).toHaveBeenNthCalledWith(1, "approve");
-    expect(onReview).toHaveBeenNthCalledWith(2, "reject");
+    expect(onRequestRevision).toHaveBeenCalledWith("Move charging away from the aisle.");
+    expect(onApprove).toHaveBeenCalledOnce();
     expect(screen.queryByRole("button", { name: /Apply/ })).not.toBeInTheDocument();
+  });
+
+  it("lets the original Designer start a requested revision", () => {
+    const { onStartRevision } = renderActions("DESIGNER", "REVISION_REQUESTED");
+    fireEvent.click(screen.getByRole("button", { name: "Create revised candidate" }));
+    expect(onStartRevision).toHaveBeenCalledOnce();
   });
 
   it("does not let a Monitor review an unsubmitted scenario", () => {

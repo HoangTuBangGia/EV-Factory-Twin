@@ -6,6 +6,7 @@ export const scenarioStatusSchema = z.enum([
   "SUBMITTED",
   "APPROVED",
   "REJECTED",
+  "REVISION_REQUESTED",
   "APPLIED",
 ]);
 
@@ -27,6 +28,11 @@ export const scenarioConfigSchema = z.object({
 
 export const scenarioRunRequestSchema = scenarioConfigSchema.extend({
   name: z.string().trim().min(1, "Name is required").max(80),
+  revision_of: z.string().min(1).nullable().optional(),
+});
+
+export const scenarioRevisionRequestSchema = z.object({
+  note: z.string().trim().min(1, "Explain what the Designer should change").max(1000),
 });
 
 export const scenarioMetricsSchema = z.object({
@@ -59,6 +65,8 @@ export const scenarioSchema = z.object({
   created_by: z.string().uuid().nullable(),
   reviewed_at: utcDateTimeSchema.nullable(),
   reviewed_by: z.string().uuid().nullable(),
+  review_note: z.string().max(1000).nullable().optional(),
+  revision_of: z.string().min(1).nullable().optional(),
   applied_at: utcDateTimeSchema.nullable(),
   applied_by: z.string().uuid().nullable(),
   version: z.number().int().min(1),
@@ -67,5 +75,6 @@ export const scenarioSchema = z.object({
 export type ScenarioStatus = z.infer<typeof scenarioStatusSchema>;
 export type ScenarioConfig = z.infer<typeof scenarioConfigSchema>;
 export type ScenarioRunRequest = z.input<typeof scenarioRunRequestSchema>;
+export type ScenarioRevisionRequest = z.input<typeof scenarioRevisionRequestSchema>;
 export type ScenarioMetrics = z.infer<typeof scenarioMetricsSchema>;
 export type Scenario = z.infer<typeof scenarioSchema>;

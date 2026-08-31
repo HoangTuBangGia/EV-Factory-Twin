@@ -339,4 +339,25 @@ describe("FactorySocket authentication", () => {
 
     expect(FakeWebSocket.instances).toHaveLength(1);
   });
+
+  it("reconnects immediately without leaving the old socket or backoff timer active", () => {
+    const onStatus = vi.fn();
+    const socket = new FactorySocket(
+      "ws://localhost/ws/factory",
+      "test-access-token",
+      vi.fn(),
+      onStatus,
+    );
+    socket.connect();
+    const firstTransport = FakeWebSocket.instances[0];
+    firstTransport.open();
+    firstTransport.closed(1006);
+
+    socket.reconnect();
+
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    expect(onStatus).toHaveBeenLastCalledWith("CONNECTING");
+    vi.advanceTimersByTime(10_000);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+  });
 });

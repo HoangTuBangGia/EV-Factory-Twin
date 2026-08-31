@@ -137,6 +137,22 @@ describe("apiClient scenario workflow", () => {
     );
   });
 
+  it("sends a structured revision request", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(scenario), { status: 200 }),
+    );
+
+    await apiClient.requestScenarioRevision(scenario.id, { note: "Move charging." });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `http://localhost:8000/api/v1/scenarios/${scenario.id}/request-revision`,
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ note: "Move charging." }),
+      }),
+    );
+  });
+
   it("creates an apply command with explicit timeout and retry policy", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify(command), { status: 200 }),

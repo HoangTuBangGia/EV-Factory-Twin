@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fixtureAlerts, fixtureMetrics, fixtureRobots, fixtureTasks } from "@/lib/fixtures";
+import { useFactoryStore } from "@/stores/factory-store";
 import {
+  commitFactorySnapshot,
   FactorySnapshotTimeoutError,
   fetchFactorySnapshot,
 } from "./factory-snapshot";
@@ -18,7 +21,9 @@ vi.mock("@/lib/api-client", () => ({
 describe("fetchFactorySnapshot", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-30T12:00:00.000Z"));
     vi.clearAllMocks();
+    useFactoryStore.getState().reset();
     const never = new Promise(() => undefined);
     mocks.getRobots.mockReturnValue(never);
     mocks.getTasks.mockReturnValue(never);
@@ -55,5 +60,16 @@ describe("fetchFactorySnapshot", () => {
 
     await rejection;
     expect(mocks.getRobots.mock.calls[0]?.[0]).toMatchObject({ aborted: true });
+  });
+
+  it("marks data fresh only when a complete REST snapshot is committed", () => {
+    commitFactorySnapshot({
+      robots: fixtureRobots,
+      tasks: fixtureTasks,
+      metrics: fixtureMetrics,
+      alerts: fixtureAlerts,
+    });
+
+    expect(useFactoryStore.getState().lastUpdateAt).toBe(Date.now());
   });
 });

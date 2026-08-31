@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
   ScenarioActions,
@@ -11,9 +11,26 @@ import {
   ScenarioStatusBadge,
 } from "@/components/scenarios/scenario-comparison";
 import { OptimizationPanel } from "@/components/scenarios/optimization-panel";
+import { LayoutComparison } from "@/components/scenarios/layout-comparison";
+import {
+  ScenarioRunForm,
+  type ScenarioFieldErrors,
+} from "@/components/scenarios/scenario-run-form";
+import { WorkflowTimeline } from "@/components/workflow/workflow-timeline";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { apiClient } from "@/lib/api-client";
 import { can } from "@/lib/auth/permissions";
+import {
+  QUEUE_KEYS,
+  QUEUE_LABELS,
+  filterQueue,
+  isQueueKey,
+  latestCommandForScenario,
+  newestFirst,
+  type QueueKey,
+} from "@/lib/workflow";
 import { useFactoryStore } from "@/stores/factory-store";
+import { toastSuccess, toastError, toastInfo } from "@/stores/toast-store";
 import type { LayoutSummary, LayoutVersion } from "@/schemas/layout";
 import {
   scenarioRunRequestSchema,
@@ -21,44 +38,18 @@ import {
   type ScenarioRunRequest,
 } from "@/schemas/scenario";
 
-type FieldErrors = Partial<Record<keyof ScenarioRunRequest, string>>;
 type LoadState = "loading" | "ready" | "error";
-
-function readScenarioInput(form: HTMLFormElement): ScenarioRunRequest {
-  const data = new FormData(form);
-  return {
-    name: String(data.get("name") ?? ""),
-    layout_id: String(data.get("layout_id") ?? ""),
-    layout_version: Number(data.get("layout_version")),
-    route_id: String(data.get("route_id") ?? ""),
-    num_robots: Number(data.get("num_robots")),
-    num_tasks: Number(data.get("num_tasks")),
-    task_arrival_interval: Number(data.get("task_arrival_interval")),
-    travel_time: Number(data.get("travel_time")),
-    loading_time: Number(data.get("loading_time")),
-    simulation_time: Number(data.get("simulation_time")),
-    robot_speed_mps: Number(data.get("robot_speed_mps")),
-    charger_count: Number(data.get("charger_count")),
-  };
-}
 
 function message(error: unknown) {
   return error instanceof Error ? error.message : "An unexpected error occurred.";
 }
 
-function upsertScenario(scenarios: Scenario[], updated: Scenario) {
-  const exists = scenarios.some((scenario) => scenario.id === updated.id);
-  return exists
-    ? scenarios.map((scenario) => scenario.id === updated.id ? updated : scenario)
-    : [...scenarios, updated];
-}
-
 function newestUsefulScenario(scenarios: Scenario[]) {
-  const reversed = [...scenarios].reverse();
-  return reversed.find((scenario) => scenario.status === "SUBMITTED")
-    ?? reversed.find((scenario) => scenario.status === "SIMULATED")
-    ?? reversed.find((scenario) => scenario.status === "APPROVED")
-    ?? reversed[0]
+  const ordered = newestFirst(scenarios);
+  return ordered.find((scenario) => scenario.status === "SUBMITTED")
+    ?? ordered.find((scenario) => scenario.status === "SIMULATED")
+    ?? ordered.find((scenario) => scenario.status === "APPROVED")
+    ?? ordered[0]
     ?? null;
 }
 
@@ -77,6 +68,7 @@ function ScenarioProvenance({ scenario }: { scenario: Scenario }) {
       <dl>
         <div><dt>Created</dt><dd>{workflowTimestamp(scenario.created_at)}<small>{workflowActor(scenario.created_by)}</small></dd></div>
         <div><dt>Reviewed</dt><dd>{workflowTimestamp(scenario.reviewed_at)}<small>{workflowActor(scenario.reviewed_by)}</small></dd></div>
+        {scenario.revision_of && <div><dt>Revision of</dt><dd>{scenario.revision_of}</dd></div>}
         <div><dt>Applied</dt><dd>{workflowTimestamp(scenario.applied_at)}<small>{workflowActor(scenario.applied_by)}</small></dd></div>
       </dl>
     </details>
@@ -116,17 +108,27 @@ function ReadOnlyConfiguration({ scenario }: { scenario: Scenario | null }) {
 export default function ScenariosPage() {
   const { user } = useAuth();
   const [baseline, setBaseline] = useState<Scenario | null>(null);
-  const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [candidate, setCandidate] = useState<Scenario | null>(null);
+  const [revisionSource, setRevisionSource] = useState<Scenario | null>(null);
   const [layouts, setLayouts] = useState<LayoutSummary[]>([]);
   const [selectedLayout, setSelectedLayout] = useState<LayoutVersion | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
-  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [queue, setQueue] = useState<QueueKey>("all");
+  const [fieldErrors, setFieldErrors] = useState<ScenarioFieldErrors>({});
   const [actionError, setActionError] = useState<string | null>(null);
+  const [commandLoadError, setCommandLoadError] = useState<string | null>(null);
   const [activeAction, setActiveAction] = useState<ScenarioAction | null>(null);
-  const [operationId, setOperationId] = useState<string | null>(null);
-  const command = useFactoryStore((state) => operationId ? state.commands[operationId] : null);
+  const [applyConfirmationOpen, setApplyConfirmationOpen] = useState(false);
+  const scenarios = useFactoryStore((state) => state.scenarios);
+  const commands = useFactoryStore((state) => state.commands);
+  const setScenarios = useFactoryStore((state) => state.setScenarios);
+  const setCommands = useFactoryStore((state) => state.setCommands);
+  const updateScenario = useFactoryStore((state) => state.updateScenario);
   const updateCommand = useFactoryStore((state) => state.updateCommand);
+  const candidateCommand = useMemo(() => latestCommandForScenario(
+    Object.values(commands),
+    candidate?.id,
+  ), [candidate?.id, commands]);
 
   const loadScenarios = useCallback(async () => {
     const loaded = await apiClient.getScenarios();
@@ -138,20 +140,36 @@ export default function ScenariosPage() {
       }
       return newestUsefulScenario(loaded);
     });
-  }, []);
+    return loaded;
+  }, [setScenarios]);
+
+  const loadCommands = useCallback(async () => {
+    setCommandLoadError(null);
+    try {
+      setCommands(await apiClient.getCommands());
+    } catch (error) {
+      setCommandLoadError(`Command history is unavailable: ${message(error)}`);
+    }
+  }, [setCommands]);
 
   const loadPage = useCallback(async () => {
     setLoadState("loading");
     setActionError(null);
     try {
-      const [loadedBaseline, loadedLayouts] = await Promise.all([
+      const [loadedBaseline, loadedLayouts, loadedScenarios] = await Promise.all([
         apiClient.getBaselineScenario(),
         apiClient.getLayouts(),
         loadScenarios(),
+        loadCommands(),
       ]);
       setBaseline(loadedBaseline);
       setLayouts(loadedLayouts);
       const query = new URLSearchParams(window.location.search);
+      const requestedQueue = query.get("queue");
+      if (isQueueKey(requestedQueue)) setQueue(requestedQueue);
+      const requestedCandidate = query.get("candidate");
+      const linkedCandidate = loadedScenarios.find((scenario) => scenario.id === requestedCandidate);
+      if (linkedCandidate) setCandidate(linkedCandidate);
       const requestedId = query.get("layout");
       const requestedVersion = Number(query.get("version"));
       const requested = loadedLayouts.find((layout) => layout.id === requestedId);
@@ -168,7 +186,7 @@ export default function ScenariosPage() {
       setActionError(`Unable to load scenarios: ${message(error)}`);
       setLoadState("error");
     }
-  }, [loadScenarios]);
+  }, [loadCommands, loadScenarios]);
 
   async function selectLayout(layoutId: string) {
     setActionError(null);
@@ -192,24 +210,26 @@ export default function ScenariosPage() {
   useEffect(() => { void loadPage(); }, [loadPage]);
 
   useEffect(() => {
-    if (command?.status === "COMPLETED") void loadScenarios();
-  }, [command?.status, loadScenarios]);
+    if (candidateCommand?.status === "COMPLETED") void loadScenarios();
+  }, [candidateCommand?.status, loadScenarios]);
 
   if (!user) return null;
+  const currentUserId = user.id;
   const mayRun = can(user.role, "scenarios:run");
   const mayReview = can(user.role, "scenarios:review");
   const mayApply = can(user.role, "scenarios:apply");
+  const mayViewLayout = can(user.role, "layout:view");
+  const visibleScenarios = newestFirst(filterQueue(scenarios, queue, user.id));
 
-  async function runScenario(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function runScenario(request: ScenarioRunRequest) {
     if (!mayRun) {
       setActionError("Your role cannot run scenarios.");
       return;
     }
 
-    const parsed = scenarioRunRequestSchema.safeParse(readScenarioInput(event.currentTarget));
+    const parsed = scenarioRunRequestSchema.safeParse(request);
     if (!parsed.success) {
-      const errors: FieldErrors = {};
+      const errors: ScenarioFieldErrors = {};
       for (const issue of parsed.error.issues) {
         const field = issue.path[0] as keyof ScenarioRunRequest | undefined;
         if (field && !errors[field]) errors[field] = issue.message;
@@ -223,32 +243,86 @@ export default function ScenariosPage() {
     setActiveAction("run");
     try {
       const created = await apiClient.runScenario(parsed.data);
-      setScenarios((current) => upsertScenario(current, created));
+      updateScenario(created);
       setCandidate(created);
+      setRevisionSource(null);
+      toastSuccess(
+        `Scenario "${created.name}" simulated · `
+        + `${created.metrics.throughput_per_hour.toFixed(1)} tasks/h · `
+        + `${created.metrics.average_cycle_time.toFixed(1)}s avg cycle · `
+        + `${created.metrics.starvation_events} starvation`,
+      );
     } catch (error) {
       setActionError(message(error));
+      toastError(message(error));
     } finally {
       setActiveAction(null);
     }
   }
 
-  async function review(action: "approve" | "reject") {
+  async function approveScenario() {
     if (!candidate || candidate.status !== "SUBMITTED" || !mayReview) {
       setActionError("Only a Monitor can review a submitted scenario.");
       return;
     }
     setActionError(null);
-    setActiveAction(action);
+    setActiveAction("approve");
     try {
-      const updated = action === "approve"
-        ? await apiClient.approveScenario(candidate.id)
-        : await apiClient.rejectScenario(candidate.id);
+      const updated = await apiClient.approveScenario(candidate.id);
       setCandidate(updated);
-      setScenarios((current) => upsertScenario(current, updated));
+      updateScenario(updated);
+      toastSuccess("Scenario approved");
     } catch (error) {
       setActionError(message(error));
+      toastError(message(error));
     } finally {
       setActiveAction(null);
+    }
+  }
+
+  async function requestRevision(note: string) {
+    if (!candidate || candidate.status !== "SUBMITTED" || !mayReview) {
+      setActionError("Only a Monitor can request changes to a submitted scenario.");
+      return;
+    }
+    setActionError(null);
+    setActiveAction("request-revision");
+    try {
+      const updated = await apiClient.requestScenarioRevision(candidate.id, { note });
+      setCandidate(updated);
+      updateScenario(updated);
+      toastSuccess("Revision requested");
+    } catch (error) {
+      setActionError(message(error));
+      toastError(message(error));
+    } finally {
+      setActiveAction(null);
+    }
+  }
+
+  async function startRevision() {
+    if (
+      !candidate
+      || candidate.status !== "REVISION_REQUESTED"
+      || candidate.created_by !== currentUserId
+      || !mayRun
+    ) {
+      setActionError("Only the original Designer can revise this scenario.");
+      return;
+    }
+    setActionError(null);
+    try {
+      const layout = await apiClient.getLayoutVersion(
+        candidate.config.layout_id,
+        candidate.config.layout_version,
+      );
+      setSelectedLayout(layout);
+      setRevisionSource(candidate);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      toastInfo("Revision prepared — edit configuration above");
+    } catch (error) {
+      setActionError(`Unable to prepare revision: ${message(error)}`);
+      toastError(`Unable to prepare revision: ${message(error)}`);
     }
   }
 
@@ -262,23 +336,27 @@ export default function ScenariosPage() {
     try {
       const updated = await apiClient.submitScenario(candidate.id);
       setCandidate(updated);
-      setScenarios((current) => upsertScenario(current, updated));
+      updateScenario(updated);
+      toastSuccess("Scenario submitted for review");
     } catch (error) {
       setActionError(message(error));
+      toastError(message(error));
     } finally {
       setActiveAction(null);
     }
   }
 
-  async function applyScenario() {
+  function requestApplyScenario() {
     if (!candidate || candidate.status !== "APPROVED" || !mayApply) {
       setActionError("Only a Monitor can apply an approved scenario.");
       return;
     }
-    if (!window.confirm(
-      "Apply this scenario? A command will be sent to the simulation Fleet Manager.",
-    )) return;
+    setApplyConfirmationOpen(true);
+  }
 
+  async function applyScenario() {
+    if (!candidate || candidate.status !== "APPROVED" || !mayApply) return;
+    setApplyConfirmationOpen(false);
     setActionError(null);
     setActiveAction("apply");
     try {
@@ -287,9 +365,10 @@ export default function ScenariosPage() {
         max_retries: 1,
       });
       updateCommand(createdCommand);
-      setOperationId(createdCommand.operation_id);
+      toastInfo(`Apply command queued for "${candidate.name}"`);
     } catch (error) {
       setActionError(message(error));
+      toastError(message(error));
     } finally {
       setActiveAction(null);
     }
@@ -308,18 +387,42 @@ export default function ScenariosPage() {
       </header>
 
       <section className="panel scenario-queue">
-        <div className="panel-head"><h3>Scenario history</h3><span>{scenarios.length} saved in backend</span></div>
+        <div className="panel-head">
+          <h3>Scenario history</h3>
+          <span>{visibleScenarios.length} of {scenarios.length} saved in backend</span>
+        </div>
+        {scenarios.length > 0 && (
+          <div className="toolbar queue-filters" role="group" aria-label="Candidate queue">
+            {QUEUE_KEYS.map((key) => (
+              <button
+                key={key}
+                className={`filter${queue === key ? " active" : ""}`}
+                type="button"
+                aria-pressed={queue === key}
+                onClick={() => setQueue(key)}
+              >
+                {QUEUE_LABELS[key]} {filterQueue(scenarios, key, user.id).length}
+              </button>
+            ))}
+          </div>
+        )}
         {loadState === "loading" && <div className="empty">Loading scenario history…</div>}
         {loadState === "error" && <div className="empty">Scenario history is unavailable. Retry when the API is online.</div>}
         {loadState === "ready" && scenarios.length === 0 && <div className="empty">No candidate has been simulated yet.</div>}
-        {scenarios.length > 0 && (
+        {scenarios.length > 0 && visibleScenarios.length === 0 && (
+          <div className="empty">No candidate is in the {QUEUE_LABELS[queue].toLowerCase()} queue.</div>
+        )}
+        {visibleScenarios.length > 0 && (
           <div className="scenario-tabs" role="list" aria-label="Scenario history">
-            {[...scenarios].reverse().map((scenario) => (
+            {visibleScenarios.map((scenario) => (
               <button
                 key={scenario.id}
                 className={candidate?.id === scenario.id ? "selected" : ""}
                 type="button"
-                onClick={() => setCandidate(scenario)}
+                onClick={() => {
+                  setCandidate(scenario);
+                  setRevisionSource(null);
+                }}
               >
                 <span>{scenario.name}</span>
                 <small>{scenario.id} · {scenario.status}</small>
@@ -336,95 +439,18 @@ export default function ScenariosPage() {
             <span>{mayRun ? "Designer · SimPy benchmark" : `${user.role} · Read only`}</span>
           </div>
           {mayRun ? (
-            <form key={`${selectedLayout?.layout_id}-${selectedLayout?.version}`}
-              className="panel-body" onSubmit={runScenario} noValidate>
-              <div className="form-grid">
-                <div className="field field-wide">
-                  <label htmlFor="scenario-name">Scenario name</label>
-                  <input id="scenario-name" name="name" defaultValue="candidate-01" required />
-                  {fieldErrors.name && <span className="field-error">{fieldErrors.name}</span>}
-                </div>
-                <div className="field field-wide">
-                  <label htmlFor="scenario-layout">Layout</label>
-                  <select id="scenario-layout" name="layout_id" required
-                    value={selectedLayout?.layout_id ?? ""}
-                    onChange={(event) => void selectLayout(event.target.value)}>
-                    <option value="" disabled>Select a layout</option>
-                    {layouts.map((layout) => <option value={layout.id} key={layout.id}>
-                      {layout.name} · v{layout.latest_version}
-                    </option>)}
-                  </select>
-                  {fieldErrors.layout_id && <span className="field-error">{fieldErrors.layout_id}</span>}
-                </div>
-                <div className="field">
-                  <label htmlFor="scenario-layout-version">Layout version</label>
-                  <input id="scenario-layout-version" name="layout_version" type="number" min="1"
-                    max={layouts.find((layout) => layout.id === selectedLayout?.layout_id)?.latest_version}
-                    value={selectedLayout?.version ?? ""}
-                    onChange={(event) => void selectLayoutVersion(Number(event.target.value))}/>
-                  {fieldErrors.layout_version && <span className="field-error">{fieldErrors.layout_version}</span>}
-                </div>
-                <div className="field field-wide">
-                  <label htmlFor="scenario-route">Route</label>
-                  <select id="scenario-route" name="route_id" required disabled={!selectedLayout}>
-                    {selectedLayout?.routes.filter((route) => route.kind === "DELIVERY")
-                      .map((route) => <option value={route.id} key={route.id}>
-                      {route.id} · {route.start_station_id} → {route.end_station_id}
-                    </option>)}
-                  </select>
-                  {fieldErrors.route_id && <span className="field-error">{fieldErrors.route_id}</span>}
-                </div>
-                <div className="field">
-                  <label htmlFor="num-robots">Robot count</label>
-                  <input id="num-robots" name="num_robots" type="number" min="1" max="10" defaultValue={selectedLayout?.config.robot_count ?? 2} />
-                  {fieldErrors.num_robots && <span className="field-error">{fieldErrors.num_robots}</span>}
-                </div>
-                <div className="field">
-                  <label htmlFor="num-tasks">Number of tasks</label>
-                  <input id="num-tasks" name="num_tasks" type="number" min="1" max="10000" defaultValue="500" />
-                  {fieldErrors.num_tasks && <span className="field-error">{fieldErrors.num_tasks}</span>}
-                </div>
-                <div className="field">
-                  <label htmlFor="robot-speed">Robot speed (m/s)</label>
-                  <input id="robot-speed" name="robot_speed_mps" type="number" min="0.1" max="10" step="0.1"
-                    defaultValue={selectedLayout?.config.robot_speed_mps ?? 1}/>
-                  {fieldErrors.robot_speed_mps && <span className="field-error">{fieldErrors.robot_speed_mps}</span>}
-                </div>
-                <div className="field">
-                  <label htmlFor="charger-count">Charger count</label>
-                  <input id="charger-count" name="charger_count" type="number" min="1" max="20"
-                    defaultValue={selectedLayout?.config.charger_count ?? 1}/>
-                  {fieldErrors.charger_count && <span className="field-error">{fieldErrors.charger_count}</span>}
-                </div>
-                <div className="field">
-                  <label htmlFor="task-interval">Task arrival interval (s)</label>
-                  <input id="task-interval" name="task_arrival_interval" type="number" min="1" max="60" step="0.1" defaultValue="5" />
-                  {fieldErrors.task_arrival_interval && <span className="field-error">{fieldErrors.task_arrival_interval}</span>}
-                </div>
-                <div className="field">
-                  <label htmlFor="travel-time">Travel time (s)</label>
-                  <input id="travel-time" name="travel_time" type="number" min="0.1" max="86400" step="0.1" defaultValue="30" />
-                  {fieldErrors.travel_time && <span className="field-error">{fieldErrors.travel_time}</span>}
-                </div>
-                <div className="field">
-                  <label htmlFor="loading-time">Loading time (s)</label>
-                  <input id="loading-time" name="loading_time" type="number" min="0.1" max="86400" step="0.1" defaultValue="10" />
-                  {fieldErrors.loading_time && <span className="field-error">{fieldErrors.loading_time}</span>}
-                </div>
-                <div className="field">
-                  <label htmlFor="simulation-time">Simulation time (s)</label>
-                  <input id="simulation-time" name="simulation_time" type="number" min="0.1" max="86400" step="0.1" defaultValue="3600" />
-                  {fieldErrors.simulation_time && <span className="field-error">{fieldErrors.simulation_time}</span>}
-                </div>
-              </div>
-              <p className="form-help">Route distance and congestion are resolved authoritatively from the immutable layout version.</p>
-              <div className="button-row">
-                <button className="button" type="reset" disabled={activeAction !== null}>Reset form</button>
-                <button className="button primary" type="submit" disabled={activeAction !== null}>
-                  {activeAction === "run" ? "Running…" : "Run benchmark"}
-                </button>
-              </div>
-            </form>
+            <ScenarioRunForm
+              key={`${selectedLayout?.layout_id}-${selectedLayout?.version}-${revisionSource?.id ?? "new"}`}
+              layouts={layouts}
+              selectedLayout={selectedLayout}
+              revisionSource={revisionSource}
+              fieldErrors={fieldErrors}
+              busy={activeAction !== null}
+              running={activeAction === "run"}
+              onSelectLayout={(layoutId) => void selectLayout(layoutId)}
+              onSelectVersion={(version) => void selectLayoutVersion(version)}
+              onRun={(request) => void runScenario(request)}
+            />
           ) : <ReadOnlyConfiguration scenario={candidate} />}
         </section>
 
@@ -434,6 +460,7 @@ export default function ScenariosPage() {
             {candidate ? <ScenarioStatusBadge status={candidate.status} /> : <span>No candidate</span>}
           </div>
           {actionError && <div className="scenario-error" role="alert">{actionError}</div>}
+          {commandLoadError && <div className="review-note" role="status">{commandLoadError}</div>}
           {!candidate && loadState !== "loading" && (
             <div className="empty">{mayRun ? "Run a scenario to compare it with the baseline." : "Wait for a Designer to run a scenario."}</div>
           )}
@@ -445,29 +472,52 @@ export default function ScenariosPage() {
                 <div><small>Completed</small><strong>{candidate.metrics.completed_tasks}</strong></div>
                 <div><small>Benchmark time</small><strong>{candidate.duration_ms.toFixed(1)} ms</strong></div>
               </div>
+              <WorkflowTimeline
+                status={candidate.status}
+                command={candidateCommand}
+              />
+              {candidate.status === "REVISION_REQUESTED" && (
+                <div className="revision-feedback" role="status">
+                  <strong>Monitor requested changes</strong>
+                  <p>{candidate.review_note}</p>
+                </div>
+              )}
               {baseline ? (
                 <ScenarioComparison baseline={baseline.metrics} candidate={candidate.metrics} />
               ) : (
                 <div className="notice">Baseline is unavailable for comparison.</div>
               )}
+              {mayViewLayout && <LayoutComparison candidate={candidate} />}
               <ScenarioProvenance scenario={candidate} />
               <ScenarioActions
                 role={user.role}
                 status={candidate.status}
                 activeAction={activeAction}
                 onSubmitScenario={() => void submitScenario()}
-                onReview={(action) => void review(action)}
-                onApply={() => void applyScenario()}
+                onApprove={() => void approveScenario()}
+                onRequestRevision={(note) => void requestRevision(note)}
+                onStartRevision={() => void startRevision()}
+                canStartRevision={candidate.created_by === user.id}
+                onApply={requestApplyScenario}
               />
-              {command && <div className="review-note" role="status">
-                Command <strong>{command.operation_id}</strong> · {command.status}
-              </div>}
             </div>
           )}
         </section>
       </div>
       {mayRun && <OptimizationPanel key={`${selectedLayout?.layout_id}-${selectedLayout?.version}`}
         layouts={layouts} selectedLayout={selectedLayout}/>}
+      <ConfirmDialog
+        open={applyConfirmationOpen}
+        title={`Apply "${candidate?.name ?? "scenario"}" to the factory?`}
+        message={<>
+          <p>A command will be queued for the Fleet Manager bridge.</p>
+          <p>When the bridge completes it, factory runtime resets AMRs, tasks, alerts and metrics.</p>
+        </>}
+        confirmLabel="Apply to factory"
+        variant="danger"
+        onCancel={() => setApplyConfirmationOpen(false)}
+        onConfirm={() => void applyScenario()}
+      />
     </>
   );
 }

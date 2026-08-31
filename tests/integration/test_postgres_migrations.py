@@ -16,7 +16,7 @@ def migration_files() -> list[Path]:
 
 def test_migrations_are_ordered_and_parseable() -> None:
     files = migration_files()
-    assert [path.name[:4] for path in files] == [f"{index:04d}" for index in range(1, 14)]
+    assert [path.name[:4] for path in files] == [f"{index:04d}" for index in range(1, 16)]
     for path in files:
         assert parse_sql(path.read_text(encoding="utf-8")), path.name
 
@@ -65,6 +65,19 @@ def test_default_layout_repair_creates_parent_before_version() -> None:
         "insert into public.layout_versions"
     )
     assert "on conflict (layout_id, version) do nothing" in normalized
+
+
+def test_scenario_revision_workflow_is_persisted_and_audited() -> None:
+    status_sql = (MIGRATIONS / "0014_add_revision_requested_status.sql").read_text(
+        encoding="utf-8"
+    )
+    workflow_sql = (MIGRATIONS / "0015_add_scenario_revision_workflow.sql").read_text(
+        encoding="utf-8"
+    )
+    assert "'REVISION_REQUESTED'" in status_sql
+    assert "review_note text" in workflow_sql
+    assert "revision_of text references public.scenarios" in workflow_sql
+    assert "REVISION_REQUESTED" in workflow_sql
 
 
 def test_migration_runner_tracks_checksum_and_interrupted_state() -> None:
