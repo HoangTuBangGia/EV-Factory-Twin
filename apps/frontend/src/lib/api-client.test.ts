@@ -171,6 +171,24 @@ describe("apiClient scenario workflow", () => {
     );
   });
 
+  it("loads ROS compatibility before apply", async () => {
+    const compatibility = {
+      status: "LIVE_APPLY",
+      details: ["Scenario topology matches the connected ROS runtime"],
+      dynamic_updates: ["robot_speed_mps: 1.0 → 2.0"],
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(compatibility), { status: 200 }),
+    );
+
+    await expect(apiClient.getScenarioCompatibility(scenario.id)).resolves.toEqual(compatibility);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `http://localhost:8000/api/v1/scenarios/${scenario.id}/compatibility`,
+      expect.any(Object),
+    );
+  });
+
   it("surfaces a backend conflict detail", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ detail: "Scenario must be APPROVED" }), { status: 409 }),

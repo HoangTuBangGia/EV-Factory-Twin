@@ -24,6 +24,15 @@ class BridgeStatus(StrEnum):
     DEGRADED = "DEGRADED"
 
 
+class LiveRuntimeConfig(BaseModel):
+    layout_id: str = Field(min_length=1, max_length=80)
+    layout_version: int = Field(ge=1)
+    route_id: str = Field(min_length=1, max_length=80)
+    robot_speed_mps: float = Field(gt=0.0, le=10.0)
+    charger_count: int = Field(ge=1, le=20)
+    demand_interval_seconds: float = Field(ge=1.0, le=60.0)
+
+
 class BridgeHealth(BaseModel):
     bridge_id: str = Field(min_length=1)
     status: BridgeStatus
@@ -32,6 +41,7 @@ class BridgeHealth(BaseModel):
     delivered_samples: int = Field(ge=0)
     failed_deliveries: int = Field(ge=0)
     last_error: str | None = None
+    runtime_config: LiveRuntimeConfig | None = None
 
     @field_validator("robot_ids")
     @classmethod

@@ -1,0 +1,4 @@
+float32 linear_speed_mps
+---
+bool accepted
+string detail

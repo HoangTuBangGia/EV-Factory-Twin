@@ -6,6 +6,7 @@ from pathlib import Path
 
 import rclpy
 from amr_interfaces.action import NavigateToStation
+from amr_interfaces.srv import SetNavigationSpeed
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
@@ -74,6 +75,12 @@ def next_battery(
     return battery
 
 
+def navigation_speed_error(speed: float) -> str | None:
+    if not math.isfinite(speed) or not 0.0 < speed <= 10.0:
+        return "linear_speed_mps must be finite and in (0, 10]"
+    return None
+
+
 class NavigationSimulator(Node):
     def __init__(self) -> None:
         super().__init__("navigation_simulator")
@@ -125,6 +132,25 @@ class NavigationSimulator(Node):
             cancel_callback=lambda _: CancelResponse.ACCEPT,
             callback_group=callback_group,
         )
+        self._speed_service = self.create_service(
+            SetNavigationSpeed,
+            "set_navigation_speed",
+            self._set_navigation_speed,
+            callback_group=callback_group,
+        )
+
+    def _set_navigation_speed(self, request, response):
+        speed = float(request.linear_speed_mps)
+        error = navigation_speed_error(speed)
+        if error:
+            response.accepted = False
+            response.detail = error
+            return response
+        with self._lock:
+            self._linear_speed = speed
+        response.accepted = True
+        response.detail = f"navigation speed set to {speed:g} m/s"
+        return response
 
     def _on_odom(self, message: Odometry) -> None:
         with self._lock:
@@ -274,6 +300,7 @@ class NavigationSimulator(Node):
 
     def destroy_node(self):
         self._action_server.destroy()
+        self.destroy_service(self._speed_service)
         return super().destroy_node()
 
 

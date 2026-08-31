@@ -241,6 +241,14 @@ class QueueWorker(DeliveryWorker):
             self._deliver(body)
 
 
+def apply_result_status(outcome: int) -> str:
+    if outcome == ApplyScenario.Response.COMPLETED:
+        return "COMPLETED"
+    if outcome == ApplyScenario.Response.REQUIRES_RELAUNCH:
+        return "REQUIRES_RELAUNCH"
+    return "FAILED"
+
+
 class TelemetryBridge(Node):
     def __init__(self) -> None:
         super().__init__("telemetry_bridge")
@@ -249,6 +257,12 @@ class TelemetryBridge(Node):
             "backend_url", os.getenv("TELEMETRY_BACKEND_URL", "http://localhost:8000")
         )
         self.declare_parameter("bridge_id", os.getenv("TELEMETRY_BRIDGE_ID", "edge-main"))
+        self.declare_parameter("runtime_layout_id", "LAYOUT-DEFAULT")
+        self.declare_parameter("runtime_layout_version", 3)
+        self.declare_parameter("runtime_route_id", "BATTERY_DELIVERY")
+        self.declare_parameter("runtime_robot_speed_mps", 1.0)
+        self.declare_parameter("runtime_charger_count", 1)
+        self.declare_parameter("runtime_demand_interval_seconds", 8.0)
         config = str(self.get_parameter("robots_config").value)
         if not config:
             raise RuntimeError("robots_config parameter is required")
@@ -266,6 +280,7 @@ class TelemetryBridge(Node):
         self._secret = secret
         self._opener = opener
         self._bridge_id = str(self.get_parameter("bridge_id").value)
+        self._runtime_speed = float(self.get_parameter("runtime_robot_speed_mps").value)
         self._command_active = False
         self._registry_ready = False
 
@@ -401,8 +416,11 @@ class TelemetryBridge(Node):
         goal.demand_interval_seconds = float(scenario.get("task_arrival_interval", 0.0))
         self._command_active = True
         future = self._apply_client.call_async(goal)
+        requested_speed = goal.robot_speed_mps
         future.add_done_callback(
-            lambda completed, ack=acknowledgement: self._on_apply_result(completed, ack)
+            lambda completed, ack=acknowledgement, speed=requested_speed: self._on_apply_result(
+                completed, ack, speed
+            )
         )
 
     def _create_transport_task(self, payload: dict, acknowledgement: dict) -> None:
@@ -433,10 +451,13 @@ class TelemetryBridge(Node):
             self._command_active = False
         self._post_result(acknowledgement, status, detail)
 
-    def _on_apply_result(self, future, acknowledgement: dict) -> None:
+    def _on_apply_result(self, future, acknowledgement: dict, requested_speed: float) -> None:
         try:
             result = future.result()
-            status = "COMPLETED" if result.outcome == ApplyScenario.Response.COMPLETED else "FAILED"
+            status = apply_result_status(result.outcome)
+            if status == "COMPLETED":
+                with self._lock:
+                    self._runtime_speed = requested_speed
             detail = result.detail
         except Exception as error:
             status, detail = "FAILED", str(error)
@@ -552,6 +573,16 @@ class TelemetryBridge(Node):
                 "delivered_samples": self._delivered_samples,
                 "failed_deliveries": self._failed_deliveries,
                 "last_error": last_error,
+                "runtime_config": {
+                    "layout_id": str(self.get_parameter("runtime_layout_id").value),
+                    "layout_version": int(self.get_parameter("runtime_layout_version").value),
+                    "route_id": str(self.get_parameter("runtime_route_id").value),
+                    "robot_speed_mps": self._runtime_speed,
+                    "charger_count": int(self.get_parameter("runtime_charger_count").value),
+                    "demand_interval_seconds": float(
+                        self.get_parameter("runtime_demand_interval_seconds").value
+                    ),
+                },
             }
         self._health_worker.submit(json.dumps(payload, separators=(",", ":")).encode())
 

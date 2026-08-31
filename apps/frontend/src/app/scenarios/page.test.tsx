@@ -17,6 +17,7 @@ const api = vi.hoisted(() => ({
   getLayout: vi.fn(),
   getLayoutVersion: vi.fn(),
   runScenario: vi.fn(),
+  getScenarioCompatibility: vi.fn(),
   applyScenario: vi.fn(),
 }));
 
@@ -86,6 +87,11 @@ describe("ScenariosPage command history", () => {
     api.getLayout.mockResolvedValue(fixtureLayoutVersion);
     api.getLayoutVersion.mockResolvedValue(fixtureLayoutVersion);
     api.runScenario.mockResolvedValue(fixtureScenario);
+    api.getScenarioCompatibility.mockResolvedValue({
+      status: "LIVE_APPLY",
+      details: ["Scenario topology matches the connected ROS runtime"],
+      dynamic_updates: ["robot_speed_mps: 1.0 → 1.5"],
+    });
     api.applyScenario.mockResolvedValue(fixtureApplyCommand);
   });
 
@@ -170,18 +176,21 @@ describe("ScenariosPage command history", () => {
     const apply = await screen.findByRole("button", { name: "Apply to factory" });
     apply.focus();
     fireEvent.click(apply);
-    const dialog = screen.getByRole("dialog", { name: /Apply "candidate-01" to the factory/ });
+    const dialog = await screen.findByRole("dialog", { name: /Apply "candidate-01" to the factory/ });
     expect(api.applyScenario).not.toHaveBeenCalled();
-    expect(dialog).toHaveTextContent("factory runtime resets AMRs, tasks, alerts and metrics");
+    expect(api.getScenarioCompatibility).toHaveBeenCalledWith(fixtureScenario.id);
+    expect(dialog).toHaveTextContent("Compatible with the connected ROS runtime");
+    expect(dialog).toHaveTextContent("robot_speed_mps: 1.0 → 1.5");
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(apply).toHaveFocus();
 
     fireEvent.click(apply);
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole(
+    const reopenedDialog = await screen.findByRole("dialog");
+    fireEvent.click(within(reopenedDialog).getByRole(
       "button",
-      { name: "Apply to factory" },
+      { name: "Apply to ROS" },
     ));
     await waitFor(() => expect(api.applyScenario).toHaveBeenCalledWith(fixtureScenario.id, {
       timeout_seconds: 30,

@@ -16,7 +16,7 @@ function message(error: unknown) {
 }
 
 function canRetry(command: Command) {
-  return ["FAILED", "TIMED_OUT"].includes(command.status)
+  return ["REQUIRES_RELAUNCH", "FAILED", "TIMED_OUT"].includes(command.status)
     && command.attempts.length <= command.max_retries;
 }
 
@@ -99,7 +99,7 @@ export default function CommandsPage() {
         {mayRetry && <div className="button-row">
           <button className="button primary" type="button"
             disabled={!retryAvailable || retrying !== null}
-            title={!retryAvailable ? "Retry requires FAILED/TIMED_OUT status and remaining budget" : undefined}
+            title={!retryAvailable ? "Retry requires REQUIRES_RELAUNCH/FAILED/TIMED_OUT status and remaining budget" : undefined}
             onClick={() => void retry(command)}>
             {retrying === command.operation_id ? "Retrying…" : "Retry command"}
           </button>

@@ -32,6 +32,7 @@ import {
 import { useFactoryStore } from "@/stores/factory-store";
 import { toastSuccess, toastError, toastInfo } from "@/stores/toast-store";
 import type { LayoutSummary, LayoutVersion } from "@/schemas/layout";
+import type { ScenarioCompatibility } from "@/schemas/command";
 import {
   scenarioRunRequestSchema,
   type Scenario,
@@ -119,6 +120,7 @@ export default function ScenariosPage() {
   const [commandLoadError, setCommandLoadError] = useState<string | null>(null);
   const [activeAction, setActiveAction] = useState<ScenarioAction | null>(null);
   const [applyConfirmationOpen, setApplyConfirmationOpen] = useState(false);
+  const [compatibility, setCompatibility] = useState<ScenarioCompatibility | null>(null);
   const scenarios = useFactoryStore((state) => state.scenarios);
   const commands = useFactoryStore((state) => state.commands);
   const setScenarios = useFactoryStore((state) => state.setScenarios);
@@ -346,12 +348,28 @@ export default function ScenariosPage() {
     }
   }
 
-  function requestApplyScenario() {
+  async function requestApplyScenario() {
     if (!candidate || candidate.status !== "APPROVED" || !mayApply) {
       setActionError("Only a Monitor can apply an approved scenario.");
       return;
     }
-    setApplyConfirmationOpen(true);
+    setActionError(null);
+    setActiveAction("apply");
+    try {
+      const result = await apiClient.getScenarioCompatibility(candidate.id);
+      setCompatibility(result);
+      if (result.status === "RUNTIME_UNAVAILABLE") {
+        setActionError(result.details.join("; "));
+        toastError(result.details.join("; "));
+        return;
+      }
+      setApplyConfirmationOpen(true);
+    } catch (error) {
+      setActionError(`Unable to check ROS compatibility: ${message(error)}`);
+      toastError(`Unable to check ROS compatibility: ${message(error)}`);
+    } finally {
+      setActiveAction(null);
+    }
   }
 
   async function applyScenario() {
@@ -498,7 +516,7 @@ export default function ScenariosPage() {
                 onRequestRevision={(note) => void requestRevision(note)}
                 onStartRevision={() => void startRevision()}
                 canStartRevision={candidate.created_by === user.id}
-                onApply={requestApplyScenario}
+                onApply={() => void requestApplyScenario()}
               />
             </div>
           )}
@@ -510,10 +528,17 @@ export default function ScenariosPage() {
         open={applyConfirmationOpen}
         title={`Apply "${candidate?.name ?? "scenario"}" to the factory?`}
         message={<>
-          <p>A command will be queued for the Fleet Manager bridge.</p>
-          <p>When the bridge completes it, factory runtime resets AMRs, tasks, alerts and metrics.</p>
+          {compatibility?.status === "LIVE_APPLY" && <>
+            <p>Compatible with the connected ROS runtime. A command will be queued for Fleet Manager.</p>
+            {compatibility.dynamic_updates.map((detail) => <p key={detail}>{detail}</p>)}
+          </>}
+          {compatibility?.status === "REQUIRES_RELAUNCH" && <>
+            <p>This scenario cannot be applied live. ROS/Gazebo must be relaunched for:</p>
+            {compatibility.details.map((detail) => <p key={detail}>{detail}</p>)}
+            <p>Queuing it records REQUIRES_RELAUNCH; the scenario stays APPROVED.</p>
+          </>}
         </>}
-        confirmLabel="Apply to factory"
+        confirmLabel={compatibility?.status === "LIVE_APPLY" ? "Apply to ROS" : "Queue result"}
         variant="danger"
         onCancel={() => setApplyConfirmationOpen(false)}
         onConfirm={() => void applyScenario()}

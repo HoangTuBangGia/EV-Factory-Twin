@@ -6,7 +6,7 @@ from pathlib import Path
 
 import rclpy
 from amr_interfaces.action import ExecuteTransportTask, NavigateToStation
-from amr_interfaces.srv import ApplyScenario
+from amr_interfaces.srv import ApplyScenario, SetNavigationSpeed
 from amr_navigation.node import load_stations as load_station_positions
 from nav_msgs.msg import Odometry
 from rclpy.action import ActionClient, ActionServer, CancelResponse, GoalResponse
@@ -71,18 +71,30 @@ def select_robot(
     )
 
 
-def runtime_config_error(request, *, robot_count: int, speed: float, chargers: int, demand: float):
+def runtime_config_error(
+    request,
+    *,
+    robot_count: int,
+    chargers: int,
+    demand: float,
+    layout_id: str,
+    layout_version: int,
+    route_id: str,
+):
+    reasons = []
     if request.robot_count != robot_count:
-        return f"robot_count={request.robot_count} requires Gazebo relaunch"
-    if not math.isclose(request.robot_speed_mps, speed, rel_tol=0.0, abs_tol=1e-6):
-        return f"robot_speed_mps={request.robot_speed_mps} requires Gazebo relaunch"
+        reasons.append(f"robot_count={request.robot_count}")
     if request.charger_count != chargers:
-        return f"charger_count={request.charger_count} requires Gazebo relaunch"
+        reasons.append(f"charger_count={request.charger_count}")
     if not math.isclose(request.demand_interval_seconds, demand, rel_tol=0.0, abs_tol=1e-6):
-        return f"demand_interval_seconds={request.demand_interval_seconds} requires relaunch"
-    if not request.layout_id or not request.route_id:
-        return "invalid runtime scenario configuration"
-    return None
+        reasons.append(f"demand_interval_seconds={request.demand_interval_seconds:g}")
+    if request.layout_id != layout_id:
+        reasons.append(f"layout_id={request.layout_id}")
+    if request.layout_version != layout_version:
+        reasons.append(f"layout_version={request.layout_version}")
+    if request.route_id != route_id:
+        reasons.append(f"route_id={request.route_id}")
+    return f"requires ROS/Gazebo relaunch: {', '.join(reasons)}" if reasons else None
 
 
 class FleetManager(Node):
@@ -94,6 +106,9 @@ class FleetManager(Node):
         self.declare_parameter("runtime_robot_speed_mps", 1.0)
         self.declare_parameter("runtime_charger_count", 1)
         self.declare_parameter("runtime_demand_interval_seconds", 8.0)
+        self.declare_parameter("runtime_layout_id", "LAYOUT-DEFAULT")
+        self.declare_parameter("runtime_layout_version", 3)
+        self.declare_parameter("runtime_route_id", "BATTERY_DELIVERY")
         robots_config = str(self.get_parameter("robots_config").value)
         stations_config = str(self.get_parameter("stations_config").value)
         if not robots_config or not stations_config:
@@ -104,12 +119,16 @@ class FleetManager(Node):
         self._runtime_speed = float(self.get_parameter("runtime_robot_speed_mps").value)
         self._runtime_chargers = int(self.get_parameter("runtime_charger_count").value)
         self._runtime_demand = float(self.get_parameter("runtime_demand_interval_seconds").value)
+        self._runtime_layout_id = str(self.get_parameter("runtime_layout_id").value)
+        self._runtime_layout_version = int(self.get_parameter("runtime_layout_version").value)
+        self._runtime_route_id = str(self.get_parameter("runtime_route_id").value)
         self._lock = threading.Lock()
         self._active = False
         self._apply_results: dict[tuple[str, int], tuple[int, str]] = {}
         self._active_scenario_id = ""
         self._callback_group = ReentrantCallbackGroup()
         self._navigation_clients: dict[str, ActionClient] = {}
+        self._speed_clients = {}
 
         for record in self._robots.values():
             namespace = record.namespace
@@ -140,6 +159,11 @@ class FleetManager(Node):
                 f"/{namespace}/navigate_to_station",
                 callback_group=self._callback_group,
             )
+            self._speed_clients[record.robot_id] = self.create_client(
+                SetNavigationSpeed,
+                f"/{namespace}/set_navigation_speed",
+                callback_group=self._callback_group,
+            )
 
         self._action_server = ActionServer(
             self,
@@ -167,21 +191,49 @@ class FleetManager(Node):
             error = runtime_config_error(
                 request,
                 robot_count=len(self._robots),
-                speed=self._runtime_speed,
                 chargers=self._runtime_chargers,
                 demand=self._runtime_demand,
+                layout_id=self._runtime_layout_id,
+                layout_version=self._runtime_layout_version,
+                route_id=self._runtime_route_id,
             )
             if error:
-                outcome = ApplyScenario.Response.FAILED
+                outcome = ApplyScenario.Response.REQUIRES_RELAUNCH
                 detail = error
             else:
-                self._active_scenario_id = request.scenario_id
-                outcome = ApplyScenario.Response.COMPLETED
-                detail = "scenario configuration accepted by fleet simulation"
+                failed = self._set_all_navigation_speeds(float(request.robot_speed_mps))
+                if failed:
+                    outcome = ApplyScenario.Response.FAILED
+                    detail = failed
+                else:
+                    self._runtime_speed = float(request.robot_speed_mps)
+                    self._active_scenario_id = request.scenario_id
+                    outcome = ApplyScenario.Response.COMPLETED
+                    detail = "scenario applied to the live ROS fleet"
             self._apply_results[key] = (outcome, detail)
         response.outcome = outcome
         response.detail = detail
         return response
+
+    def _set_all_navigation_speeds(self, speed: float) -> str | None:
+        if not math.isfinite(speed) or not 0.0 < speed <= 10.0:
+            return "robot_speed_mps must be finite and in (0, 10]"
+        unavailable = [
+            robot_id
+            for robot_id, client in self._speed_clients.items()
+            if not client.wait_for_service(timeout_sec=0.5)
+        ]
+        if unavailable:
+            return "navigation speed service unavailable: " + ", ".join(unavailable)
+        requests = []
+        for robot_id, client in self._speed_clients.items():
+            speed_request = SetNavigationSpeed.Request()
+            speed_request.linear_speed_mps = speed
+            requests.append((robot_id, self._wait_future(client.call_async(speed_request), 2.0)))
+        failures = [
+            robot_id for robot_id, result in requests if result is None or not result.accepted
+        ]
+        return "navigation speed update failed: " + ", ".join(failures) if failures else None
 
     def _update_status(self, robot_id: str, message: String) -> None:
         with self._lock:

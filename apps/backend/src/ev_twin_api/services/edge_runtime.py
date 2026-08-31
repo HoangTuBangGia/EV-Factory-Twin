@@ -80,3 +80,9 @@ class EdgeRuntimeService:
     def get_health(self, bridge_id: str) -> BridgeHealth | None:
         health = self._bridge_health.get(bridge_id)
         return health.model_copy(deep=True) if health else None
+
+    def get_latest_health(self) -> BridgeHealth | None:
+        if not self._bridge_health:
+            return None
+        health = max(self._bridge_health.values(), key=lambda item: item.timestamp)
+        return health.model_copy(deep=True)

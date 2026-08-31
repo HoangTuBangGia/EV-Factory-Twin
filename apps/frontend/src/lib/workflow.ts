@@ -69,7 +69,9 @@ export function applyProgress(command: Command | null | undefined) {
   const acknowledged = command.attempts.some((attempt) => attempt.acknowledged_at !== null);
   return {
     index: command.status === "COMPLETED" ? 2 : acknowledged ? 1 : 0,
-    failed: command.status === "FAILED" || command.status === "TIMED_OUT",
+    failed: command.status === "REQUIRES_RELAUNCH"
+      || command.status === "FAILED"
+      || command.status === "TIMED_OUT",
   };
 }
 

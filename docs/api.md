@@ -75,6 +75,7 @@ string/log/frontend và không được tái sử dụng service-role key.
 | GET | `/api/v1/scenarios` | [`Scenario[]`](#scenario-benchmark-và-phê-duyệt) | Danh sách candidate theo thứ tự tạo |
 | GET | `/api/v1/scenarios/baseline` | [`Scenario`](#scenario) | Benchmark baseline chuẩn của repository |
 | GET | `/api/v1/scenarios/{scenario_id}` | [`Scenario`](#scenario) | Chi tiết candidate; id lạ → 404 |
+| GET | `/api/v1/scenarios/{scenario_id}/compatibility` | `ScenarioCompatibility` | Preflight candidate với heartbeat ROS hiện tại |
 | POST | `/api/v1/scenarios/run` | [`Scenario`](#scenario) | Chạy benchmark SimPy cho candidate |
 | POST | `/api/v1/scenarios/{scenario_id}/submit` | [`Scenario`](#scenario) | DESIGNER submit candidate đã mô phỏng |
 | POST | `/api/v1/optimizations/run` | `OptimizationResult` | Đánh giá và xếp hạng tối đa 64 candidate |
@@ -84,7 +85,7 @@ string/log/frontend và không được tái sử dụng service-role key.
 | POST | `/api/v1/scenarios/{scenario_id}/apply` | `Command` | Tạo durable apply command PENDING |
 | GET | `/api/v1/commands` | `Command[]` | Danh sách command/attempt |
 | GET | `/api/v1/commands/{operation_id}` | `Command` | Chi tiết command |
-| POST | `/api/v1/commands/{operation_id}/retry` | `Command` | MONITOR retry failed/timeout command |
+| POST | `/api/v1/commands/{operation_id}/retry` | `Command` | MONITOR retry relaunch-required/failed/timeout command |
 | WS | `/ws/factory` | [envelope](#websocket-event-envelope) | Stream realtime |
 | POST | `/internal/v1/telemetry` | `TelemetryIngressResponse` | Edge bridge gửi một canonical robot sample |
 | POST | `/internal/v1/task-updates` | `EdgeUpdateResponse` | Edge bridge gửi một ROS task transition |
@@ -237,7 +238,8 @@ a FIFO delivery worker so lifecycle transitions are not coalesced.
 
 `POST /internal/v1/bridge-health` accepts `bridge_id`, `CONNECTED | DEGRADED`,
 the configured robot IDs, UTC timestamp, cumulative delivery counters and the
-latest per-robot delivery error. Equal/older heartbeats are ignored per
+latest per-robot delivery error. ROS bridges also attach their declared layout,
+route, speed, charger count and demand interval for Apply preflight. Equal/older heartbeats are ignored per
 `bridge_id`. With MOCK disabled, the accepted `robot_ids` list replaces the
 single trusted bridge registry: unchanged robot snapshots are preserved, new
 robots start OFFLINE until telemetry arrives, removed robots disappear, and a
@@ -593,9 +595,9 @@ SIMULATED ── submit ──▶ SUBMITTED ── approve ──▶ APPROVED
 `POST /api/v1/scenarios/{id}/apply` không đổi scenario ngay. Nó trả command với
 `operation_id`, status `PENDING`, timeout/retry budget và attempt 1. Edge bridge
 chủ động lease command bằng shared secret, POST ACK, gọi typed ROS service rồi
-POST `COMPLETED` hoặc `FAILED`. Scenario chỉ chuyển `APPROVED → APPLIED` sau
+POST `COMPLETED`, `REQUIRES_RELAUNCH` hoặc `FAILED`. Scenario chỉ chuyển `APPROVED → APPLIED` sau
 `COMPLETED`. Retry giữ nguyên `operation_id` và tạo attempt number mới; topology
-không thể hot-apply phải trả `FAILED` với lý do cần relaunch Gazebo.
+không thể hot-apply trả `REQUIRES_RELAUNCH` và giữ scenario ở `APPROVED`.
 
 Backend chạy timeout sweep độc lập với browser và edge polling. Cadence mặc định
 là 1 giây, cấu hình bằng `COMMAND_TIMEOUT_SWEEP_SECONDS`. Attempt chưa được lease

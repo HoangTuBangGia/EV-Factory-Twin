@@ -165,7 +165,10 @@ source /opt/ros/jazzy/setup.bash
 source ros2_ws/install/setup.bash
 ros2 launch telemetry_bridge telemetry_bridge.launch.py \
   backend_url:=https://YOUR_RENDER_HOST \
-  robots_config:="$PWD/ros2_ws/src/amr_gazebo/config/robots.json"
+  robots_config:="$PWD/ros2_ws/src/amr_gazebo/config/robots.json" \
+  runtime_robot_speed_mps:=1.0 \
+  runtime_charger_count:=1 \
+  runtime_demand_interval_seconds:=8.0
 ```
 
 The bridge reads its bearer secret from the `EDGE_TELEMETRY_SHARED_SECRET`
@@ -175,6 +178,8 @@ remote backend URLs must use HTTPS.
 One bridge subscribes to every robot declared in `robots_config`, preserves a
 separate latest-value delivery worker per robot, and forwards the durable
 `/fleet/task_updates` stream in FIFO order. It also emits bridge-health heartbeats.
+The bridge runtime arguments must match the corresponding `amr_gazebo sim.launch.py`
+arguments so browser compatibility preflight reflects the live ROS process.
 The bridge is outbound-only. Task assignment and reset commands must travel
 through the edge fleet/task manager; the browser must never publish ROS messages
 directly.

@@ -4,6 +4,7 @@ import { factoryAlertSchema } from "@/schemas/alert";
 import { currentUserSchema, loginResponseSchema } from "@/schemas/auth";
 import {
   applyScenarioRequestSchema,
+  scenarioCompatibilitySchema,
   commandSchema,
   type ApplyScenarioRequest,
 } from "@/schemas/command";
@@ -206,6 +207,10 @@ export const apiClient = {
       method: "POST",
       body: JSON.stringify(applyScenarioRequestSchema.parse(input)),
     }),
+  getScenarioCompatibility: (id: string) => request(
+    `/api/v1/scenarios/${encodeURIComponent(id)}/compatibility`,
+    scenarioCompatibilitySchema,
+  ),
   runOptimization: (input: OptimizationRequest) => request(
     "/api/v1/optimizations/run",
     optimizationResultSchema,

@@ -156,6 +156,9 @@ def _robot_actions(context):
                         "runtime_demand_interval_seconds": LaunchConfiguration(
                             "runtime_demand_interval_seconds"
                         ),
+                        "runtime_layout_id": LaunchConfiguration("runtime_layout_id"),
+                        "runtime_layout_version": LaunchConfiguration("runtime_layout_version"),
+                        "runtime_route_id": LaunchConfiguration("runtime_route_id"),
                         "use_sim_time": True,
                     }
                 ],
@@ -186,6 +189,9 @@ def generate_launch_description():
             DeclareLaunchArgument("runtime_robot_speed_mps", default_value="1.0"),
             DeclareLaunchArgument("runtime_charger_count", default_value="1"),
             DeclareLaunchArgument("runtime_demand_interval_seconds", default_value="8.0"),
+            DeclareLaunchArgument("runtime_layout_id", default_value="LAYOUT-DEFAULT"),
+            DeclareLaunchArgument("runtime_layout_version", default_value="3"),
+            DeclareLaunchArgument("runtime_route_id", default_value="BATTERY_DELIVERY"),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     PathJoinSubstitution(

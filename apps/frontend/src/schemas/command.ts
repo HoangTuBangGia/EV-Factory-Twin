@@ -6,6 +6,7 @@ export const commandStatusSchema = z.enum([
   "PENDING",
   "ACKNOWLEDGED",
   "COMPLETED",
+  "REQUIRES_RELAUNCH",
   "FAILED",
   "TIMED_OUT",
 ]);
@@ -51,5 +52,12 @@ export const applyScenarioRequestSchema = z.object({
   max_retries: z.number().int().min(0).max(5).default(1),
 });
 
+export const scenarioCompatibilitySchema = z.object({
+  status: z.enum(["LIVE_APPLY", "REQUIRES_RELAUNCH", "RUNTIME_UNAVAILABLE"]),
+  details: z.array(z.string()),
+  dynamic_updates: z.array(z.string()),
+});
+
 export type Command = z.infer<typeof commandSchema>;
 export type ApplyScenarioRequest = z.input<typeof applyScenarioRequestSchema>;
+export type ScenarioCompatibility = z.infer<typeof scenarioCompatibilitySchema>;

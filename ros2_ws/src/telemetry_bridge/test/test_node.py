@@ -19,6 +19,7 @@ from telemetry_bridge.node import (
     RejectRedirectHandler,
     RobotSnapshot,
     TelemetryBridge,
+    apply_result_status,
     encode_payload,
     is_retryable_status,
     iso_timestamp,
@@ -34,6 +35,12 @@ def test_yaw_from_quaternion():
 
 def test_iso_timestamp_uses_edge_utc_time():
     assert iso_timestamp(datetime(2026, 8, 19, 5, 0, 0, 125000, UTC)) == "2026-08-19T05:00:00.125Z"
+
+
+def test_apply_result_preserves_relaunch_outcome() -> None:
+    assert apply_result_status(0) == "COMPLETED"
+    assert apply_result_status(2) == "REQUIRES_RELAUNCH"
+    assert apply_result_status(1) == "FAILED"
 
 
 def test_payload_is_strict_json_and_validates_inputs():

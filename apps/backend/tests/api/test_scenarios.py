@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -8,6 +9,7 @@ from ev_twin_api.api.scenarios import (
     approve_scenario,
     get_baseline,
     get_scenario,
+    get_scenario_compatibility,
     list_scenarios,
     reject_scenario,
     request_scenario_revision,
@@ -22,6 +24,7 @@ from ev_twin_api.schemas.command import (
     CommandResultRequest,
     CommandStatus,
 )
+from ev_twin_api.schemas.edge_runtime import BridgeHealth, LiveRuntimeConfig
 from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.schemas.layout import CreateLayoutRequest
 from ev_twin_api.schemas.scenario import (
@@ -31,6 +34,7 @@ from ev_twin_api.schemas.scenario import (
 )
 from ev_twin_api.services.audit_service import InMemoryAuditRepository
 from ev_twin_api.services.command_service import CommandService, InMemoryCommandRepository
+from ev_twin_api.services.edge_runtime import EdgeRuntimeService
 from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.layout_repository import InMemoryLayoutRepository
 from ev_twin_api.services.layout_service import LayoutService
@@ -265,6 +269,75 @@ async def test_apply_waits_for_positive_command_result() -> None:
         call.args[0] == {"type": "factory.reset", "data": None}
         for call in broadcast.await_args_list
     )
+
+
+@pytest.mark.asyncio
+async def test_relaunch_result_keeps_scenario_approved() -> None:
+    service, _, _, manager = build_scenario_service()
+    scenario = await run_scenario(scenario_request(), service, DESIGNER)
+    await submit_scenario(scenario.id, service, DESIGNER)
+    await approve_scenario(scenario.id, service, MONITOR)
+    commands = CommandService(
+        InMemoryCommandRepository(), service, manager, InMemoryAuditRepository()
+    )
+    command = await apply_scenario(scenario.id, ApplyScenarioRequest(), commands, MONITOR)
+    await commands.lease("edge-test")
+    await commands.acknowledge(
+        CommandAcknowledgementRequest(
+            operation_id=command.operation_id, attempt_number=1, bridge_id="edge-test"
+        )
+    )
+    result = await commands.result(
+        CommandResultRequest(
+            operation_id=command.operation_id,
+            attempt_number=1,
+            bridge_id="edge-test",
+            status=CommandStatus.REQUIRES_RELAUNCH,
+            detail="robot_count requires relaunch",
+        )
+    )
+
+    assert result.status == CommandStatus.REQUIRES_RELAUNCH
+    assert (await service.get(scenario.id)).status == ScenarioStatus.APPROVED
+
+
+@pytest.mark.asyncio
+async def test_compatibility_reports_live_speed_update() -> None:
+    service, _, state, manager = build_scenario_service()
+    scenario = await run_scenario(
+        scenario_request(
+            num_robots=3,
+            robot_speed_mps=2.0,
+            charger_count=1,
+            task_arrival_interval=10.0,
+        ),
+        service,
+        DESIGNER,
+    )
+    edge = EdgeRuntimeService(state, manager)
+    await edge.ingest_health(
+        BridgeHealth(
+            bridge_id="edge-test",
+            status="CONNECTED",
+            robot_ids=["AMR-01", "AMR-02", "AMR-03"],
+            timestamp=datetime.now(UTC),
+            delivered_samples=0,
+            failed_deliveries=0,
+            runtime_config=LiveRuntimeConfig(
+                layout_id="LAYOUT-DEFAULT",
+                layout_version=3,
+                route_id="BATTERY_DELIVERY",
+                robot_speed_mps=1.0,
+                charger_count=1,
+                demand_interval_seconds=10.0,
+            ),
+        )
+    )
+
+    result = await get_scenario_compatibility(scenario.id, service, edge)
+
+    assert result.status == "LIVE_APPLY"
+    assert result.dynamic_updates == ["robot_speed_mps: 1.0 → 2.0"]
 
 
 @pytest.mark.asyncio

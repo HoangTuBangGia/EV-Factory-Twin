@@ -16,7 +16,7 @@ def migration_files() -> list[Path]:
 
 def test_migrations_are_ordered_and_parseable() -> None:
     files = migration_files()
-    assert [path.name[:4] for path in files] == [f"{index:04d}" for index in range(1, 17)]
+    assert [path.name[:4] for path in files] == [f"{index:04d}" for index in range(1, 18)]
     for path in files:
         assert parse_sql(path.read_text(encoding="utf-8")), path.name
 
@@ -84,6 +84,11 @@ def test_transport_task_commands_preserve_apply_commands() -> None:
     assert "alter column scenario_id drop not null" in sql
     assert "CREATE_TRANSPORT_TASK" in sql
     assert "commands_target_matches_type" in sql
+
+
+def test_relaunch_is_a_durable_command_result() -> None:
+    sql = (MIGRATIONS / "0017_add_command_requires_relaunch.sql").read_text(encoding="utf-8")
+    assert "REQUIRES_RELAUNCH" in sql
 
 
 def test_migration_runner_tracks_checksum_and_interrupted_state() -> None:

@@ -17,6 +17,7 @@ class CommandStatus(StrEnum):
     PENDING = "PENDING"
     ACKNOWLEDGED = "ACKNOWLEDGED"
     COMPLETED = "COMPLETED"
+    REQUIRES_RELAUNCH = "REQUIRES_RELAUNCH"
     FAILED = "FAILED"
     TIMED_OUT = "TIMED_OUT"
 
@@ -84,3 +85,15 @@ class CommandResultRequest(CommandAcknowledgementRequest):
 class ApplyScenarioRequest(BaseModel):
     timeout_seconds: float = Field(default=30.0, gt=0.0, le=300.0)
     max_retries: int = Field(default=1, ge=0, le=5)
+
+
+class ScenarioCompatibilityStatus(StrEnum):
+    LIVE_APPLY = "LIVE_APPLY"
+    REQUIRES_RELAUNCH = "REQUIRES_RELAUNCH"
+    RUNTIME_UNAVAILABLE = "RUNTIME_UNAVAILABLE"
+
+
+class ScenarioCompatibility(BaseModel):
+    status: ScenarioCompatibilityStatus
+    details: list[str]
+    dynamic_updates: list[str] = Field(default_factory=list)

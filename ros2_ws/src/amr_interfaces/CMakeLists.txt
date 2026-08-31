@@ -11,6 +11,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/TaskState.msg"
   "srv/CreateTransportTask.srv"
   "srv/ApplyScenario.srv"
+  "srv/SetNavigationSpeed.srv"
   DEPENDENCIES builtin_interfaces
 )
 

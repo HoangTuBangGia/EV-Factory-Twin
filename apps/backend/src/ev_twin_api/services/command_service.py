@@ -112,8 +112,14 @@ class InMemoryCommandRepository:
             return command.model_copy(deep=True)
 
     async def result(self, request: CommandResultRequest, now: datetime) -> Command:
-        if request.status not in {CommandStatus.COMPLETED, CommandStatus.FAILED}:
-            raise CommandConflictError("result status must be COMPLETED or FAILED")
+        if request.status not in {
+            CommandStatus.COMPLETED,
+            CommandStatus.REQUIRES_RELAUNCH,
+            CommandStatus.FAILED,
+        }:
+            raise CommandConflictError(
+                "result status must be COMPLETED, REQUIRES_RELAUNCH or FAILED"
+            )
         async with self._lock:
             command, attempt = self._attempt(request.operation_id, request.attempt_number)
             if attempt.leased_by != request.bridge_id:
@@ -135,8 +141,14 @@ class InMemoryCommandRepository:
             if command is None:
                 raise CommandNotFoundError(f"Command '{operation_id}' not found")
             self._expire(command, now)
-            if command.status not in {CommandStatus.FAILED, CommandStatus.TIMED_OUT}:
-                raise CommandConflictError("only failed or timed-out commands can retry")
+            if command.status not in {
+                CommandStatus.REQUIRES_RELAUNCH,
+                CommandStatus.FAILED,
+                CommandStatus.TIMED_OUT,
+            }:
+                raise CommandConflictError(
+                    "only relaunch-required, failed or timed-out commands can retry"
+                )
             if len(command.attempts) > command.max_retries:
                 raise CommandConflictError("command retry budget exhausted")
             command.attempts.append(
@@ -301,8 +313,14 @@ class SqlAlchemyCommandRepository:
             return command
 
     async def result(self, request: CommandResultRequest, now: datetime) -> Command:
-        if request.status not in {CommandStatus.COMPLETED, CommandStatus.FAILED}:
-            raise CommandConflictError("result status must be COMPLETED or FAILED")
+        if request.status not in {
+            CommandStatus.COMPLETED,
+            CommandStatus.REQUIRES_RELAUNCH,
+            CommandStatus.FAILED,
+        }:
+            raise CommandConflictError(
+                "result status must be COMPLETED, REQUIRES_RELAUNCH or FAILED"
+            )
         async with self._database.session() as session, session.begin():
             result = await session.execute(
                 text("""
@@ -339,8 +357,14 @@ class SqlAlchemyCommandRepository:
             command = await self._load(session, operation_id)
             if command is None:
                 raise CommandNotFoundError(f"Command '{operation_id}' not found")
-            if command.status not in {CommandStatus.FAILED, CommandStatus.TIMED_OUT}:
-                raise CommandConflictError("only failed or timed-out commands can retry")
+            if command.status not in {
+                CommandStatus.REQUIRES_RELAUNCH,
+                CommandStatus.FAILED,
+                CommandStatus.TIMED_OUT,
+            }:
+                raise CommandConflictError(
+                    "only relaunch-required, failed or timed-out commands can retry"
+                )
             if len(command.attempts) > command.max_retries:
                 raise CommandConflictError("command retry budget exhausted")
             number = len(command.attempts) + 1

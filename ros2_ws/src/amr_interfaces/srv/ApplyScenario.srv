@@ -11,6 +11,7 @@ float32 demand_interval_seconds
 ---
 uint8 COMPLETED=0
 uint8 FAILED=1
+uint8 REQUIRES_RELAUNCH=2
 
 uint8 outcome
 string detail

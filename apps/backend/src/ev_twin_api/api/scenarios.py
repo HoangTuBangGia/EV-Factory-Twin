@@ -3,8 +3,14 @@ from collections.abc import Awaitable, Callable
 from fastapi import APIRouter, Depends, HTTPException
 
 from ev_twin_api.api.dependencies import READ_ROLES, CurrentUserDep, require_roles
+from ev_twin_api.api.edge_runtime import EdgeRuntimeServiceDep
 from ev_twin_api.schemas.auth import AppRole
-from ev_twin_api.schemas.command import ApplyScenarioRequest, Command
+from ev_twin_api.schemas.command import (
+    ApplyScenarioRequest,
+    Command,
+    ScenarioCompatibility,
+    ScenarioCompatibilityStatus,
+)
 from ev_twin_api.schemas.scenario import (
     Scenario,
     ScenarioRevisionRequest,
@@ -70,6 +76,59 @@ async def list_scenarios(scenario_service: ScenarioServiceDep) -> list[Scenario]
 )
 async def get_scenario(scenario_id: str, scenario_service: ScenarioServiceDep) -> Scenario:
     return await _scenario_action(lambda: scenario_service.get(scenario_id))
+
+
+@router.get(
+    "/{scenario_id}/compatibility",
+    response_model=ScenarioCompatibility,
+    dependencies=[Depends(require_roles(*READ_ROLES))],
+)
+async def get_scenario_compatibility(
+    scenario_id: str,
+    scenario_service: ScenarioServiceDep,
+    edge_runtime: EdgeRuntimeServiceDep,
+) -> ScenarioCompatibility:
+    scenario = await _scenario_action(lambda: scenario_service.get(scenario_id))
+    health = edge_runtime.get_latest_health()
+    if health is None or health.runtime_config is None:
+        return ScenarioCompatibility(
+            status=ScenarioCompatibilityStatus.RUNTIME_UNAVAILABLE,
+            details=["ROS runtime configuration heartbeat is unavailable"],
+        )
+
+    config = scenario.config
+    runtime = health.runtime_config
+    relaunch: list[str] = []
+    if config.num_robots != len(health.robot_ids):
+        relaunch.append(
+            f"robot_count: runtime={len(health.robot_ids)}, scenario={config.num_robots}"
+        )
+    for name, current, requested in (
+        ("layout_id", runtime.layout_id, config.layout_id),
+        ("layout_version", runtime.layout_version, config.layout_version),
+        ("route_id", runtime.route_id, config.route_id),
+        ("charger_count", runtime.charger_count, config.charger_count),
+        (
+            "demand_interval_seconds",
+            runtime.demand_interval_seconds,
+            config.task_arrival_interval,
+        ),
+    ):
+        if current != requested:
+            relaunch.append(f"{name}: runtime={current}, scenario={requested}")
+    if relaunch:
+        return ScenarioCompatibility(
+            status=ScenarioCompatibilityStatus.REQUIRES_RELAUNCH,
+            details=relaunch,
+        )
+    dynamic = []
+    if runtime.robot_speed_mps != config.robot_speed_mps:
+        dynamic.append(f"robot_speed_mps: {runtime.robot_speed_mps} → {config.robot_speed_mps}")
+    return ScenarioCompatibility(
+        status=ScenarioCompatibilityStatus.LIVE_APPLY,
+        details=["Scenario topology matches the connected ROS runtime"],
+        dynamic_updates=dynamic,
+    )
 
 
 @router.post(

@@ -53,9 +53,44 @@ def test_runtime_apply_rejects_topology_change_requiring_relaunch() -> None:
             "charger_count": 1,
             "demand_interval_seconds": 8.0,
             "layout_id": "LAYOUT-DEFAULT",
+            "layout_version": 3,
             "route_id": "BATTERY_DELIVERY",
         },
     )()
     assert "robot_count" in runtime_config_error(
-        request, robot_count=2, speed=1.0, chargers=1, demand=8.0
+        request,
+        robot_count=2,
+        chargers=1,
+        demand=8.0,
+        layout_id="LAYOUT-DEFAULT",
+        layout_version=3,
+        route_id="BATTERY_DELIVERY",
+    )
+
+
+def test_runtime_apply_allows_live_speed_change() -> None:
+    request = type(
+        "Request",
+        (),
+        {
+            "robot_count": 2,
+            "robot_speed_mps": 2.5,
+            "charger_count": 1,
+            "demand_interval_seconds": 8.0,
+            "layout_id": "LAYOUT-DEFAULT",
+            "layout_version": 3,
+            "route_id": "BATTERY_DELIVERY",
+        },
+    )()
+    assert (
+        runtime_config_error(
+            request,
+            robot_count=2,
+            chargers=1,
+            demand=8.0,
+            layout_id="LAYOUT-DEFAULT",
+            layout_version=3,
+            route_id="BATTERY_DELIVERY",
+        )
+        is None
     )

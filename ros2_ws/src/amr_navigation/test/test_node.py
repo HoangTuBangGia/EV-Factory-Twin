@@ -2,7 +2,13 @@ import json
 import math
 
 import pytest
-from amr_navigation.node import STATUSES, load_stations, next_battery, normalize_angle
+from amr_navigation.node import (
+    STATUSES,
+    load_stations,
+    navigation_speed_error,
+    next_battery,
+    normalize_angle,
+)
 
 
 def test_station_config_is_finite_and_keyed_by_station_id(tmp_path) -> None:
@@ -50,3 +56,9 @@ def test_state_simulator_supports_the_mvp_status_contract() -> None:
         "ERROR",
         "OFFLINE",
     } == STATUSES
+
+
+def test_navigation_speed_validation_matches_scenario_contract() -> None:
+    assert navigation_speed_error(2.5) is None
+    assert navigation_speed_error(0.0) is not None
+    assert navigation_speed_error(float("nan")) is not None
