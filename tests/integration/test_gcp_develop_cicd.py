@@ -72,6 +72,7 @@ def test_branch_deployments_target_isolated_ros_edges() -> None:
     assert "edge_vm: ev-twin-edge-prod-01" in production
     assert "Deploy reviewed SHA to ROS edge" in workflow
     assert "sudo /usr/local/sbin/ev-twin-deploy '$GITHUB_SHA'" in workflow
+    assert workflow.count('gcloud compute ssh "$EDGE_VM"') == 1
     assert "--ssh-key-expire-after=5m" in workflow
     assert 'test "$deployed_sha" = "$GITHUB_SHA"' in workflow
 
