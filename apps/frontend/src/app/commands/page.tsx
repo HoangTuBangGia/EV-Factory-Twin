@@ -65,7 +65,7 @@ export default function CommandsPage() {
 
   return <>
     <header className="page-head">
-      <div><h2>Apply commands</h2><p>Durable execution history from Backend to the simulation Fleet Manager.</p></div>
+      <div><h2>Edge commands</h2><p>Durable scenario and transport-task delivery from Backend to ROS.</p></div>
       <button className="button" type="button" disabled={loading} onClick={() => void load()}>
         {loading ? "Refreshing…" : "Refresh"}
       </button>
@@ -73,14 +73,14 @@ export default function CommandsPage() {
 
     {error && <div className="scenario-error" role="alert">{error}</div>}
     {loading && commands.length === 0 && <section className="panel empty">Loading command history…</section>}
-    {!loading && commands.length === 0 && <section className="panel empty">No apply command has been created.</section>}
+    {!loading && commands.length === 0 && <section className="panel empty">No edge command has been created.</section>}
 
     <div className="command-list">{commands.map((command) => {
       const retriesUsed = Math.max(0, command.attempts.length - 1);
       const retryAvailable = canRetry(command);
       return <section className="panel command-card" key={command.operation_id}>
         <div className="panel-head">
-          <div><h3>{command.scenario_id}</h3><small className="command-operation">{command.operation_id}</small></div>
+          <div><h3>{command.scenario_id ?? command.task_id}</h3><small className="command-operation">{command.command_type} · {command.operation_id}</small></div>
           <span className={`scenario-status ${command.status}`}>{command.status}</span>
         </div>
         <div className="scenario-summary command-summary">

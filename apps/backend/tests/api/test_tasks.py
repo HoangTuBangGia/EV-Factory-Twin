@@ -1,7 +1,10 @@
 import asyncio
 
 import pytest
+from conftest import make_test_user
+from ev_twin_api.api.dependencies import get_current_user
 from ev_twin_api.main import app
+from ev_twin_api.schemas.auth import AppRole
 from ev_twin_api.schemas.task import Task
 from httpx2 import AsyncClient
 
@@ -40,3 +43,39 @@ async def test_get_unknown_task_returns_404(client: AsyncClient) -> None:
 
     assert response.status_code == 404
     assert response.json() != {}
+
+
+@pytest.mark.asyncio
+async def test_monitor_queues_transport_task_command(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/v1/tasks",
+        json={
+            "task_id": "TASK-LOCAL-0001",
+            "payload_id": "BP-LOCAL-0001",
+            "pickup_station_id": "BATTERY_BUFFER",
+            "dropoff_station_id": "MARRIAGE_STATION",
+            "navigation_timeout_seconds": 30,
+            "max_retries": 1,
+        },
+    )
+
+    assert response.status_code == 202
+    assert response.json()["command_type"] == "CREATE_TRANSPORT_TASK"
+    assert response.json()["task_id"] == "TASK-LOCAL-0001"
+    assert response.json()["scenario_id"] is None
+    assert response.json()["status"] == "PENDING"
+
+
+@pytest.mark.asyncio
+async def test_designer_cannot_queue_transport_task(client: AsyncClient) -> None:
+    app.dependency_overrides[get_current_user] = lambda: make_test_user(AppRole.DESIGNER)
+    response = await client.post(
+        "/api/v1/tasks",
+        json={
+            "task_id": "TASK-LOCAL-0002",
+            "payload_id": "BP-LOCAL-0002",
+            "pickup_station_id": "BATTERY_BUFFER",
+            "dropoff_station_id": "MARRIAGE_STATION",
+        },
+    )
+    assert response.status_code == 403

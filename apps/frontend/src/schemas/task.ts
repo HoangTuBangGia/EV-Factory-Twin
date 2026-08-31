@@ -18,5 +18,18 @@ export const taskSchema = z.object({
   completed_at: z.string().nullable(),
 });
 
+export const createTransportTaskRequestSchema = z.object({
+  task_id: z.string().min(1).max(100).regex(/^[A-Z][A-Z0-9_-]*$/),
+  payload_id: z.string().min(1).max(100).regex(/^[A-Z][A-Z0-9_-]*$/),
+  pickup_station_id: z.string().min(1).max(100),
+  dropoff_station_id: z.string().min(1).max(100),
+  navigation_timeout_seconds: z.number().positive().max(300).default(30),
+  max_retries: z.number().int().min(0).max(5).default(1),
+}).refine((value) => value.pickup_station_id !== value.dropoff_station_id, {
+  message: "Pickup and drop-off stations must differ",
+  path: ["dropoff_station_id"],
+});
+
 export type TaskStatus = z.infer<typeof taskStatusSchema>;
 export type Task = z.infer<typeof taskSchema>;
+export type CreateTransportTaskRequest = z.input<typeof createTransportTaskRequestSchema>;

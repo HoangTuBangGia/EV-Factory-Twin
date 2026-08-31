@@ -50,7 +50,9 @@ describe("factory store realtime updates", () => {
       type: "command.updated",
       data: {
         operation_id: operationId,
+        command_type: "APPLY_SCENARIO",
         scenario_id: "SCN-0001",
+        task_id: null,
         status: "ACKNOWLEDGED",
         payload: {
           num_robots: 2,

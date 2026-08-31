@@ -72,3 +72,42 @@ async def test_apply_command_edge_ack_and_completion(edge_client: AsyncClient) -
     assert before_result.json()["status"] == "APPROVED"
     assert completed.json()["status"] == "COMPLETED"
     assert after_result.json()["status"] == "APPLIED"
+
+
+@pytest.mark.asyncio
+async def test_transport_task_command_edge_ack_and_completion(edge_client: AsyncClient) -> None:
+    command = await edge_client.post(
+        "/api/v1/tasks",
+        json={
+            "task_id": "TASK-LOCAL-0001",
+            "payload_id": "BP-LOCAL-0001",
+            "pickup_station_id": "BATTERY_BUFFER",
+            "dropoff_station_id": "MARRIAGE_STATION",
+            "navigation_timeout_seconds": 30,
+            "max_retries": 1,
+        },
+    )
+    operation_id = command.json()["operation_id"]
+    headers = {"Authorization": f"Bearer {EDGE_SECRET}"}
+    leased = await edge_client.get(
+        "/internal/v1/commands/next", params={"bridge_id": "edge-main"}, headers=headers
+    )
+    identity = {
+        "operation_id": operation_id,
+        "attempt_number": 1,
+        "bridge_id": "edge-main",
+    }
+    acknowledged = await edge_client.post(
+        "/internal/v1/commands/ack", json=identity, headers=headers
+    )
+    completed = await edge_client.post(
+        "/internal/v1/commands/result",
+        json={**identity, "status": "COMPLETED", "detail": "task accepted"},
+        headers=headers,
+    )
+
+    assert command.status_code == 202
+    assert leased.json()["command_type"] == "CREATE_TRANSPORT_TASK"
+    assert leased.json()["task_id"] == "TASK-LOCAL-0001"
+    assert acknowledged.json()["status"] == "ACKNOWLEDGED"
+    assert completed.json()["status"] == "COMPLETED"

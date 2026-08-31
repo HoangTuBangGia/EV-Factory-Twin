@@ -281,6 +281,57 @@ def test_edge_secret_is_not_declared_as_a_ros_parameter():
     assert "EDGE_TELEMETRY_SHARED_SECRET" in source
 
 
+def test_transport_task_command_calls_typed_ros_service_and_reports_success():
+    bridge = TelemetryBridge.__new__(TelemetryBridge)
+    requests = []
+    results = []
+
+    class ResultFuture:
+        def result(self):
+            return type("Response", (), {"accepted": True, "message": "task accepted"})()
+
+        def add_done_callback(self, callback):
+            callback(self)
+
+    class TaskClient:
+        def service_is_ready(self):
+            return True
+
+        def call_async(self, request):
+            requests.append(request)
+            return ResultFuture()
+
+    bridge._task_client = TaskClient()
+    bridge._command_active = False
+    bridge._post_result = lambda acknowledgement, status, detail: results.append(
+        (acknowledgement, status, detail)
+    )
+    acknowledgement = {
+        "operation_id": "11111111-1111-4111-8111-111111111111",
+        "attempt_number": 1,
+        "bridge_id": "edge-main",
+    }
+
+    bridge._create_transport_task(
+        {
+            "task_id": "TASK-LOCAL-0001",
+            "payload_id": "BP-LOCAL-0001",
+            "pickup_station_id": "BATTERY_BUFFER",
+            "dropoff_station_id": "MARRIAGE_STATION",
+            "navigation_timeout_seconds": 30,
+            "max_retries": 1,
+        },
+        acknowledgement,
+    )
+
+    assert requests[0].task_id == "TASK-LOCAL-0001"
+    assert requests[0].payload_id == "BP-LOCAL-0001"
+    assert requests[0].pickup_station_id == "BATTERY_BUFFER"
+    assert requests[0].dropoff_station_id == "MARRIAGE_STATION"
+    assert results == [(acknowledgement, "COMPLETED", "task accepted")]
+    assert bridge._command_active is False
+
+
 def test_telemetry_waits_for_authoritative_registry_registration():
     bridge = TelemetryBridge.__new__(TelemetryBridge)
     bridge._lock = threading.Lock()

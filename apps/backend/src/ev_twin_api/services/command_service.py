@@ -18,9 +18,11 @@ from ev_twin_api.schemas.command import (
     CommandAttempt,
     CommandResultRequest,
     CommandStatus,
+    CommandType,
     EdgeCommand,
 )
 from ev_twin_api.schemas.scenario import ScenarioStatus
+from ev_twin_api.schemas.task import CreateTransportTaskRequest
 from ev_twin_api.schemas.websocket import command_updated_event
 from ev_twin_api.services.audit_service import AuditRepository, PendingAuditEvent
 from ev_twin_api.services.runtime_health import RuntimeHealthService
@@ -62,11 +64,16 @@ class InMemoryCommandRepository:
     async def create(self, command: Command) -> Command:
         async with self._lock:
             if any(
-                existing.scenario_id == command.scenario_id
+                existing.command_type == command.command_type
+                and (
+                    existing.scenario_id == command.scenario_id
+                    if command.command_type == CommandType.APPLY_SCENARIO
+                    else existing.task_id == command.task_id
+                )
                 and existing.status in {CommandStatus.PENDING, CommandStatus.ACKNOWLEDGED}
                 for existing in self._commands.values()
             ):
-                raise CommandConflictError("scenario already has an active apply command")
+                raise CommandConflictError("command target already has an active command")
             self._commands[command.operation_id] = command
             return command.model_copy(deep=True)
 
@@ -191,16 +198,19 @@ class SqlAlchemyCommandRepository:
                 await session.execute(
                     text("""
                         insert into public.commands (
-                            operation_id, scenario_id, status, payload, timeout_seconds,
-                            max_retries, requested_by, created_at, updated_at
+                            operation_id, command_type, scenario_id, task_id, status, payload,
+                            timeout_seconds, max_retries, requested_by, created_at, updated_at
                         ) values (
-                            :operation_id, :scenario_id, 'PENDING', cast(:payload as jsonb),
+                            :operation_id, cast(:command_type as public.command_type),
+                            :scenario_id, :task_id, 'PENDING', cast(:payload as jsonb),
                             :timeout_seconds, :max_retries, :requested_by, :created_at, :updated_at
                         )
                     """),
                     {
                         "operation_id": command.operation_id,
+                        "command_type": command.command_type.value,
                         "scenario_id": command.scenario_id,
+                        "task_id": command.task_id,
                         "payload": command.payload.model_dump_json(),
                         "timeout_seconds": command.timeout_seconds,
                         "max_retries": command.max_retries,
@@ -219,7 +229,7 @@ class SqlAlchemyCommandRepository:
                 )
             except Exception as error:
                 raise CommandConflictError(
-                    "scenario already has an active apply command"
+                    "command target already has an active command"
                 ) from error
         return command
 
@@ -404,7 +414,9 @@ class SqlAlchemyCommandRepository:
         )
         return Command(
             operation_id=row["operation_id"],
+            command_type=CommandType(str(row["command_type"])),
             scenario_id=row["scenario_id"],
+            task_id=row["task_id"],
             status=CommandStatus(str(row["status"])),
             payload=row["payload"],
             timeout_seconds=row["timeout_seconds"],
@@ -487,11 +499,35 @@ class CommandService:
         command = await self._repository.create(
             Command(
                 operation_id=uuid4(),
+                command_type=CommandType.APPLY_SCENARIO,
                 scenario_id=scenario.id,
                 status=CommandStatus.PENDING,
                 payload=scenario.config,
                 timeout_seconds=request.timeout_seconds,
                 max_retries=request.max_retries,
+                attempts=[CommandAttempt(attempt_number=1, status=CommandStatus.PENDING)],
+                requested_by=actor.id,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        await self._audit(command, AuditAction.COMMAND_CREATED)
+        await self._broadcast(command)
+        return command
+
+    async def create_transport_task(
+        self, request: CreateTransportTaskRequest, actor: CurrentUser
+    ) -> Command:
+        now = datetime.now(UTC)
+        command = await self._repository.create(
+            Command(
+                operation_id=uuid4(),
+                command_type=CommandType.CREATE_TRANSPORT_TASK,
+                task_id=request.task_id,
+                status=CommandStatus.PENDING,
+                payload=request,
+                timeout_seconds=30.0,
+                max_retries=1,
                 attempts=[CommandAttempt(attempt_number=1, status=CommandStatus.PENDING)],
                 requested_by=actor.id,
                 created_at=now,
@@ -522,7 +558,9 @@ class CommandService:
         return EdgeCommand(
             operation_id=command.operation_id,
             attempt_number=attempt.attempt_number,
+            command_type=command.command_type,
             scenario_id=command.scenario_id,
+            task_id=command.task_id,
             payload=command.payload,
             timeout_seconds=command.timeout_seconds,
         )
@@ -535,7 +573,11 @@ class CommandService:
 
     async def result(self, request: CommandResultRequest) -> Command:
         command = await self._repository.result(request, datetime.now(UTC))
-        if command.status == CommandStatus.COMPLETED:
+        if (
+            command.status == CommandStatus.COMPLETED
+            and command.command_type == CommandType.APPLY_SCENARIO
+        ):
+            assert command.scenario_id is not None
             actor = CurrentUser(
                 id=command.requested_by,
                 email="edge-command@internal.invalid",

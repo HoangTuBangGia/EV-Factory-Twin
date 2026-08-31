@@ -13,7 +13,9 @@ vi.mock("@/lib/api-client", () => ({ apiClient: api }));
 
 const command = {
   operation_id: "33333333-3333-4333-8333-333333333333",
+  command_type: "APPLY_SCENARIO" as const,
   scenario_id: "SCN-0001",
+  task_id: null,
   status: "TIMED_OUT" as const,
   payload: {
     num_robots: 2, num_tasks: 10, task_arrival_interval: 5, travel_time: 30,

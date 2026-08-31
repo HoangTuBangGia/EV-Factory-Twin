@@ -57,6 +57,7 @@ string/log/frontend và không được tái sử dụng service-role key.
 | GET | `/api/v1/robots` | [`Robot[]`](#robot) | Toàn bộ AMR |
 | GET | `/api/v1/robots/{robot_id}` | [`Robot`](#robot) | 1 AMR; id lạ → 404 |
 | GET | `/api/v1/tasks` | [`Task[]`](#task) | Toàn bộ task |
+| POST | `/api/v1/tasks` | `Command` | MONITOR tạo durable command để ROS Task Manager nhận transport task |
 | GET | `/api/v1/tasks/{task_id}` | [`Task`](#task) | 1 task; id lạ → 404 |
 | GET | `/api/v1/metrics` | [`FactoryMetrics`](#factorymetrics) | Số liệu vận hành |
 | GET | `/api/v1/alerts` | [`FactoryAlert[]`](#alertseverity--alertcode--factoryalert) | Alert đã phát |
@@ -102,6 +103,12 @@ Ma trận quyền REST hiện tại:
 MVP chỉ có hai application role. User provisioning dùng `make user-create`.
 WebSocket dùng cùng Backend access token nhưng gửi token trong message đầu tiên,
 không đặt token trên query string.
+
+`Command.command_type` phân biệt `APPLY_SCENARIO` và `CREATE_TRANSPORT_TASK`.
+Apply command có `scenario_id` và `task_id=null`; task command có `task_id` và
+`scenario_id=null`. Cả hai dùng chung lease, acknowledgement, timeout, retry và
+result lifecycle. Browser chỉ tạo command; Telemetry Bridge mới được phép gọi
+typed ROS service `/fleet/tasks/create`.
 
 `/ws/factory` không xuất hiện trong `/docs` (OpenAPI không mô tả WebSocket) —
 hợp đồng của nó nằm ở mục [WebSocket event envelope](#websocket-event-envelope).

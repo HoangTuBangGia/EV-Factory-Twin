@@ -81,8 +81,9 @@ export const fixtureLayoutVersion: LayoutVersion = {
   created_at: "2026-08-11T00:00:00.000Z", archived_at: null,
 };
 
-export const fixtureApplyCommand: Command = {
-  operation_id: "33333333-3333-4333-8333-333333333333", scenario_id: fixtureScenario.id,
+export const fixtureApplyCommand = {
+  operation_id: "33333333-3333-4333-8333-333333333333",
+  command_type: "APPLY_SCENARIO", scenario_id: fixtureScenario.id, task_id: null,
   status: "PENDING", payload: fixtureScenarioConfig, timeout_seconds: 30, max_retries: 1,
   attempts: [{
     attempt_number: 1, status: "PENDING", leased_by: null, lease_expires_at: null,
@@ -90,4 +91,4 @@ export const fixtureApplyCommand: Command = {
   }],
   requested_by: "22222222-2222-4222-8222-222222222222",
   created_at: "2026-08-14T00:10:00.000Z", updated_at: "2026-08-14T00:10:00.000Z",
-};
+} satisfies Command;

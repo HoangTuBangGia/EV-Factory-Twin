@@ -16,7 +16,7 @@ def migration_files() -> list[Path]:
 
 def test_migrations_are_ordered_and_parseable() -> None:
     files = migration_files()
-    assert [path.name[:4] for path in files] == [f"{index:04d}" for index in range(1, 16)]
+    assert [path.name[:4] for path in files] == [f"{index:04d}" for index in range(1, 17)]
     for path in files:
         assert parse_sql(path.read_text(encoding="utf-8")), path.name
 
@@ -76,6 +76,14 @@ def test_scenario_revision_workflow_is_persisted_and_audited() -> None:
     assert "review_note text" in workflow_sql
     assert "revision_of text references public.scenarios" in workflow_sql
     assert "REVISION_REQUESTED" in workflow_sql
+
+
+def test_transport_task_commands_preserve_apply_commands() -> None:
+    sql = (MIGRATIONS / "0016_add_transport_task_commands.sql").read_text(encoding="utf-8")
+    assert "default 'APPLY_SCENARIO'" in sql
+    assert "alter column scenario_id drop not null" in sql
+    assert "CREATE_TRANSPORT_TASK" in sql
+    assert "commands_target_matches_type" in sql
 
 
 def test_migration_runner_tracks_checksum_and_interrupted_state() -> None:

@@ -14,7 +14,7 @@ from urllib.parse import quote, urlsplit
 
 import rclpy
 from amr_interfaces.msg import TaskState
-from amr_interfaces.srv import ApplyScenario
+from amr_interfaces.srv import ApplyScenario, CreateTransportTask
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
@@ -343,6 +343,7 @@ class TelemetryBridge(Node):
         )
         self.create_subscription(TaskState, "/fleet/task_updates", self._on_task, task_qos)
         self._apply_client = self.create_client(ApplyScenario, "/fleet/apply_scenario")
+        self._task_client = self.create_client(CreateTransportTask, "/fleet/tasks/create")
         self.create_timer(0.1, self._queue_latest)
         self.create_timer(1.0, self._queue_health)
         self.create_timer(1.0, self._poll_command)
@@ -377,6 +378,13 @@ class TelemetryBridge(Node):
         }
         if not self._post_command("/internal/v1/commands/ack", acknowledgement):
             return
+        command_type = str(payload.get("command_type", "APPLY_SCENARIO"))
+        if command_type == "CREATE_TRANSPORT_TASK":
+            self._create_transport_task(scenario, acknowledgement)
+            return
+        if command_type != "APPLY_SCENARIO":
+            self._post_result(acknowledgement, "FAILED", "unsupported command type")
+            return
         if not self._apply_client.service_is_ready():
             self._post_result(acknowledgement, "FAILED", "fleet apply service unavailable")
             return
@@ -396,6 +404,34 @@ class TelemetryBridge(Node):
         future.add_done_callback(
             lambda completed, ack=acknowledgement: self._on_apply_result(completed, ack)
         )
+
+    def _create_transport_task(self, payload: dict, acknowledgement: dict) -> None:
+        if not self._task_client.service_is_ready():
+            self._post_result(acknowledgement, "FAILED", "task create service unavailable")
+            return
+        request = CreateTransportTask.Request()
+        request.task_id = str(payload.get("task_id", ""))
+        request.payload_id = str(payload.get("payload_id", ""))
+        request.pickup_station_id = str(payload.get("pickup_station_id", ""))
+        request.dropoff_station_id = str(payload.get("dropoff_station_id", ""))
+        request.navigation_timeout_seconds = float(payload.get("navigation_timeout_seconds", 0.0))
+        request.max_retries = int(payload.get("max_retries", 0))
+        self._command_active = True
+        future = self._task_client.call_async(request)
+        future.add_done_callback(
+            lambda completed, ack=acknowledgement: self._on_task_create_result(completed, ack)
+        )
+
+    def _on_task_create_result(self, future, acknowledgement: dict) -> None:
+        try:
+            result = future.result()
+            status = "COMPLETED" if result.accepted else "FAILED"
+            detail = result.message
+        except Exception as error:
+            status, detail = "FAILED", str(error)
+        finally:
+            self._command_active = False
+        self._post_result(acknowledgement, status, detail)
 
     def _on_apply_result(self, future, acknowledgement: dict) -> None:
         try:

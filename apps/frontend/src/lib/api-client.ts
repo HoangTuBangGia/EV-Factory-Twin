@@ -30,7 +30,11 @@ import {
   type ScenarioRevisionRequest,
   type ScenarioRunRequest,
 } from "@/schemas/scenario";
-import { taskSchema } from "@/schemas/task";
+import {
+  createTransportTaskRequestSchema,
+  taskSchema,
+  type CreateTransportTaskRequest,
+} from "@/schemas/task";
 
 let accessToken: string | null = null;
 let unauthorizedHandler: (() => void) | null = null;
@@ -119,6 +123,14 @@ export const apiClient = {
     { signal },
   ),
   getTask: (id: string) => request(`/api/v1/tasks/${encodeURIComponent(id)}`, taskSchema),
+  createTransportTask: (input: CreateTransportTaskRequest) => request(
+    "/api/v1/tasks",
+    commandSchema,
+    {
+      method: "POST",
+      body: JSON.stringify(createTransportTaskRequestSchema.parse(input)),
+    },
+  ),
   getMetrics: (signal?: AbortSignal) => request(
     "/api/v1/metrics",
     factoryMetricsSchema,
