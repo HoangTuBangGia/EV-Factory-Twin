@@ -2,6 +2,12 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      migrations_applied:
+        description: Confirm develop migrations are already applied
+        required: true
+        default: false
+        type: boolean
 
   push:
     branches:
@@ -129,12 +135,16 @@ jobs:
 
   deploy-develop:
     name: Deploy · GCP develop
-    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    if: >-
+      github.ref == 'refs/heads/develop' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: [database, backend, frontend]
     permissions:
       contents: read
       id-token: write
     uses: ./.github/workflows/deploy-gcp-develop.yml
+    with:
+      migrations_applied: ${{ inputs.migrations_applied || false }}
 
   deploy-production:
     name: Deploy · GCP production

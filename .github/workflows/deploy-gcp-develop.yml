@@ -2,6 +2,12 @@ name: Deploy GCP Develop
 
 on:
   workflow_call:
+    inputs:
+      migrations_applied:
+        description: Confirm develop migrations are already applied
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       migrations_applied:
