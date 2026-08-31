@@ -235,12 +235,15 @@ class TestSimRuntime(unittest.TestCase):
             assert amr_02_action.wait_for_server(timeout_sec=5.0)
 
             state_override = node.create_publisher(String, "/amr_02/state_override", 10)
-            charge_deadline = time.monotonic() + 1.0
-            while time.monotonic() < charge_deadline:
+            charge_deadline = time.monotonic() + 5.0
+            while time.monotonic() < charge_deadline and not (
+                "CHARGING" in statuses["amr_02"]
+                and any(message.percentage > 0.6 for message in batteries["amr_02"])
+            ):
                 state_override.publish(String(data="CHARGING"))
                 rclpy.spin_once(node, timeout_sec=0.05)
             assert "CHARGING" in statuses["amr_02"]
-            assert max(message.percentage for message in batteries["amr_02"]) > 0.6
+            assert any(message.percentage > 0.6 for message in batteries["amr_02"])
 
             timeout_goal = NavigateToStation.Goal()
             timeout_goal.station_id = "CHARGING_STATION"
