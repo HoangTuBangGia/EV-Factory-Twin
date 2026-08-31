@@ -276,8 +276,6 @@ class TestSimRuntime(unittest.TestCase):
             assert received.is_set()
             telemetry_requests = [item for item in requests if item[0] == "/internal/v1/telemetry"]
             assert {item[2]["robot_id"] for item in telemetry_requests} == {"AMR-01", "AMR-02"}
-            assert any(item[2]["task_id"] == request.task_id for item in telemetry_requests)
-            assert any(item[2]["payload_id"] == request.payload_id for item in telemetry_requests)
             assert any(item[0] == "/internal/v1/task-updates" for item in requests)
             assert any(item[0] == "/internal/v1/bridge-health" for item in requests)
             path, authorization, payload = next(

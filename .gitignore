@@ -59,6 +59,8 @@ Thumbs.db
 evaluation/reports/*
 !evaluation/reports/.gitkeep
 !evaluation/reports/*.md
+evaluation/datasets/*.csv
+evaluation/datasets/*.json
 
 # AI logs — tracked structure, ignored content
 .ai-log/*.jsonl

@@ -1318,6 +1318,11 @@ Gazebo `OdometryPublisher` owns `odom -> base_footprint`; `robot_state_publisher
 using simulation time, owns the static `base_footprint -> base_link` transform.
 `VelocityControl` provides planar motion without wheel-contact physics. Dynamic
 wheel transforms are intentionally deferred until Gazebo joint states are bridged.
+Collision health therefore uses one source-neutral rule in `twin-core`: conservative
+circles around the canonical 0.65 m × 0.48 m AMR footprint. Backend evaluates
+accepted normalized telemetry, activates one CRITICAL alert per sorted robot pair
+on overlap and clears it after separation. This is simulation collision detection,
+not contact-force physics or automatic collision avoidance.
 The state simulator publishes battery/status/task/payload topics. One telemetry
 bridge loads the same validated fleet JSON, subscribes to every namespace and
 normalizes those fields with odometry into `RobotTelemetry`. Each robot owns an
@@ -2076,6 +2081,7 @@ ROBOT_OFFLINE
 TASK_DELAY
 BATTERY_DELIVERY_DELAY
 CONGESTION
+COLLISION
 LINE_STARVATION
 ```
 

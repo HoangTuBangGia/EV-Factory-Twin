@@ -110,8 +110,8 @@ async def test_congestion_uses_applied_layout_zone_and_clears_on_exit() -> None:
     first = state.get_robot("AMR-01")
     second = state.get_robot("AMR-02")
     first.status = second.status = "MOVING"
-    first.pose.x = second.pose.x = 1
-    first.pose.y = second.pose.y = 1
+    first.pose.x, first.pose.y = 1, 1
+    second.pose.x, second.pose.y = 3, 1
     state.update_robot(first)
     state.update_robot(second)
 
@@ -119,8 +119,8 @@ async def test_congestion_uses_applied_layout_zone_and_clears_on_exit() -> None:
     await service.note_telemetry(robot_to_telemetry(second), now)
     assert await repository.list_alerts() == []
 
-    first.pose.x = second.pose.x = 40
-    first.pose.y = second.pose.y = 20
+    first.pose.x, first.pose.y = 40, 20
+    second.pose.x, second.pose.y = 41, 20
     state.update_robot(first)
     state.update_robot(second)
     await service.note_telemetry(robot_to_telemetry(first), now)
@@ -132,6 +132,31 @@ async def test_congestion_uses_applied_layout_zone_and_clears_on_exit() -> None:
 
     second.pose.x = 1
     second.pose.y = 1
+    state.update_robot(second)
+    await service.note_telemetry(robot_to_telemetry(second), now)
+    assert (await repository.list_alerts())[0].status == "CLEARED"
+
+
+@pytest.mark.asyncio
+async def test_collision_alert_uses_robot_pair_and_clears_after_separation() -> None:
+    now = datetime.now(UTC)
+    service, state, repository, _ = await setup(now)
+    first = state.get_robot("AMR-01")
+    second = state.get_robot("AMR-02")
+    first.status = second.status = "MOVING"
+    first.pose.x, first.pose.y = 10, 10
+    second.pose.x, second.pose.y = 10.4, 10
+    state.update_robot(first)
+    state.update_robot(second)
+
+    await service.note_telemetry(robot_to_telemetry(first), now)
+    await service.note_telemetry(robot_to_telemetry(second), now)
+    alert = (await repository.list_alerts())[0]
+    assert alert.code == "COLLISION"
+    assert alert.dedupe_key == "COLLISION:AMR-01:AMR-02"
+    assert alert.severity == "CRITICAL"
+
+    second.pose.x = 12
     state.update_robot(second)
     await service.note_telemetry(robot_to_telemetry(second), now)
     assert (await repository.list_alerts())[0].status == "CLEARED"

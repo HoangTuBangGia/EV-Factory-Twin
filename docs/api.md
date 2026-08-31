@@ -778,7 +778,7 @@ Tất cả field không nullable.
 AlertSeverity: INFO, WARNING, CRITICAL
 AlertStatus: ACTIVE, CLEARED
 AlertCode: LOW_BATTERY, ROBOT_WAITING, TASK_BACKLOG, STARVATION, ROBOT_ERROR,
-STALE_TELEMETRY, BRIDGE_DISCONNECTED, COMMAND_TIMEOUT, CONGESTION
+STALE_TELEMETRY, BRIDGE_DISCONNECTED, COMMAND_TIMEOUT, CONGESTION, COLLISION
 ```
 
 `GET /api/v1/alerts`. `alert.created` phát khi condition được kích hoạt hoặc
@@ -820,6 +820,11 @@ mà không cần reload snapshot.
 Alert có state (ví dụ `LOW_BATTERY:AMR-01`) được backend dedupe — chỉ phát khi
 robot **vào** điều kiện, không lặp mỗi tick trong khi vẫn ở điều kiện đó. Khi
 điều kiện hết, occurrence chuyển `CLEARED`; lần xuất hiện sau tạo occurrence mới.
+
+`COLLISION` là CRITICAL và dùng dedupe key ổn định
+`COLLISION:<lower-id>:<higher-id>`. Alert kích hoạt khi hình tròn bảo thủ bao quanh
+footprint của hai AMR giao nhau và clear khi chúng tách ra. Rule dùng canonical
+telemetry nên MOCK và ROS có cùng contract.
 
 ## WebSocket event envelope
 

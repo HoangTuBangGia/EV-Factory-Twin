@@ -11,6 +11,7 @@ export const alertCodeSchema = z.enum([
   "BRIDGE_DISCONNECTED",
   "COMMAND_TIMEOUT",
   "CONGESTION",
+  "COLLISION",
 ]);
 export const factoryAlertSchema = z.object({
   id: z.string().uuid(),

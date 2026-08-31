@@ -79,6 +79,38 @@ simulation horizon, then uses lower cycle and waiting time as tie-breakers.
 - `evaluation/datasets/simulation_results.csv`
 - `evaluation/datasets/simulation_results.json`
 - `evaluation/reports/benchmark_summary.csv`
+- `evaluation/reports/runtime_performance.json`
+- `evaluation/reports/render_performance.json`
+
+## Live runtime measurements
+
+Export accepted telemetry from local PostgreSQL after a representative ROS/Gazebo run:
+
+```bash
+docker exec ev-twin-postgres psql -U postgres -d postgres -c "\\copy (
+select robot_id, source_timestamp, ingested_at, pose, ordering_status
+from public.robot_telemetry_history
+where ordering_status='ACCEPTED'
+order by source_timestamp
+) to stdout with csv header" > evaluation/datasets/runtime_telemetry.csv
+```
+
+Calculate source-to-Backend latency percentiles, mean per-robot update rate,
+footprint collision occurrences and collision events per observation hour:
+
+```bash
+make runtime-benchmark
+```
+
+Measure rendered frame rate against the real Three.js scene while the local
+Frontend is running:
+
+```bash
+make render-benchmark
+```
+
+The render report includes average FPS, p95 frame time and the percentage of
+frames slower than 33.3 ms. Generated JSON reports are intentionally ignored by Git.
 
 ## Manual evaluation evidence
 
@@ -107,7 +139,8 @@ The evaluation is incomplete unless it demonstrates:
 - an abnormal condition producing a visible alert;
 - a layout candidate changing at least travel time, congestion or throughput;
 - Designer/Monitor approval before applying the candidate;
-- measured ROS-to-backend and backend-to-browser latency plus basic FPS.
+- measured ROS-to-Backend latency, observed WebSocket delivery in browser DevTools,
+  and automated basic FPS. The database and browser use synchronized host clocks.
 
 Run and record this hosted path with `docs/runbooks/mvp-edge-acceptance.md`.
 Backend/DB, frontend, ROS and container CI are necessary gates but do not replace

@@ -11,7 +11,8 @@
     "test:smoke": "playwright test --config=playwright.smoke.config.ts",
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
-    "test:e2e:list": "playwright test --list"
+    "test:e2e:list": "playwright test --list",
+    "benchmark:render": "node scripts/render-benchmark.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.8",

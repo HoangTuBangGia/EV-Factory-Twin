@@ -204,6 +204,13 @@ Xếp hạng kết quả và tạo báo cáo:
 uv run --package ev-twin-evaluation python -m ev_evaluation.benchmark
 ```
 
+Đo telemetry runtime từ CSV đã export và FPS của scene local:
+
+```bash
+make runtime-benchmark
+make render-benchmark
+```
+
 Kết quả mặc định được ghi vào `evaluation/datasets/` và `evaluation/reports/`.
 
 ## Kiểm tra chất lượng

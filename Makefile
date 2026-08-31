@@ -46,8 +46,9 @@ GCP_EDGE_VM ?= ev-twin-edge-01
 GCP_EDGE_ZONE ?= us-central1-a
 GCP_EDGE_DEPLOY_SERVICE_ACCOUNT_EMAIL ?= $(GCP_GITHUB_DEPLOY_SERVICE_ACCOUNT_EMAIL)
 CLOUD_SQL_PROXY_IMAGE ?= gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.18.2
+RUNTIME_TELEMETRY_CSV ?= evaluation/datasets/runtime_telemetry.csv
 
-.PHONY: sync lint format format-check migration-check postgres-migrate postgres-migrate-docker postgres-migrations-baseline-docker postgres-seed-docker integration postgres-smoke test test-cov typecheck check backend user-create frontend-sync frontend frontend-lint frontend-typecheck frontend-test frontend-build frontend-check frontend-browser-install frontend-smoke frontend-e2e-list frontend-e2e docker-build gcp-backend-check gcp-backend-apis gcp-artifact-repository-create gcp-cloud-build-access gcp-backend-service-account-create gcp-backend-cloudsql-access gcp-backend-secrets-create gcp-backend-database-user-create gcp-secret-version-add gcp-backend-secret-access gcp-backend-build gcp-backend-deploy gcp-backend-smoke gcp-develop-cicd-apis gcp-develop-cicd-service-account-create gcp-develop-cicd-wif-create gcp-develop-cicd-access gcp-production-cloudsql-create gcp-production-postgres-password-set gcp-production-backend-service-account-create gcp-production-backend-cloudsql-access gcp-production-secrets-create gcp-production-database-user-create gcp-production-backend-secret-access gcp-production-pgpassfile-create gcp-production-cloudsql-proxy-start gcp-production-cloudsql-proxy-stop gcp-production-user-create gcp-production-seed gcp-production-postgres-smoke gcp-production-cicd-service-account-create gcp-production-cicd-wif-create gcp-production-cicd-access gcp-production-edge-vm-create gcp-production-edge-bootstrap gcp-edge-router-create gcp-edge-nat-create gcp-edge-cicd-access gcp-edge-os-login-enable gcp-edge-operator-impersonation-grant gcp-edge-operator-impersonation-revoke gcp-edge-deploy-os-user gcp-edge-deploy-wrapper-install gcp-edge-deploy-wrapper-smoke github-gcp-environments-configure github-gcp-environments-list ros-deps ros-build ros-test ros-check
+.PHONY: sync lint format format-check migration-check postgres-migrate postgres-migrate-docker postgres-migrations-baseline-docker postgres-seed-docker integration postgres-smoke test test-cov typecheck check backend user-create frontend-sync frontend frontend-lint frontend-typecheck frontend-test frontend-build frontend-check frontend-browser-install frontend-smoke frontend-e2e-list frontend-e2e runtime-benchmark render-benchmark docker-build gcp-backend-check gcp-backend-apis gcp-artifact-repository-create gcp-cloud-build-access gcp-backend-service-account-create gcp-backend-cloudsql-access gcp-backend-secrets-create gcp-backend-database-user-create gcp-secret-version-add gcp-backend-secret-access gcp-backend-build gcp-backend-deploy gcp-backend-smoke gcp-develop-cicd-apis gcp-develop-cicd-service-account-create gcp-develop-cicd-wif-create gcp-develop-cicd-access gcp-production-cloudsql-create gcp-production-postgres-password-set gcp-production-backend-service-account-create gcp-production-backend-cloudsql-access gcp-production-secrets-create gcp-production-database-user-create gcp-production-backend-secret-access gcp-production-pgpassfile-create gcp-production-cloudsql-proxy-start gcp-production-cloudsql-proxy-stop gcp-production-user-create gcp-production-seed gcp-production-postgres-smoke gcp-production-cicd-service-account-create gcp-production-cicd-wif-create gcp-production-cicd-access gcp-production-edge-vm-create gcp-production-edge-bootstrap gcp-edge-router-create gcp-edge-nat-create gcp-edge-cicd-access gcp-edge-os-login-enable gcp-edge-operator-impersonation-grant gcp-edge-operator-impersonation-revoke gcp-edge-deploy-os-user gcp-edge-deploy-wrapper-install gcp-edge-deploy-wrapper-smoke github-gcp-environments-configure github-gcp-environments-list ros-deps ros-build ros-test ros-check
 
 sync:
 	uv sync --all-packages --dev
@@ -173,6 +174,13 @@ frontend-e2e-list:
 
 frontend-e2e:
 	npm --prefix apps/frontend run test:e2e
+
+runtime-benchmark:
+	uv run --package ev-twin-evaluation python -m ev_evaluation.runtime \
+		--input "$(RUNTIME_TELEMETRY_CSV)"
+
+render-benchmark:
+	npm --prefix apps/frontend run benchmark:render
 
 docker-build:
 	docker build --file apps/backend/Dockerfile --tag ev-factory-twin-api:local .

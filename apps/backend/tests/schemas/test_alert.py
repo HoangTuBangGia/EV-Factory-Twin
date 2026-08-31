@@ -19,6 +19,7 @@ def test_alert_code_values() -> None:
         "BRIDGE_DISCONNECTED",
         "COMMAND_TIMEOUT",
         "CONGESTION",
+        "COLLISION",
     }
 
 

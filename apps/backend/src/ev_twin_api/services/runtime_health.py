@@ -6,6 +6,7 @@ from typing import Annotated, cast
 from uuid import UUID, uuid4
 
 from fastapi import Depends, Request
+from twin_core.collision import colliding_robot_pairs
 from twin_core.models.layout import LayoutVersion, Point, point_in_polygon
 
 from ev_twin_api.schemas.alert import AlertCode, AlertSeverity, FactoryAlert
@@ -24,6 +25,7 @@ SEVERITY_BY_CODE = {
     AlertCode.BRIDGE_DISCONNECTED: AlertSeverity.CRITICAL,
     AlertCode.COMMAND_TIMEOUT: AlertSeverity.CRITICAL,
     AlertCode.CONGESTION: AlertSeverity.WARNING,
+    AlertCode.COLLISION: AlertSeverity.CRITICAL,
 }
 
 
@@ -52,6 +54,7 @@ class RuntimeHealthService:
         self._bridge_seen: dict[str, tuple[BridgeHealth, datetime]] = {}
         self._applied_layout: LayoutVersion | None = None
         self._congestion_keys: set[str] = set()
+        self._collision_keys: set[str] = set()
         self._active_condition_keys: set[str] = set()
         self._task: asyncio.Task[None] | None = None
 
@@ -61,6 +64,12 @@ class RuntimeHealthService:
                 alert.dedupe_key
                 for alert in await self._repository.list_alerts()
                 if alert.status == "ACTIVE"
+            }
+            self._congestion_keys = {
+                key for key in self._active_condition_keys if key.startswith("CONGESTION:")
+            }
+            self._collision_keys = {
+                key for key in self._active_condition_keys if key.startswith("COLLISION:")
             }
             self._task = asyncio.create_task(self._run(), name="runtime-health-sweep")
 
@@ -96,6 +105,7 @@ class RuntimeHealthService:
             robot_id=telemetry.robot_id,
         )
         await self._check_congestion()
+        await self._check_collisions()
 
     async def note_bridge_health(
         self, health: BridgeHealth, received_at: datetime | None = None
@@ -149,6 +159,7 @@ class RuntimeHealthService:
                 or f"{bridge_id} health stale for {(now - received_at).total_seconds():.0f}s",
             )
         await self._check_congestion()
+        await self._check_collisions()
 
     async def list_alerts(self) -> list[FactoryAlert]:
         return await self._repository.list_alerts()
@@ -181,6 +192,28 @@ class RuntimeHealthService:
         for key in self._congestion_keys - current_keys:
             await self._condition(key, False, AlertCode.CONGESTION, "Congestion cleared")
         self._congestion_keys = current_keys
+
+    async def _check_collisions(self) -> None:
+        robots = {
+            robot_id: robot
+            for robot_id in self._telemetry_seen
+            if (robot := self._state.get_robot(robot_id)) is not None
+            and robot.status != RobotStatus.OFFLINE
+        }
+        pairs = colliding_robot_pairs(
+            {robot_id: (robot.pose.x, robot.pose.y) for robot_id, robot in robots.items()}
+        )
+        current_keys = {f"COLLISION:{left}:{right}" for left, right in pairs}
+        for left, right in pairs:
+            await self._condition(
+                f"COLLISION:{left}:{right}",
+                True,
+                AlertCode.COLLISION,
+                f"Simulated collision detected between {left} and {right}",
+            )
+        for key in self._collision_keys - current_keys:
+            await self._condition(key, False, AlertCode.COLLISION, "Collision cleared")
+        self._collision_keys = current_keys
 
     async def _condition(
         self,
