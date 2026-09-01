@@ -13,11 +13,13 @@ def rank_scenarios(df: pd.DataFrame) -> pd.DataFrame:
 
     ranked = ranked.sort_values(
         by=[
+            "completion_rate",
             "throughput_per_hour",
+            "unfinished_tasks",
             "average_cycle_time",
             "average_waiting_time",
         ],
-        ascending=[False, True, True],
+        ascending=[False, False, True, True, True],
     )
 
     ranked.insert(
@@ -72,10 +74,11 @@ def main() -> None:
     columns = [
         "rank",
         "scenario",
+        "completion_rate",
         "throughput_per_hour",
+        "unfinished_tasks",
         "average_cycle_time",
         "average_waiting_time",
-        "completion_rate",
     ]
 
     print("=== BENCHMARK RANKING ===")

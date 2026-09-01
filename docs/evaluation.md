@@ -1,122 +1,114 @@
-# Simulation & Evaluation
+# Simulation and Evaluation
 
-## Purpose
+## Evaluation boundary
 
-The MVP evaluation covers both the ROS2/Gazebo live path and the SimPy what-if path.
-The SimPy simulation module provides a discrete-event benchmark for EV factory
-logistics KPIs such as throughput, cycle time, waiting time, backlog, and
-completion rate. It is intended for fast multi-scenario comparison under AR-01,
-including changes in robot count, route time, and demand pressure.
+The current MVP has two complementary simulation paths:
 
-This SimPy benchmark does not replace Gazebo or ROS2. The main physical path is
-Gazebo -> ROS2 -> fleet/task manager -> telemetry bridge -> FastAPI -> WebSocket ->
-Three.js. SimPy is the lightweight what-if and layout comparison layer, while
-Gazebo/ROS2 remain the primary live simulation and telemetry source.
-
-## Prerequisites
-
-- Python 3.12
-- uv
-
-## Environment Setup
-
-```powershell
-uv sync --all-packages --dev
+```text
+What-if:  Immutable layout → SimPy → KPI → Compare → Human approval
+Realtime: Gazebo ↔ ROS 2 ↔ Edge bridge ↔ FastAPI ↔ WebSocket ↔ Three.js
 ```
 
-The standalone SimPy simulation does not currently require an OpenAI API key or
-database connection.
+SimPy evaluates factory-flow alternatives quickly. Gazebo/ROS 2 validates the
+robotics runtime and realtime integration. Neither path is evidence for the
+other, and fixture/mock output is not accepted as hosted ROS evidence.
 
-## Single Scenario Run
+The canonical evaluation workspace and evidence policy are documented in
+[`evaluation/README.md`](../evaluation/README.md). The current acceptance record
+is [`evaluation/reports/mvp-acceptance.md`](../evaluation/reports/mvp-acceptance.md).
 
-Run one scenario JSON file with:
+## Authoritative scenario metrics
 
-```powershell
-uv run --package ev-factory-simulation python -m ev_sim.runner --scenario services/simulation/scenarios/baseline.json
+The product computes KPI in `twin-core`; the frontend only presents them.
+
+| Metric | Definition / interpretation |
+|---|---|
+| Completed tasks | Tasks completed within the simulation horizon |
+| Unfinished tasks | Total tasks minus completed tasks |
+| Completion rate | Completed tasks divided by total tasks |
+| Throughput | Completed tasks divided by simulation hours |
+| Average cycle time | Mean `completed_at - created_at` for completed tasks |
+| Average waiting time | Mean `started_at - created_at` for completed tasks |
+| Fleet utilization | Robot busy time divided by available fleet time |
+| Starvation events | Tasks waiting longer than the authoritative threshold |
+| Congestion percent | Congestion waiting divided by completed-task cycle time |
+| Travel distance | Sum of completed-task travel distance |
+| Average delivery delay | Mean positive lateness beyond task due time |
+
+The API scenario path resolves route distance and congestion from the referenced
+immutable `(layout_id, layout_version)`. Client-entered legacy travel assumptions
+are not authoritative for a persisted scenario.
+
+## Layout-aware what-if acceptance
+
+A valid comparison must:
+
+1. reference an immutable layout version;
+2. use a delivery route whose station endpoints and waypoints validate;
+3. derive travel distance and congestion from layout geometry;
+4. present baseline and candidate geometry plus KPI;
+5. keep optimization deterministic and bounded to at most 64 candidates;
+6. require Designer submission and separate Monitor approval;
+7. apply only after the edge command reports a positive terminal result.
+
+Backend optimization ranks candidates by completion rate and throughput first,
+then delivery delay, starvation, congestion, cycle time, utilization, travel
+distance and resource cost. This API ranking is authoritative for the product.
+
+## Standalone SimPy regression benchmark
+
+The standalone pipeline remains a small deterministic regression tool for the
+legacy JSON fixtures under `services/simulation/scenarios/`. It is not the
+product's layout editor or hosted acceptance path.
+
+Run it from the repository root:
+
+```bash
+uv run --package ev-factory-simulation python -m ev_sim.batch
+uv run --package ev-twin-evaluation python -m ev_evaluation.benchmark
 ```
 
-You can replace the scenario path with any JSON scenario file under
-`services/simulation/scenarios`.
+Generated outputs are intentionally untracked:
 
-## Batch Run
-
-Run all scenarios and generate benchmark outputs with:
-
-```powershell
-.\scripts\evaluate.ps1
-```
-
-The script runs the simulation batch first, then ranks the generated results.
-
-## KPI Definitions
-
-- Throughput = completed tasks / simulation hours
-- Cycle Time = completed_at - created_at
-- Waiting Time = started_at - created_at
-- Backlog = total_tasks - completed_tasks
-- Completion Rate = completed_tasks / total_tasks
-
-## Scenario Definitions
-
-- baseline: 3 robots, normal route, shared demand profile
-- more_robots: 6 robots, same route and demand as baseline
-- congestion: 3 robots, same demand as baseline, longer travel time to model a
-  worse layout or congested route
-
-## Benchmark Logic
-
-Scenarios are ranked by:
-
-1. Higher throughput
-2. Lower cycle time
-3. Lower waiting time
-
-This ranking favors scenarios that complete more logistics tasks within the same
-simulation horizon, then uses lower cycle and waiting time as tie-breakers.
-
-## Output Files
-
-- `evaluation/datasets/simulation_results.csv`
 - `evaluation/datasets/simulation_results.json`
+- `evaluation/datasets/simulation_results.csv`
 - `evaluation/reports/benchmark_summary.csv`
 
-## Manual evaluation evidence
+The standalone evaluator orders completion rate and throughput first, followed
+by unfinished work, cycle time and waiting time. Do not present this reduced
+fixture metric set as the complete API KPI contract.
 
-The recorded MVP evaluation, actual observed outputs, and timestamped screenshots
-are documented in
-[`evaluation/reports/manual_eval_evidence.md`](../evaluation/reports/manual_eval_evidence.md).
-The report contains seven manual test cases covering realtime monitoring,
-scenario benchmarking, the Monitor review workflow, factory apply, and persisted
-workflow state.
+## Hosted ROS 2/Gazebo acceptance
 
-## Tests
+The project is not fully accepted until one production-shaped run demonstrates:
 
-Run the full test suite with:
+- at least two namespaced AMRs moving independently in Gazebo/ROS 2;
+- canonical telemetry reaching FastAPI and the browser 3D scene;
+- a Backend task reaching Fleet/Task Manager and completing its lifecycle;
+- an abnormal runtime condition producing a visible alert;
+- an approved layout/scenario reaching the edge command service;
+- `PENDING → ACKNOWLEDGED → COMPLETED` and the scenario changing to `APPLIED`
+  only after success;
+- timeout and explicit retry with the edge unavailable and restored;
+- persistence/audit state surviving a Backend restart;
+- measured ROS-to-Backend latency, Backend-to-browser latency and browser FPS.
 
-```powershell
-uv run pytest
-```
+Follow [`docs/runbooks/mvp-edge-acceptance.md`](runbooks/mvp-edge-acceptance.md)
+and record results in the canonical acceptance record. CI is necessary but does
+not replace this networked run.
 
-## MVP ROS2 acceptance
+## Evidence rules
 
-The evaluation is incomplete unless it demonstrates:
+- Evidence must name the commit and deployment IDs it represents.
+- A screenshot must link to a test row and show only sanitized data.
+- Latency/FPS claims require the sampling method, sample count, p50, p95 and max.
+- Failed or missing observations remain `FAIL` or `PENDING`; do not infer PASS
+  from source code or automated unit tests.
+- Never commit credentials, tokens, edge secrets, database URLs or personal data.
 
-- at least two AMRs running in Gazebo/Nav2;
-- telemetry received by FastAPI and rendered in the same 3D scene as mock data;
-- a backend task/command reaching the ROS2 fleet/task manager;
-- an abnormal condition producing a visible alert;
-- a layout candidate changing at least travel time, congestion or throughput;
-- Designer/Monitor approval before applying the candidate;
-- measured ROS-to-backend and backend-to-browser latency plus basic FPS.
+## Current known model limits
 
-Run and record this hosted path with `docs/runbooks/mvp-edge-acceptance.md`.
-Backend/DB, frontend, ROS and container CI are necessary gates but do not replace
-the networked acceptance run against Render, Vercel and Supabase.
-
-## Limitations
-
-- Does not model physical robot dynamics
-- Does not model production-grade robot dynamics or fleet optimization
-- Travel and loading times are deterministic
-- SimPy is used only for quick KPI and layout benchmark evaluation
-- Incident replay UI đầy đủ và retention vượt policy 30/90 ngày nằm ngoài MVP
+- SimPy uses deterministic factory-flow assumptions rather than physical robot dynamics.
+- The Gazebo navigation slice is deterministic and is not production-grade obstacle avoidance.
+- Congestion is modeled and measured; collision is not yet an authoritative KPI.
+- Incident replay UI, MES/ERP integration, AI/ML and long-term genealogy remain outside MVP.
