@@ -49,6 +49,11 @@ describe("FactoryMap without WebGL", () => {
       "translate(40 0) rotate(0)",
     );
     expect(container.querySelector(".map-hud")).not.toBeInTheDocument();
+    expect(screen.getByText("Equipment is reference geometry")).toBeInTheDocument();
+
+    fireEvent.mouseEnter(container.querySelector(".plant-equipment")!);
+    expect(screen.getByText(/REFERENCE ·/)).toBeInTheDocument();
+    expect(screen.getByText(/geometry only, no live equipment status/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Zone B" }));
     expect(screen.getByRole("img", { name: "2D EV factory plant map" })).toHaveAttribute(
@@ -82,11 +87,13 @@ describe("FactoryMap without WebGL", () => {
       stations: false,
       routes: false,
       noGoZones: false,
+      congestionZones: false,
     }}/>);
 
     expect(container.querySelector(".fm-lane")).not.toBeInTheDocument();
     expect(container.querySelector(".fm-zone")).not.toBeInTheDocument();
     expect(container.querySelector(".fm-nogo")).not.toBeInTheDocument();
+    expect(container.querySelector(".fm-congestion")).not.toBeInTheDocument();
     expect(container.querySelectorAll(".robot-marker")).toHaveLength(fixtureRobots.length);
   });
 
@@ -114,5 +121,15 @@ describe("FactoryMap without WebGL", () => {
     );
     expect(container.querySelector('.fm-zone circle[cx="4"][cy="35"]')).toBeInTheDocument();
     expect(container.querySelector(".map-scale")).toHaveTextContent("70 × 40 m");
+    expect(container.querySelector(".map-scale")).toHaveTextContent("reference background");
+  });
+
+  it("projects applied congestion zones into the live 2D map", () => {
+    const { container } = render(<FactoryMap view="2d"/>);
+
+    expect(container.querySelectorAll(".fm-congestion")).toHaveLength(
+      defaultFactoryLayout.congestion_zones.length,
+    );
+    expect(container.querySelector(".fm-congestion")).toHaveTextContent("CONGESTION ×1.25");
   });
 });

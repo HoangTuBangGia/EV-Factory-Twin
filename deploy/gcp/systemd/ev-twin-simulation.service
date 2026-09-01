@@ -11,6 +11,7 @@ WorkingDirectory=/opt/ev-factory-twin
 Environment=EV_TWIN_ROOT=/opt/ev-factory-twin
 Environment=ROS_DOMAIN_ID=42
 Environment="GZ_SIM_ARGS=-s -r"
+EnvironmentFile=-/etc/ev-factory-twin/runtime.env
 ExecStart=/usr/bin/bash /opt/ev-factory-twin/scripts/edge/run-simulation.sh
 Restart=on-failure
 RestartSec=5

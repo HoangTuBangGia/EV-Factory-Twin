@@ -71,7 +71,10 @@ Create the configuration directory and copy the template:
 sudo install -d -o root -g root -m 0700 /etc/ev-factory-twin
 sudo install -o root -g root -m 0600 \
   deploy/gcp/bridge.env.example /etc/ev-factory-twin/bridge.env
+sudo install -o root -g root -m 0644 \
+  deploy/gcp/runtime.env.example /etc/ev-factory-twin/runtime.env
 sudoedit /etc/ev-factory-twin/bridge.env
+sudoedit /etc/ev-factory-twin/runtime.env
 ```
 
 Set the environment's Cloud Run HTTPS URL and matching edge secret. Keep the
@@ -82,6 +85,9 @@ repository files, command arguments or logs.
 Secret Manager may be used as the operator's source of truth, but materialize the
 secret into this root-only file during an approved maintenance action. The
 runtime intentionally has no dependency on the `gcloud` CLI or cloud API roles.
+The non-secret `runtime.env` is loaded by both services. Its immutable layout,
+route, speed, charger and demand values must match the approved scenario so the
+bridge heartbeat describes the Gazebo process that is actually running.
 
 ## 4. Install and start systemd services
 
@@ -133,7 +139,10 @@ sudo systemctl start ev-twin-simulation.service ev-twin-bridge.service
 
 The human owns the accepted SHA and Git operation. Roll back by repeating the
 same sequence with the previous accepted SHA. Configuration changes require an
-approved edit of `/etc/ev-factory-twin/bridge.env` followed by bridge restart.
+approved edit of `bridge.env`. Scenario topology changes require an approved
+edit of `runtime.env` (and generated robot or station files when used), followed
+by simulation and bridge restart. Retry Apply only after both services report
+the new runtime identity.
 
 ## 7. Failure handling
 

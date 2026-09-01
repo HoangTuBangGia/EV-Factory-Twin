@@ -1,4 +1,5 @@
 string station_id
+string route_id
 string task_id
 string payload_id
 float32 timeout_seconds

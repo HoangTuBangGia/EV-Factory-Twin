@@ -56,11 +56,12 @@ describe("LoginForm", () => {
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.getByLabelText("Password")).toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Demo accounts" })).not.toBeInTheDocument();
   });
 
-  it("makes evaluator credentials easy to copy and use", async () => {
+  it("shows evaluator credentials only in explicit demo mode", async () => {
     writeText.mockResolvedValue(undefined);
-    render(<LoginForm />);
+    render(<LoginForm showDemoAccounts/>);
 
     fireEvent.click(screen.getByRole("button", { name: "Use Designer account" }));
     expect(screen.getByLabelText("Email")).toHaveValue("designer@example.com");

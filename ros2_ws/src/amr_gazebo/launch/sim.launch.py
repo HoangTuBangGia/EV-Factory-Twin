@@ -167,7 +167,12 @@ def _robot_actions(context):
             Node(
                 package="task_manager",
                 executable="task_manager",
-                parameters=[{"use_sim_time": True}],
+                parameters=[
+                    {
+                        "max_concurrent_tasks": len(load_robot_config(config_path)),
+                        "use_sim_time": True,
+                    }
+                ],
                 output="screen",
             ),
         ]
@@ -186,8 +191,8 @@ def generate_launch_description():
             DeclareLaunchArgument("gz_args", default_value="-r"),
             DeclareLaunchArgument("robots_config", default_value=default_config),
             DeclareLaunchArgument("stations_config", default_value=default_stations),
-            DeclareLaunchArgument("runtime_robot_speed_mps", default_value="1.0"),
-            DeclareLaunchArgument("runtime_charger_count", default_value="1"),
+            DeclareLaunchArgument("runtime_robot_speed_mps", default_value="1.2"),
+            DeclareLaunchArgument("runtime_charger_count", default_value="2"),
             DeclareLaunchArgument("runtime_demand_interval_seconds", default_value="8.0"),
             DeclareLaunchArgument("runtime_layout_id", default_value="LAYOUT-DEFAULT"),
             DeclareLaunchArgument("runtime_layout_version", default_value="3"),

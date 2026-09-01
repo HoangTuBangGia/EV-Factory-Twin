@@ -61,6 +61,10 @@ string/log/frontend và không được tái sử dụng service-role key.
 | GET | `/api/v1/tasks/{task_id}` | [`Task`](#task) | 1 task; id lạ → 404 |
 | GET | `/api/v1/metrics` | [`FactoryMetrics`](#factorymetrics) | Số liệu vận hành |
 | GET | `/api/v1/alerts` | [`FactoryAlert[]`](#alertseverity--alertcode--factoryalert) | Alert đã phát |
+| POST | `/api/v1/alerts/{alert_id}/acknowledge` | [`FactoryAlert`](#alertseverity--alertcode--factoryalert) | MONITOR xác nhận một alert, idempotent và durable |
+| GET | `/api/v1/history/telemetry` | `HistoryPage<TelemetryHistoryItem>` | Telemetry mẫu đã lưu, lọc theo robot/thời gian |
+| GET | `/api/v1/history/tasks` | `HistoryPage<TaskHistoryItem>` | Các transition task có thể replay |
+| GET | `/api/v1/history/metrics` | `HistoryPage<KpiHistoryItem>` | KPI downsampled dùng cho biểu đồ Analytics |
 | GET | `/api/v1/layouts` | [`LayoutSummary[]`](#versioned-layout) | Layout chưa archive |
 | POST | `/api/v1/layouts` | [`LayoutVersion`](#versioned-layout) | Tạo layout và version 1 |
 | GET | `/api/v1/layouts/{layout_id}` | [`LayoutVersion`](#versioned-layout) | Version mới nhất |
@@ -98,6 +102,7 @@ Ma trận quyền REST hiện tại:
 | GET auth/factory/robot/task/KPI/alert/scenario/layout | Có | Có |
 | Create/version/rename/archive layout | Có | Không |
 | `POST /scenarios/run` | Có | Không |
+| Tạo transport task, acknowledge alert | Không | Có |
 | Approve/Reject/Request revision/Apply scenario | Không | Có |
 | Start/Stop/Reset/Config MockFactory | Không | Có |
 
@@ -165,7 +170,7 @@ layout vừa APPLIED xuất hiện mà không cần reload trang.
     "points": [{"x": 38.0, "y": 17.5}, {"x": 42.0, "y": 17.5}, {"x": 42.0, "y": 22.5}, {"x": 38.0, "y": 22.5}]
   }],
   "config": {
-    "robot_count": 5,
+    "robot_count": 2,
     "demand_interval_seconds": 8.0,
     "robot_speed_mps": 1.2,
     "charger_count": 2
@@ -772,6 +777,26 @@ cả sau khi `POST /api/v1/mock/stop`.
 
 Tất cả field không nullable.
 
+## Operational history
+
+Ba endpoint `/api/v1/history/telemetry`, `/tasks` và `/metrics` dùng cùng query
+`start`, `end`, `limit`, `offset`. Timestamp phải kèm timezone; cửa sổ tối đa
+7 ngày, `limit` từ 1 đến 500 (mặc định 100), `offset >= 0`. Khi không truyền thời
+gian, backend trả một giờ gần nhất. Response luôn có dạng:
+
+```json
+{
+  "items": [],
+  "next_offset": null
+}
+```
+
+`next_offset` là offset của trang kế tiếp hoặc `null` khi đã hết dữ liệu.
+Telemetry hỗ trợ `robot_id`, task hỗ trợ `task_id`, KPI hỗ trợ `scenario_id`.
+Telemetry được downsample ở ingress để không ghi raw stream 10 Hz vào PostgreSQL;
+task giữ đủ payload/station/attempt/retry/message và KPI giữ timestamp thật để
+frontend khôi phục biểu đồ sau reload.
+
 ## AlertSeverity / AlertCode / FactoryAlert
 
 ```text
@@ -782,8 +807,8 @@ STALE_TELEMETRY, BRIDGE_DISCONNECTED, COMMAND_TIMEOUT, CONGESTION, COLLISION
 ```
 
 `GET /api/v1/alerts`. `alert.created` phát khi condition được kích hoạt hoặc
-retrigger; `alert.updated` phát bản ghi `CLEARED` để browser loại cảnh báo ngay
-mà không cần reload snapshot.
+retrigger; `alert.updated` phát khi occurrence được acknowledge hoặc chuyển
+`CLEARED`, nên mọi browser đang mở hội tụ về cùng trạng thái mà không cần reload.
 
 ```json
 {
@@ -798,7 +823,9 @@ mà không cần reload snapshot.
   "operation_id": null,
   "timestamp": "2026-08-11T04:00:00.000Z",
   "last_seen_at": "2026-08-11T04:00:00.000Z",
-  "cleared_at": null
+  "cleared_at": null,
+  "acknowledged_at": null,
+  "acknowledged_by": null
 }
 ```
 
@@ -816,6 +843,8 @@ mà không cần reload snapshot.
 | `timestamp` | datetime | không | |
 | `last_seen_at` | datetime | không | lần cuối điều kiện còn được quan sát |
 | `cleared_at` | datetime | có | bắt buộc khi `CLEARED` |
+| `acknowledged_at` | datetime | có | thời điểm MONITOR xác nhận occurrence |
+| `acknowledged_by` | UUID | có | profile đã xác nhận; xuất hiện cùng `acknowledged_at` |
 
 Alert có state (ví dụ `LOW_BATTERY:AMR-01`) được backend dedupe — chỉ phát khi
 robot **vào** điều kiện, không lặp mỗi tick trong khi vẫn ở điều kiện đó. Khi
@@ -825,6 +854,10 @@ robot **vào** điều kiện, không lặp mỗi tick trong khi vẫn ở đi�
 `COLLISION:<lower-id>:<higher-id>`. Alert kích hoạt khi hình tròn bảo thủ bao quanh
 footprint của hai AMR giao nhau và clear khi chúng tách ra. Rule dùng canonical
 telemetry nên MOCK và ROS có cùng contract.
+
+`POST /api/v1/alerts/{alert_id}/acknowledge` không có request body. Lần gọi đầu
+ghi `acknowledged_at/by`; các lần gọi lại trả cùng acknowledgement ban đầu. ID
+không tồn tại trả `404`, DESIGNER trả `403`.
 
 ## WebSocket event envelope
 
@@ -880,9 +913,9 @@ Sau `auth.ok`, mọi message server trên `/ws/factory` bọc trong envelope:
 | `task.updated` | `Task` | event-driven |
 | `metrics.updated` | `FactoryMetrics` | ~1 Hz theo đồng hồ thật |
 | `alert.created` | `FactoryAlert` | event-driven |
-| `alert.updated` | `FactoryAlert` | khi lifecycle chuyển sang `CLEARED` |
+| `alert.updated` | `FactoryAlert` | khi acknowledge hoặc chuyển `CLEARED` |
 | `command.updated` | `Command` | khi command/attempt đổi trạng thái |
-| `factory.reset` | `null` | khi `POST /api/v1/mock/reset` |
+| `factory.reset` | `null` | khi mock reset, registry edge đổi hoặc scenario ROS apply thành công |
 
 ## Status codes
 

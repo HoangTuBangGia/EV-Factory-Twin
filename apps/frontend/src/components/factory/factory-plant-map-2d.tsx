@@ -391,10 +391,10 @@ export function FactoryPlantMap2D({
         />)}
       </g>}
 
-      {editor && <g className="plant-congestion-zones">
-        {editor.congestionZones.map((zone) => <polygon
+      {layers.congestionZones && <g className="plant-congestion-zones">
+        {(editor?.congestionZones ?? layout.congestion_zones).map((zone) => <polygon
           key={zone.id}
-          className={editor.selectedZone?.kind === "congestion_zones"
+          className={editor?.selectedZone?.kind === "congestion_zones"
             && editor.selectedZone.id === zone.id ? "selected" : undefined}
           points={zone.points.map((point) => {
             const mapped = livePoint(point, layout);
@@ -450,8 +450,8 @@ export function FactoryPlantMap2D({
             key={equipment.id} className={`plant-equipment ${equipment.type}`}
             onMouseEnter={(event) => setHoveredItem({
               name: equipment.name,
-              category: equipment.type.replaceAll("_", " ").toUpperCase(),
-              details: `${width} × ${depth} m · ${equipment.status}`,
+              category: `REFERENCE · ${equipment.type.replaceAll("_", " ").toUpperCase()}`,
+              details: `${width} × ${depth} m · geometry only, no live equipment status`,
               screenX: event.clientX,
               screenY: event.clientY,
             })}
@@ -574,7 +574,8 @@ export function FactoryPlantMap2D({
     <div className="plant-map-scale">
       <strong>1 unit = 1 m</strong>
       <span>EV plant · 120 × 40 m</span>
-      <span>Live layout · {layout.width} × {layout.height} m</span>
+      <span>Applied layout · {layout.width} × {layout.height} m</span>
+      <span>Equipment is reference geometry</span>
     </div>
     <div className="plant-map-legend" aria-hidden="true">
       <span><i className="zone-a"/>Warehouse</span>

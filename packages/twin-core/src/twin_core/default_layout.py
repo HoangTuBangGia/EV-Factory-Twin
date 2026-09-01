@@ -102,7 +102,7 @@ def default_layout_content() -> LayoutVersionContent:
                 }
             ],
             "config": {
-                "robot_count": 5,
+                "robot_count": 2,
                 "demand_interval_seconds": 8,
                 "robot_speed_mps": 1.2,
                 "charger_count": 2,

@@ -4,6 +4,7 @@ from ev_twin_api.schemas.edge_runtime import BridgeHealth, EdgeUpdateResponse, T
 from ev_twin_api.schemas.task import Task, TaskStatus
 from ev_twin_api.schemas.websocket import factory_reset_event, task_updated_event
 from ev_twin_api.services.factory_state import FactoryState
+from ev_twin_api.services.metrics_service import RuntimeMetricsPublisher
 from ev_twin_api.services.runtime_health import RuntimeHealthService
 from ev_twin_api.services.runtime_history import (
     InMemoryRuntimeHistoryRepository,
@@ -19,6 +20,7 @@ class EdgeRuntimeService:
         websocket_manager: WebSocketManager,
         history_repository: RuntimeHistoryRepository | None = None,
         runtime_health: RuntimeHealthService | None = None,
+        runtime_metrics: RuntimeMetricsPublisher | None = None,
     ) -> None:
         self._state = state
         self._websocket_manager = websocket_manager
@@ -26,6 +28,7 @@ class EdgeRuntimeService:
         self._bridge_health: dict[str, BridgeHealth] = {}
         self._history = history_repository or InMemoryRuntimeHistoryRepository()
         self._runtime_health = runtime_health
+        self._runtime_metrics = runtime_metrics
 
     async def ingest_task(self, update: TaskUpdate) -> EdgeUpdateResponse:
         ingested_at = datetime.now(UTC)
@@ -35,12 +38,12 @@ class EdgeRuntimeService:
             return EdgeUpdateResponse(accepted=False, identifier=update.task_id)
 
         current = self._state.get_task(update.task_id)
-        created_at = current.created_at if current else update.updated_at
+        created_at = current.created_at if current else ingested_at
         started_at = current.started_at if current else None
         if started_at is None and update.status != TaskStatus.QUEUED:
-            started_at = update.updated_at
+            started_at = ingested_at
         completed_at = (
-            update.updated_at
+            ingested_at
             if update.status == TaskStatus.COMPLETED
             else (current.completed_at if current else None)
         )
@@ -61,6 +64,8 @@ class EdgeRuntimeService:
             self._state.update_task(task)
         self._task_timestamps[update.task_id] = update.updated_at
         await self._websocket_manager.broadcast(task_updated_event(task))
+        if self._runtime_metrics is not None:
+            await self._runtime_metrics.refresh()
         return EdgeUpdateResponse(accepted=True, identifier=update.task_id)
 
     async def ingest_health(self, health: BridgeHealth) -> EdgeUpdateResponse:

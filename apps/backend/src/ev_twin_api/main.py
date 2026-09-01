@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from twin_core.default_layout import DEFAULT_LAYOUT_ID, DEFAULT_LAYOUT_VERSION
 
 from ev_twin_api import __version__
 from ev_twin_api.api.alerts import router as alerts_router
@@ -13,6 +14,7 @@ from ev_twin_api.api.commands import router as commands_router
 from ev_twin_api.api.edge_runtime import router as edge_runtime_router
 from ev_twin_api.api.factory import router as factory_router
 from ev_twin_api.api.health import router as health_router
+from ev_twin_api.api.history import router as history_router
 from ev_twin_api.api.layouts import router as layouts_router
 from ev_twin_api.api.metrics import router as metrics_router
 from ev_twin_api.api.mock import router as mock_router
@@ -42,13 +44,18 @@ from ev_twin_api.services.command_service import (
 )
 from ev_twin_api.services.edge_runtime import EdgeRuntimeService
 from ev_twin_api.services.factory_state import FactoryState
-from ev_twin_api.services.kpi_snapshot_writer import build_kpi_snapshot_writer
+from ev_twin_api.services.kpi_snapshot_writer import (
+    InMemoryKpiSnapshotRepository,
+    KpiSnapshotWriter,
+    SqlAlchemyKpiSnapshotRepository,
+)
 from ev_twin_api.services.layout_repository import (
     InMemoryLayoutRepository,
     LayoutRepository,
     SqlAlchemyLayoutRepository,
 )
 from ev_twin_api.services.layout_service import LayoutService
+from ev_twin_api.services.metrics_service import RuntimeMetricsPublisher
 from ev_twin_api.services.mock_factory import MockFactory
 from ev_twin_api.services.optimization_service import OptimizationService
 from ev_twin_api.services.runtime_health import RuntimeHealthService
@@ -84,6 +91,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if database.configured
         else InMemoryRuntimeHistoryRepository()
     )
+    app.state.runtime_history_repository = runtime_repository
     jwt_manager = (
         LocalJwtManager(
             secret=settings.auth_jwt_secret.get_secret_value(),
@@ -131,6 +139,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     mock_factory.set_alert_sink(runtime_health.record_existing, runtime_health.clear_existing)
     app.state.runtime_health_service = runtime_health
     app.state.mock_factory = mock_factory
+    runtime_metrics = RuntimeMetricsPublisher(
+        factory_state,
+        websocket_manager,
+        enabled=not settings.mock_factory_enabled,
+    )
+    app.state.runtime_metrics_publisher = runtime_metrics
     telemetry_persistence = TelemetryPersistenceWorker(
         runtime_repository,
         runtime_health,
@@ -145,9 +159,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         history_repository=runtime_repository,
         runtime_health=runtime_health,
         persistence_worker=telemetry_persistence,
+        runtime_metrics=runtime_metrics,
     )
     app.state.edge_runtime_service = EdgeRuntimeService(
-        factory_state, websocket_manager, runtime_repository, runtime_health
+        factory_state,
+        websocket_manager,
+        runtime_repository,
+        runtime_health,
+        runtime_metrics,
     )
     audit_repository: AuditRepository
     layout_repository: LayoutRepository
@@ -186,24 +205,38 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         audit_repository,
         runtime_health,
         sweep_seconds=settings.command_timeout_sweep_seconds,
+        factory_state=factory_state,
+        invalidate_on_scenario_apply=not settings.mock_factory_enabled,
     )
     app.state.websocket_manager = websocket_manager
-    kpi_snapshot_writer = build_kpi_snapshot_writer(
-        database=database,
+    kpi_history_repository = (
+        SqlAlchemyKpiSnapshotRepository(database)
+        if database.configured
+        else InMemoryKpiSnapshotRepository()
+    )
+    app.state.kpi_history_repository = kpi_history_repository
+    kpi_snapshot_writer = KpiSnapshotWriter(
+        repository=kpi_history_repository,
         factory_state=factory_state,
-        simulated_elapsed_seconds=lambda: mock_factory.simulated_elapsed_seconds,
+        simulated_elapsed_seconds=lambda: (
+            mock_factory.simulated_elapsed_seconds
+            if settings.mock_factory_enabled
+            else runtime_metrics.elapsed_seconds
+        ),
+        scenario_id=lambda: factory_state.active_scenario_id,
     )
     app.state.kpi_snapshot_writer = kpi_snapshot_writer
 
     applied_scenario = await app.state.scenario_service.get_applied_scenario()
-    applied_layout = None
+    applied_layout = await app.state.layout_service.get(DEFAULT_LAYOUT_ID, DEFAULT_LAYOUT_VERSION)
     if applied_scenario is not None:
         applied_layout = await app.state.layout_service.get(
             applied_scenario.config.layout_id,
             applied_scenario.config.layout_version,
         )
+        factory_state.apply_layout(applied_layout, applied_scenario.config.route_id)
+        factory_state.set_active_scenario(applied_scenario.id)
         if settings.mock_factory_enabled:
-            mock_factory.apply_layout(applied_layout, applied_scenario.config.route_id)
             mock_factory.apply_config(
                 MockFactoryConfig(
                     robot_count=applied_scenario.config.num_robots,
@@ -217,6 +250,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     runtime_health.set_applied_layout(applied_layout)
 
     await mock_factory.start()
+    await runtime_metrics.start()
     await runtime_health.start()
     await telemetry_persistence.start()
     await app.state.command_service.start()
@@ -230,6 +264,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if kpi_snapshot_writer is not None:
             await kpi_snapshot_writer.stop()
         await mock_factory.stop()
+        await runtime_metrics.stop()
         await telemetry_persistence.stop()
         await runtime_health.stop()
         await database.dispose()
@@ -252,6 +287,7 @@ app.add_middleware(
 )
 
 app.include_router(health_router)
+app.include_router(history_router)
 app.include_router(auth_router)
 app.include_router(commands_router)
 app.include_router(factory_router)
@@ -260,7 +296,8 @@ app.include_router(robots_router)
 app.include_router(tasks_router)
 app.include_router(metrics_router)
 app.include_router(alerts_router)
-app.include_router(mock_router)
+if settings.mock_factory_enabled:
+    app.include_router(mock_router)
 app.include_router(scenarios_router)
 app.include_router(optimizations_router)
 app.include_router(telemetry_router)

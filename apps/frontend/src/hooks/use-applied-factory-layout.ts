@@ -21,7 +21,7 @@ export function useAppliedFactoryLayout(): FactoryLayout {
           applied.config.layout_id,
           applied.config.layout_version,
         );
-        if (active) setLayout(projectLayoutVersion(version));
+        if (active) setLayout(projectLayoutVersion(version, applied.config.route_id));
       })
       .catch(() => {
         // Live telemetry remains usable with the documented default layout.

@@ -37,8 +37,8 @@ class ScenarioConfig(BaseModel):
     layout_id: str = Field(default=DEFAULT_LAYOUT_ID, min_length=1, max_length=80)
     layout_version: int = Field(default=DEFAULT_LAYOUT_VERSION, ge=1)
     route_id: str = Field(default=DEFAULT_ROUTE_ID, min_length=1, max_length=80)
-    robot_speed_mps: float = Field(default=1.0, gt=0.0, le=10.0)
-    charger_count: int = Field(default=1, ge=1, le=20)
+    robot_speed_mps: float = Field(default=1.2, gt=0.0, le=10.0)
+    charger_count: int = Field(default=2, ge=1, le=20)
     route_distance_m: float = Field(default=30.0, gt=0.0, le=100_000.0)
     congestion_multiplier: float = Field(default=1.0, ge=1.0, le=10.0)
 

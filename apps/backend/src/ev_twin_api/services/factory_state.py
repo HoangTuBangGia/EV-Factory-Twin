@@ -40,6 +40,19 @@ def _station_name(station_type: StationType) -> str:
     return station_type.value.replace("_", " ").title()
 
 
+def _runtime_stations(layout: LayoutVersionContent) -> list[Station]:
+    return [
+        Station(
+            id=station.id,
+            name=_station_name(station.type),
+            type=STATION_RUNTIME_TYPES[station.type],
+            x=station.x,
+            y=station.y,
+        )
+        for station in layout.stations
+    ]
+
+
 def _spawn_points(layout: LayoutVersionContent, robot_count: int) -> list[tuple[float, float]]:
     charger = next(
         station for station in layout.stations if station.type == StationType.CHARGING_STATION
@@ -104,6 +117,7 @@ class FactoryState:
         self._seed_mock_robots = seed_mock_robots
         self._layout = (layout or default_layout_content()).model_copy(deep=True)
         self._route_id = route_id
+        self._active_scenario_id: str | None = None
         self.robots: dict[str, Robot] = {}
         self.stations: list[Station] = []
         self.tasks: dict[str, Task] = {}
@@ -115,16 +129,7 @@ class FactoryState:
         self.robots = (
             _initial_robots(self.config.robot_count, self._layout) if self._seed_mock_robots else {}
         )
-        self.stations = [
-            Station(
-                id=station.id,
-                name=_station_name(station.type),
-                type=STATION_RUNTIME_TYPES[station.type],
-                x=station.x,
-                y=station.y,
-            )
-            for station in self._layout.stations
-        ]
+        self.stations = _runtime_stations(self._layout)
         self.tasks = {}
         self.alerts = []
         self.metrics = _empty_metrics()
@@ -150,6 +155,13 @@ class FactoryState:
         return self._route_id
 
     @property
+    def active_scenario_id(self) -> str | None:
+        return self._active_scenario_id
+
+    def set_active_scenario(self, scenario_id: str | None) -> None:
+        self._active_scenario_id = scenario_id
+
+    @property
     def delivery_route(self) -> LayoutRoute:
         route = next(
             (candidate for candidate in self._layout.routes if candidate.id == self._route_id),
@@ -169,6 +181,28 @@ class FactoryState:
             raise ValueError(f"Route '{route_id}' is not a delivery route")
         self._layout = layout.model_copy(deep=True)
         self._route_id = route_id
+        self.stations = _runtime_stations(self._layout)
+
+    def validate_transport_route(
+        self, pickup_station_id: str, dropoff_station_id: str
+    ) -> None:
+        station_ids = {station.id for station in self._layout.stations}
+        unknown = [
+            station_id
+            for station_id in (pickup_station_id, dropoff_station_id)
+            if station_id not in station_ids
+        ]
+        if unknown:
+            raise ValueError(f"Unknown station in active layout: {', '.join(unknown)}")
+        route = self.delivery_route
+        if (route.start_station_id, route.end_station_id) != (
+            pickup_station_id,
+            dropoff_station_id,
+        ):
+            raise ValueError(
+                f"Active route '{route.id}' does not serve "
+                f"{pickup_station_id} -> {dropoff_station_id}"
+            )
 
     def route_waypoints(self, route_key: tuple[str, str]) -> tuple[tuple[float, float], ...]:
         if route_key[0] == "ANY":

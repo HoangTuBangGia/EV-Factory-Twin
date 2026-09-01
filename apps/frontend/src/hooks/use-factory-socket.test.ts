@@ -271,8 +271,10 @@ describe("useFactorySocket", () => {
     const onEvent = mocks.instances[0].args[2] as (event: FactoryEvent) => void;
     await (mocks.instances[0].args[4] as () => Promise<void>)();
     order.length = 0;
+    const revisionBeforeReset = useFactoryStore.getState().factoryRevision;
 
     onEvent({ type: "factory.reset", data: null });
+    expect(useFactoryStore.getState().factoryRevision).toBe(revisionBeforeReset + 1);
     onEvent({
       type: "robot.telemetry",
       data: {
@@ -295,6 +297,31 @@ describe("useFactorySocket", () => {
 
     unmount();
     useFactoryStore.setState({ updateRobotTelemetry: originalUpdate });
+  });
+
+  it("invalidates applied-layout readers when reset arrives during snapshot sync", async () => {
+    let resolveInitial!: (snapshot: unknown) => void;
+    const initialSnapshot = new Promise((resolve) => { resolveInitial = resolve; });
+    mocks.fetchSnapshot
+      .mockImplementationOnce(() => initialSnapshot)
+      .mockResolvedValueOnce({ marker: "after-reset" });
+    renderHook(() => useFactorySocket(
+      true,
+      "active-token",
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+    ));
+    const onEvent = mocks.instances[0].args[2] as (event: FactoryEvent) => void;
+    const authentication = (mocks.instances[0].args[4] as () => Promise<void>)();
+
+    onEvent({ type: "factory.reset", data: null });
+    resolveInitial({ marker: "stale" });
+    await authentication;
+
+    expect(mocks.fetchSnapshot).toHaveBeenCalledTimes(2);
+    expect(mocks.commitSnapshot).toHaveBeenCalledWith({ marker: "after-reset" });
+    expect(useFactoryStore.getState().factoryRevision).toBe(1);
   });
 
   it("closes for recovery when a reset snapshot fails", async () => {

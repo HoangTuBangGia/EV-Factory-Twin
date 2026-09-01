@@ -173,6 +173,10 @@ Factory-edge telemetry dùng machine endpoint riêng tại `/internal/v1/telemet
 | `GET` | `/api/v1/tasks` | Danh sách task |
 | `GET` | `/api/v1/metrics` | KPI vận hành |
 | `GET` | `/api/v1/alerts` | Danh sách cảnh báo |
+| `POST` | `/api/v1/alerts/{alert_id}/acknowledge` | MONITOR xác nhận cảnh báo |
+| `GET` | `/api/v1/history/telemetry` | Lịch sử telemetry đã downsample |
+| `GET` | `/api/v1/history/tasks` | Lịch sử transition task |
+| `GET` | `/api/v1/history/metrics` | Lịch sử KPI cho Analytics |
 | `POST` | `/api/v1/mock/start` | Chạy mock engine |
 | `POST` | `/api/v1/mock/stop` | Dừng mock engine |
 | `POST` | `/api/v1/mock/reset` | Reset trạng thái mô phỏng |

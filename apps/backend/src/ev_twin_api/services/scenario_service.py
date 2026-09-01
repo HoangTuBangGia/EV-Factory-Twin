@@ -1,6 +1,8 @@
+import asyncio
 import logging
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, cast
@@ -85,6 +87,12 @@ def _run_logistics(config: ScenarioConfig) -> tuple[ScenarioMetrics, float]:
     )
 
 
+async def _run_logistics_off_loop(config: ScenarioConfig) -> tuple[ScenarioMetrics, float]:
+    loop = asyncio.get_running_loop()
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="scenario-sim") as executor:
+        return await loop.run_in_executor(executor, _run_logistics, config)
+
+
 def _load_baseline_request() -> ScenarioRunRequest:
     config = load_scenario(BASELINE_PATH)
     return ScenarioRunRequest(
@@ -125,11 +133,8 @@ class ScenarioService:
                     f"Scenario '{request.revision_of}' cannot be revised by this actor"
                 )
         config = request.to_config()
-        # The bounded MVP workload (at most 10,000 tasks) completes quickly
-        # enough to run inline. Keeping it local also makes sequential runs
-        # deterministic without coordinating a process-wide executor.
         config = await self._resolve_layout(config)
-        metrics, duration_ms = _run_logistics(config)
+        metrics, duration_ms = await _run_logistics_off_loop(config)
 
         return await self._repository.create(
             name=request.name,
@@ -169,7 +174,7 @@ class ScenarioService:
 
         request = _load_baseline_request()
         config = await self._resolve_layout(request.to_config())
-        metrics, duration_ms = _run_logistics(config)
+        metrics, duration_ms = await _run_logistics_off_loop(config)
         baseline = Scenario(
             id="baseline",
             name=request.name,

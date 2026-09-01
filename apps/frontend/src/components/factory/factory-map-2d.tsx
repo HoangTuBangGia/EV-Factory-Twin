@@ -69,6 +69,16 @@ export function FactoryMap2D({ robots, selectedRobotId, onSelect, layers, layout
       </g>;
     })}
 
+    {layers.congestionZones && layout.congestion_zones.map((zone) => {
+      const points = zone.points.map((point) => `${point.x},${h - point.y}`).join(" ");
+      return <g key={zone.id} className="fm-zone fm-congestion">
+        <polygon points={points} fill="#f59e0b" fillOpacity=".2" stroke="#fbbf24" strokeWidth=".11" strokeDasharray=".5 .25"/>
+        <text x={zone.points[0].x + 0.22} y={h - zone.points[0].y - 0.22} fill="#fbbf24">
+          CONGESTION ×{zone.delay_multiplier}
+        </text>
+      </g>;
+    })}
+
     {robots.map((robot) => {
       const point = worldToScreen(robot.pose.x, robot.pose.y, w, h, w, h);
       const low = robot.battery < 20;

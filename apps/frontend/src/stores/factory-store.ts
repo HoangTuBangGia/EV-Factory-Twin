@@ -43,6 +43,7 @@ interface FactoryStore {
   setTasks: (tasks: Task[]) => void;
   updateTask: (task: Task) => void;
   setMetrics: (metrics: FactoryMetrics) => void;
+  hydrateMetricsHistory: (samples: MetricsSample[]) => void;
   clearMetricsHistory: () => void;
   setAlerts: (alerts: FactoryAlert[]) => void;
   addAlert: (alert: FactoryAlert) => void;
@@ -96,6 +97,19 @@ export const useFactoryStore = create<FactoryStore>((set) => ({
     ].slice(-METRICS_HISTORY_LIMIT);
 
     return { metrics, metricsHistory };
+  }),
+  hydrateMetricsHistory: (samples) => set((state) => {
+    const windowStart = Date.now() - METRICS_HISTORY_WINDOW_MS;
+    const merged = new Map<number, MetricsSample>();
+    for (const sample of samples) merged.set(sample.timestamp, sample);
+    // Realtime samples win when a persisted point has the same timestamp.
+    for (const sample of state.metricsHistory) merged.set(sample.timestamp, sample);
+    return {
+      metricsHistory: [...merged.values()]
+        .filter((sample) => sample.timestamp >= windowStart)
+        .sort((left, right) => left.timestamp - right.timestamp)
+        .slice(-METRICS_HISTORY_LIMIT),
+    };
   }),
   clearMetricsHistory: () => set({ metricsHistory: [] }),
   setAlerts: (alerts) => set((state) => ({

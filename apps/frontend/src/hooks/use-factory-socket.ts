@@ -104,6 +104,7 @@ export function useFactorySocket(
             }
             if (latestReset >= 0) {
               useFactoryStore.getState().clearMetricsHistory();
+              useFactoryStore.getState().bumpFactoryRevision();
               bufferedEvents = pending.slice(latestReset + 1);
               continue;
             }

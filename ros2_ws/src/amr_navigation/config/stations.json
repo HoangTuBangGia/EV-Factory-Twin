@@ -1,7 +1,60 @@
 {
+  "layout_id": "LAYOUT-DEFAULT",
+  "layout_version": 3,
+  "width": 120,
+  "height": 40,
   "stations": {
-    "BATTERY_BUFFER": {"x": 32.0, "y": 29.0},
-    "MARRIAGE_STATION": {"x": 52.0, "y": 6.0},
-    "CHARGING_STATION": {"x": 32.0, "y": 11.0}
-  }
+    "BATTERY_BUFFER": {"type": "BATTERY_BUFFER", "x": 32.0, "y": 29.0},
+    "MARRIAGE_STATION": {"type": "MARRIAGE_STATION", "x": 52.0, "y": 6.0},
+    "MARRIAGE_STATION_2": {"type": "MARRIAGE_STATION", "x": 82.0, "y": 8.0},
+    "CHARGING_STATION": {"type": "CHARGING_STATION", "x": 32.0, "y": 11.0}
+  },
+  "routes": [
+    {
+      "id": "BATTERY_DELIVERY",
+      "start_station_id": "BATTERY_BUFFER",
+      "end_station_id": "MARRIAGE_STATION",
+      "waypoints": [
+        {"x": 32.0, "y": 29.0},
+        {"x": 32.0, "y": 20.0},
+        {"x": 40.0, "y": 20.0},
+        {"x": 52.0, "y": 20.0},
+        {"x": 52.0, "y": 6.0}
+      ]
+    },
+    {
+      "id": "BATTERY_DELIVERY_LONG",
+      "start_station_id": "BATTERY_BUFFER",
+      "end_station_id": "MARRIAGE_STATION_2",
+      "waypoints": [
+        {"x": 32.0, "y": 29.0},
+        {"x": 32.0, "y": 20.0},
+        {"x": 40.0, "y": 20.0},
+        {"x": 60.0, "y": 20.0},
+        {"x": 82.0, "y": 20.0},
+        {"x": 82.0, "y": 8.0}
+      ]
+    },
+    {
+      "id": "CHARGER_LINK",
+      "start_station_id": "CHARGING_STATION",
+      "end_station_id": "BATTERY_BUFFER",
+      "waypoints": [
+        {"x": 32.0, "y": 11.0},
+        {"x": 32.0, "y": 20.0},
+        {"x": 32.0, "y": 29.0}
+      ]
+    }
+  ],
+  "no_go_zones": [
+    {
+      "id": "GIGA_PRESS_CLEARANCE",
+      "points": [
+        {"x": 44.0, "y": 27.0},
+        {"x": 58.0, "y": 27.0},
+        {"x": 58.0, "y": 37.0},
+        {"x": 44.0, "y": 37.0}
+      ]
+    }
+  ]
 }

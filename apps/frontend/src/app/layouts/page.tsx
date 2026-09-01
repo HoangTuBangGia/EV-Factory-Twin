@@ -26,7 +26,9 @@ import {
 import { useFactoryStore } from "@/stores/factory-store";
 import { toastError, toastSuccess } from "@/stores/toast-store";
 
-const ALL_LAYERS = { stations: true, routes: true, noGoZones: true } as const;
+const ALL_LAYERS = {
+  stations: true, routes: true, noGoZones: true, congestionZones: true,
+} as const;
 const SNAP_METRES = 0.5;
 
 function initialContent(): LayoutVersionContent {
@@ -40,22 +42,8 @@ function initialContent(): LayoutVersionContent {
       end_station_id: route.end_station_id ?? "MARRIAGE_STATION",
     })),
     no_go_zones: defaultFactoryLayout.no_go_zones,
-    congestion_zones: [{
-      id: "WAREHOUSE_PRODUCTION_DOOR",
-      delay_multiplier: 1.25,
-      points: [
-        { x: 38, y: 17.5 },
-        { x: 42, y: 17.5 },
-        { x: 42, y: 22.5 },
-        { x: 38, y: 22.5 },
-      ],
-    }],
-    config: {
-      robot_count: 5,
-      demand_interval_seconds: 8,
-      robot_speed_mps: 1.2,
-      charger_count: 2,
-    },
+    congestion_zones: defaultFactoryLayout.congestion_zones,
+    config: defaultFactoryLayout.config,
   });
 }
 

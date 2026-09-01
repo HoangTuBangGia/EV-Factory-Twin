@@ -13,8 +13,8 @@ def generate_launch_description():
             DeclareLaunchArgument("runtime_layout_id", default_value="LAYOUT-DEFAULT"),
             DeclareLaunchArgument("runtime_layout_version", default_value="3"),
             DeclareLaunchArgument("runtime_route_id", default_value="BATTERY_DELIVERY"),
-            DeclareLaunchArgument("runtime_robot_speed_mps", default_value="1.0"),
-            DeclareLaunchArgument("runtime_charger_count", default_value="1"),
+            DeclareLaunchArgument("runtime_robot_speed_mps", default_value="1.2"),
+            DeclareLaunchArgument("runtime_charger_count", default_value="2"),
             DeclareLaunchArgument("runtime_demand_interval_seconds", default_value="8.0"),
             Node(
                 package="telemetry_bridge",

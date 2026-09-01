@@ -7,6 +7,7 @@ from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.schemas.task import TaskStatus
 from ev_twin_api.services.edge_runtime import EdgeRuntimeService
 from ev_twin_api.services.factory_state import FactoryState
+from ev_twin_api.services.runtime_history import InMemoryRuntimeHistoryRepository
 from ev_twin_api.services.websocket_manager import WebSocketManager
 
 
@@ -98,3 +99,28 @@ def test_bridge_health_rejects_duplicate_robot_ids() -> None:
             delivered_samples=0,
             failed_deliveries=0,
         )
+
+
+@pytest.mark.asyncio
+async def test_task_lifecycle_uses_ingress_time_not_ros_sim_time() -> None:
+    state = FactoryState(MockFactoryConfig(), seed_mock_robots=False)
+    manager = WebSocketManager()
+    history = InMemoryRuntimeHistoryRepository()
+    service = EdgeRuntimeService(state, manager, history)
+    before_ingress = datetime.now(UTC) - timedelta(seconds=1)
+    source_epoch = datetime(1970, 1, 1, tzinfo=UTC)
+
+    await service.ingest_task(task_update(source_epoch, TaskStatus.QUEUED))
+
+    current = state.get_task("TASK-0001")
+    assert current is not None
+    assert current.created_at > before_ingress
+    records = await history.list_tasks(
+        start=before_ingress,
+        end=datetime.now(UTC) + timedelta(seconds=1),
+        task_id="TASK-0001",
+        limit=10,
+        offset=0,
+    )
+    assert len(records) == 1
+    assert records[0].update.updated_at == source_epoch

@@ -68,7 +68,7 @@ async def test_scenario_derives_route_profile_and_authoritative_kpis() -> None:
     )
 
     assert scenario.config.route_distance_m == 10.0
-    assert scenario.config.travel_time == 10.0
+    assert scenario.config.travel_time == pytest.approx(10.0 / 1.2)
     assert scenario.metrics.completed_tasks == 2
     assert scenario.metrics.travel_distance == 20.0
     assert scenario.metrics.fleet_utilization_percent > 0.0

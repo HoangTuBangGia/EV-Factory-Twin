@@ -5,6 +5,7 @@ import {
   setApiAccessToken,
   setApiUnauthorizedHandler,
 } from "./api-client";
+import { fixtureAlerts } from "./fixtures";
 
 const scenario = {
   id: "SCN-0001",
@@ -96,6 +97,29 @@ describe("apiClient mock configuration", () => {
       "http://localhost:8000/api/v1/mock/config",
       expect.objectContaining({ method: "POST", body: JSON.stringify(config) }),
     );
+  });
+});
+
+describe("apiClient alert acknowledgement", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("posts without a body and validates the durable alert result", async () => {
+    const acknowledged = {
+      ...fixtureAlerts[0],
+      acknowledged_at: "2026-08-11T04:01:00.000Z",
+      acknowledged_by: "22222222-2222-4222-8222-222222222222",
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(acknowledged), { status: 200 }),
+    );
+
+    await expect(apiClient.acknowledgeAlert(acknowledged.id)).resolves.toEqual(acknowledged);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `http://localhost:8000/api/v1/alerts/${acknowledged.id}/acknowledge`,
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBeUndefined();
   });
 });
 

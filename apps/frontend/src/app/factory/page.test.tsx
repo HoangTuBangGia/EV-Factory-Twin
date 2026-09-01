@@ -32,11 +32,11 @@ describe("FactoryPage", () => {
   it("uses the 2D view and controls visible layers", () => {
     render(<FactoryPage/>);
 
-    expect(screen.getByText(/Realtime 2D visualization/i)).toBeInTheDocument();
+    expect(screen.getByText(/Realtime AMR overlays on reference 2D factory geometry/i)).toBeInTheDocument();
     expect(mapSpy.mock.lastCall?.[0]).toHaveProperty("view", "2d");
     expect(mapSpy.mock.lastCall?.[0]).toHaveProperty("twoDimensionalVariant", "plant");
     expect(mapSpy.mock.lastCall?.[0]).toMatchObject({
-      layers: { stations: true, routes: true, noGoZones: true },
+      layers: { stations: true, routes: true, noGoZones: true, congestionZones: true },
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Routes" }));
@@ -48,7 +48,10 @@ describe("FactoryPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "All layers" }));
     expect(mapSpy.mock.lastCall?.[0]).toMatchObject({
-      layers: { stations: true, routes: true, noGoZones: true },
+      layers: { stations: true, routes: true, noGoZones: true, congestionZones: true },
     });
+
+    fireEvent.click(screen.getByRole("button", { name: "Congestion zones" }));
+    expect(mapSpy.mock.lastCall?.[0]).toMatchObject({ layers: { congestionZones: false } });
   });
 });

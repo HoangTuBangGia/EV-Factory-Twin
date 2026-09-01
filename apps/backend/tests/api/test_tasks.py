@@ -64,6 +64,26 @@ async def test_monitor_queues_transport_task_command(client: AsyncClient) -> Non
     assert response.json()["task_id"] == "TASK-LOCAL-0001"
     assert response.json()["scenario_id"] is None
     assert response.json()["status"] == "PENDING"
+    assert response.json()["timeout_seconds"] == 30
+    assert response.json()["max_retries"] == 1
+
+
+@pytest.mark.asyncio
+async def test_transport_task_must_use_the_active_delivery_route(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/v1/tasks",
+        json={
+            "task_id": "TASK-LOCAL-BAD-ROUTE",
+            "payload_id": "BP-LOCAL-BAD-ROUTE",
+            "pickup_station_id": "CHARGING_STATION",
+            "dropoff_station_id": "MARRIAGE_STATION",
+            "navigation_timeout_seconds": 75,
+            "max_retries": 2,
+        },
+    )
+
+    assert response.status_code == 422
+    assert "does not serve" in response.json()["detail"]
 
 
 @pytest.mark.asyncio

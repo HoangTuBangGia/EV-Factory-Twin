@@ -43,6 +43,8 @@ class FactoryAlert(BaseModel):
     timestamp: UtcDatetime
     last_seen_at: UtcDatetime | None = None
     cleared_at: UtcDatetime | None = None
+    acknowledged_at: UtcDatetime | None = None
+    acknowledged_by: UUID | None = None
 
     @model_validator(mode="after")
     def validate_lifecycle(self) -> "FactoryAlert":
@@ -55,4 +57,8 @@ class FactoryAlert(BaseModel):
                 raise ValueError("cleared alert requires cleared_at")
             if self.cleared_at < self.timestamp:
                 raise ValueError("cleared_at cannot precede timestamp")
+        if (self.acknowledged_at is None) != (self.acknowledged_by is None):
+            raise ValueError("acknowledged_at and acknowledged_by must be set together")
+        if self.acknowledged_at is not None and self.acknowledged_at < self.timestamp:
+            raise ValueError("acknowledged_at cannot precede timestamp")
         return self

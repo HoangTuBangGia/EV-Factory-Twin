@@ -4,7 +4,11 @@ from ev_twin_api.api.dependencies import READ_ROLES, CurrentUserDep, require_rol
 from ev_twin_api.schemas.auth import AppRole
 from ev_twin_api.schemas.command import Command
 from ev_twin_api.schemas.task import CreateTransportTaskRequest, Task
-from ev_twin_api.services.command_service import CommandConflictError, CommandServiceDep
+from ev_twin_api.services.command_service import (
+    CommandConflictError,
+    CommandServiceDep,
+    InvalidTransportTaskError,
+)
 from ev_twin_api.services.factory_state import FactoryStateDep
 
 router = APIRouter(
@@ -34,6 +38,8 @@ async def create_task(
         return await command_service.create_transport_task(request, current_user)
     except CommandConflictError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
+    except InvalidTransportTaskError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
 
 @router.get("/{task_id}", response_model=Task)

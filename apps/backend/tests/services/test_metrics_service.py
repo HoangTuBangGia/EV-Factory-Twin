@@ -1,11 +1,17 @@
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 
 import pytest
 from ev_twin_api.schemas.factory import MockFactoryConfig
 from ev_twin_api.schemas.robot import RobotStatus
 from ev_twin_api.schemas.task import Task, TaskStatus
 from ev_twin_api.services.factory_state import FactoryState
-from ev_twin_api.services.metrics_service import STARVATION_THRESHOLD_SECONDS, MetricsService
+from ev_twin_api.services.metrics_service import (
+    STARVATION_THRESHOLD_SECONDS,
+    MetricsService,
+    RuntimeMetricsPublisher,
+)
+from ev_twin_api.services.websocket_manager import WebSocketManager
 
 
 def _new_state(robot_count: int = 1) -> FactoryState:
@@ -122,15 +128,18 @@ def test_fleet_utilization_counts_only_the_four_productive_statuses() -> None:
 
 def test_starvation_is_not_double_counted_for_the_same_task() -> None:
     state = _new_state()
-    stale_created_at = datetime.now(UTC) - timedelta(seconds=STARVATION_THRESHOLD_SECONDS + 1)
-    state.add_task(_task("TASK-0001", TaskStatus.QUEUED, created_at=stale_created_at))
-    service = MetricsService(state)
+    now = [datetime(2026, 1, 1, tzinfo=UTC)]
+    state.add_task(
+        _task("TASK-0001", TaskStatus.QUEUED, created_at=datetime(1970, 1, 1, tzinfo=UTC))
+    )
+    service = MetricsService(state, clock=lambda: now[0])
 
     first = service.recalculate(simulated_elapsed_seconds=100.0)
+    now[0] += timedelta(seconds=STARVATION_THRESHOLD_SECONDS + 1)
     second = service.recalculate(simulated_elapsed_seconds=101.0)
     third = service.recalculate(simulated_elapsed_seconds=102.0)
 
-    assert first.starvation_events == 1
+    assert first.starvation_events == 0
     assert second.starvation_events == 1
     assert third.starvation_events == 1
 
@@ -147,26 +156,65 @@ def test_starvation_does_not_trigger_before_threshold() -> None:
 
 def test_starvation_counts_a_second_distinct_starved_task() -> None:
     state = _new_state()
-    stale_created_at = datetime.now(UTC) - timedelta(seconds=STARVATION_THRESHOLD_SECONDS + 1)
-    state.add_task(_task("TASK-0001", TaskStatus.QUEUED, created_at=stale_created_at))
-    service = MetricsService(state)
+    now = [datetime(2026, 1, 1, tzinfo=UTC)]
+    source_epoch = datetime(1970, 1, 1, tzinfo=UTC)
+    state.add_task(_task("TASK-0001", TaskStatus.QUEUED, created_at=source_epoch))
+    service = MetricsService(state, clock=lambda: now[0])
     service.recalculate(simulated_elapsed_seconds=100.0)
+    now[0] += timedelta(seconds=STARVATION_THRESHOLD_SECONDS + 1)
+    service.recalculate(simulated_elapsed_seconds=101.0)
 
-    state.add_task(_task("TASK-0002", TaskStatus.QUEUED, created_at=stale_created_at))
-    metrics = service.recalculate(simulated_elapsed_seconds=101.0)
+    state.add_task(_task("TASK-0002", TaskStatus.QUEUED, created_at=source_epoch))
+    service.recalculate(simulated_elapsed_seconds=102.0)
+    now[0] += timedelta(seconds=STARVATION_THRESHOLD_SECONDS + 1)
+    metrics = service.recalculate(simulated_elapsed_seconds=103.0)
 
     assert metrics.starvation_events == 2
 
 
 def test_reset_clears_the_starvation_counter() -> None:
     state = _new_state()
-    stale_created_at = datetime.now(UTC) - timedelta(seconds=STARVATION_THRESHOLD_SECONDS + 1)
-    state.add_task(_task("TASK-0001", TaskStatus.QUEUED, created_at=stale_created_at))
-    service = MetricsService(state)
+    now = [datetime(2026, 1, 1, tzinfo=UTC)]
+    state.add_task(_task("TASK-0001", TaskStatus.QUEUED))
+    service = MetricsService(state, clock=lambda: now[0])
     service.recalculate(simulated_elapsed_seconds=100.0)
+    now[0] += timedelta(seconds=STARVATION_THRESHOLD_SECONDS + 1)
+    service.recalculate(simulated_elapsed_seconds=101.0)
 
     service.reset()
     state.reset()
     metrics = service.recalculate(simulated_elapsed_seconds=0.0)
 
     assert metrics.starvation_events == 0
+
+
+@pytest.mark.asyncio
+async def test_live_metrics_refresh_is_throttled_and_broadcasts_authoritative_state() -> None:
+    state = _new_state()
+    state.add_task(_completed_task("TASK-0001", 10))
+    manager = WebSocketManager()
+    manager.broadcast = AsyncMock()  # type: ignore[method-assign]
+    current = 60.0
+    publisher = RuntimeMetricsPublisher(
+        state,
+        manager,
+        enabled=True,
+        interval_seconds=1,
+        monotonic=lambda: current,
+    )
+
+    assert await publisher.refresh()
+    assert not await publisher.refresh()
+    assert state.get_metrics().completed_tasks == 1
+    manager.broadcast.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_live_metrics_publisher_is_inert_for_mock_runtime() -> None:
+    state = _new_state()
+    manager = WebSocketManager()
+    manager.broadcast = AsyncMock()  # type: ignore[method-assign]
+    publisher = RuntimeMetricsPublisher(state, manager, enabled=False)
+
+    assert not await publisher.refresh(force=True)
+    manager.broadcast.assert_not_awaited()

@@ -1,11 +1,13 @@
 from datetime import datetime
 from typing import Protocol
+from uuid import UUID
 
 from sqlalchemy import text
 
 from ev_twin_api.core.database import Database
 from ev_twin_api.schemas.alert import AlertStatus, FactoryAlert
 from ev_twin_api.schemas.edge_runtime import BridgeHealth, TaskUpdate
+from ev_twin_api.schemas.history import TaskHistoryItem, TelemetryHistoryItem
 from ev_twin_api.schemas.telemetry import RobotTelemetry, TelemetryIngressStatus
 
 
@@ -21,8 +23,31 @@ class RuntimeHistoryRepository(Protocol):
 
     async def record_task(self, update: TaskUpdate, ingested_at: datetime) -> None: ...
 
+    async def list_telemetry(
+        self,
+        *,
+        start: datetime,
+        end: datetime,
+        robot_id: str | None,
+        limit: int,
+        offset: int,
+    ) -> list[TelemetryHistoryItem]: ...
+
+    async def list_tasks(
+        self,
+        *,
+        start: datetime,
+        end: datetime,
+        task_id: str | None,
+        limit: int,
+        offset: int,
+    ) -> list[TaskHistoryItem]: ...
+
     async def activate_alert(self, alert: FactoryAlert) -> bool: ...
     async def clear_alert(self, dedupe_key: str, cleared_at: datetime) -> FactoryAlert | None: ...
+    async def acknowledge_alert(
+        self, alert_id: UUID, acknowledged_by: UUID, acknowledged_at: datetime
+    ) -> FactoryAlert | None: ...
     async def list_alerts(self) -> list[FactoryAlert]: ...
 
 
@@ -59,6 +84,50 @@ class InMemoryRuntimeHistoryRepository:
         ):
             self.tasks.append((update.model_copy(deep=True), ingested_at))
 
+    async def list_telemetry(
+        self,
+        *,
+        start: datetime,
+        end: datetime,
+        robot_id: str | None,
+        limit: int,
+        offset: int,
+    ) -> list[TelemetryHistoryItem]:
+        matches = sorted(
+            (
+                TelemetryHistoryItem(
+                    telemetry=telemetry,
+                    ingested_at=ingested_at,
+                    ordering_status=ordering_status,
+                )
+                for telemetry, ingested_at, ordering_status in self.telemetry
+                if start <= telemetry.timestamp <= end
+                and (robot_id is None or telemetry.robot_id == robot_id)
+            ),
+            key=lambda item: (item.telemetry.timestamp, item.telemetry.robot_id),
+        )
+        return [item.model_copy(deep=True) for item in matches[offset : offset + limit]]
+
+    async def list_tasks(
+        self,
+        *,
+        start: datetime,
+        end: datetime,
+        task_id: str | None,
+        limit: int,
+        offset: int,
+    ) -> list[TaskHistoryItem]:
+        matches = sorted(
+            (
+                TaskHistoryItem(update=update, ingested_at=ingested_at)
+                for update, ingested_at in self.tasks
+                if start <= ingested_at <= end
+                and (task_id is None or update.task_id == task_id)
+            ),
+            key=lambda item: (item.ingested_at, item.update.task_id),
+        )
+        return [item.model_copy(deep=True) for item in matches[offset : offset + limit]]
+
     async def activate_alert(self, alert: FactoryAlert) -> bool:
         active = next(
             (
@@ -90,6 +159,17 @@ class InMemoryRuntimeHistoryRepository:
         active.cleared_at = cleared_at
         active.last_seen_at = cleared_at
         return active.model_copy(deep=True)
+
+    async def acknowledge_alert(
+        self, alert_id: UUID, acknowledged_by: UUID, acknowledged_at: datetime
+    ) -> FactoryAlert | None:
+        alert = next((item for item in self.alerts if item.id == alert_id), None)
+        if alert is None:
+            return None
+        if alert.acknowledged_at is None:
+            alert.acknowledged_at = acknowledged_at
+            alert.acknowledged_by = acknowledged_by
+        return alert.model_copy(deep=True)
 
     async def list_alerts(self) -> list[FactoryAlert]:
         return [item.model_copy(deep=True) for item in reversed(self.alerts)]
@@ -160,23 +240,127 @@ class SqlAlchemyRuntimeHistoryRepository:
             await session.execute(
                 text("""
                     insert into public.task_state_history (
-                        task_id, status, assigned_robot_id, attempt, message,
+                        task_id, payload_id, pickup_station_id, dropoff_station_id,
+                        status, assigned_robot_id, attempt, max_retries, message,
                         source_timestamp, ingested_at
                     ) values (
-                        :task_id, :status, :assigned_robot_id, :attempt, :message,
+                        :task_id, :payload_id, :pickup_station_id, :dropoff_station_id,
+                        :status, :assigned_robot_id, :attempt, :max_retries, :message,
                         :source_timestamp, :ingested_at
                     ) on conflict (task_id, source_timestamp) do nothing
                 """),
                 {
                     "task_id": update.task_id,
+                    "payload_id": update.payload_id,
+                    "pickup_station_id": update.pickup_station_id,
+                    "dropoff_station_id": update.dropoff_station_id,
                     "status": update.status.value,
                     "assigned_robot_id": update.assigned_robot_id,
                     "attempt": update.attempt,
+                    "max_retries": update.max_retries,
                     "message": update.message,
                     "source_timestamp": update.updated_at,
                     "ingested_at": ingested_at,
                 },
             )
+
+    async def list_telemetry(
+        self,
+        *,
+        start: datetime,
+        end: datetime,
+        robot_id: str | None,
+        limit: int,
+        offset: int,
+    ) -> list[TelemetryHistoryItem]:
+        async with self._database.session() as session:
+            result = await session.execute(
+                text("""
+                    select robot_id, source_timestamp, ingested_at, pose, velocity,
+                        battery, status, task_id, payload_id, ordering_status
+                    from public.robot_telemetry_history
+                    where source_timestamp between :start and :end
+                      and (cast(:robot_id as text) is null or robot_id = :robot_id)
+                    order by source_timestamp, robot_id
+                    limit :limit offset :offset
+                """),
+                {
+                    "start": start,
+                    "end": end,
+                    "robot_id": robot_id,
+                    "limit": limit,
+                    "offset": offset,
+                },
+            )
+            return [
+                TelemetryHistoryItem(
+                    telemetry=RobotTelemetry(
+                        timestamp=row["source_timestamp"],
+                        robot_id=row["robot_id"],
+                        pose=row["pose"],
+                        velocity=row["velocity"],
+                        battery=row["battery"],
+                        status=row["status"],
+                        task_id=row["task_id"],
+                        payload_id=row["payload_id"],
+                    ),
+                    ingested_at=row["ingested_at"],
+                    ordering_status=(
+                        TelemetryIngressStatus.IGNORED_STALE
+                        if row["ordering_status"] == "LATE"
+                        else TelemetryIngressStatus.ACCEPTED
+                    ),
+                )
+                for row in result.mappings()
+            ]
+
+    async def list_tasks(
+        self,
+        *,
+        start: datetime,
+        end: datetime,
+        task_id: str | None,
+        limit: int,
+        offset: int,
+    ) -> list[TaskHistoryItem]:
+        async with self._database.session() as session:
+            result = await session.execute(
+                text("""
+                    select task_id, payload_id, pickup_station_id, dropoff_station_id,
+                        status, assigned_robot_id, attempt, max_retries, message,
+                        source_timestamp, ingested_at
+                    from public.task_state_history
+                    where ingested_at between :start and :end
+                      and (cast(:task_id as text) is null or task_id = :task_id)
+                    order by ingested_at, id
+                    limit :limit offset :offset
+                """),
+                {
+                    "start": start,
+                    "end": end,
+                    "task_id": task_id,
+                    "limit": limit,
+                    "offset": offset,
+                },
+            )
+            return [
+                TaskHistoryItem(
+                    update=TaskUpdate(
+                        task_id=row["task_id"],
+                        payload_id=row["payload_id"],
+                        pickup_station_id=row["pickup_station_id"],
+                        dropoff_station_id=row["dropoff_station_id"],
+                        assigned_robot_id=row["assigned_robot_id"],
+                        status=row["status"],
+                        attempt=row["attempt"],
+                        max_retries=row["max_retries"],
+                        message=row["message"],
+                        updated_at=row["source_timestamp"],
+                    ),
+                    ingested_at=row["ingested_at"],
+                )
+                for row in result.mappings()
+            ]
 
     async def activate_alert(self, alert: FactoryAlert) -> bool:
         async with self._database.session() as session, session.begin():
@@ -206,9 +390,34 @@ class SqlAlchemyRuntimeHistoryRepository:
                     where dedupe_key=:dedupe_key and status='ACTIVE'
                     returning id, dedupe_key, severity::text severity, code,
                         status::text status, message, robot_id, task_id, operation_id,
-                        triggered_at timestamp, last_seen_at, cleared_at
+                        triggered_at timestamp, last_seen_at, cleared_at,
+                        acknowledged_at, acknowledged_by
                 """),
                 {"dedupe_key": dedupe_key, "cleared_at": cleared_at},
+            )
+            row = result.mappings().one_or_none()
+            return FactoryAlert.model_validate(row) if row is not None else None
+
+    async def acknowledge_alert(
+        self, alert_id: UUID, acknowledged_by: UUID, acknowledged_at: datetime
+    ) -> FactoryAlert | None:
+        async with self._database.session() as session, session.begin():
+            result = await session.execute(
+                text("""
+                    update public.alerts
+                    set acknowledged_at=coalesce(acknowledged_at, :acknowledged_at),
+                        acknowledged_by=coalesce(acknowledged_by, :acknowledged_by)
+                    where id=:alert_id
+                    returning id, dedupe_key, severity::text severity, code,
+                        status::text status, message, robot_id, task_id, operation_id,
+                        triggered_at timestamp, last_seen_at, cleared_at,
+                        acknowledged_at, acknowledged_by
+                """),
+                {
+                    "alert_id": alert_id,
+                    "acknowledged_by": acknowledged_by,
+                    "acknowledged_at": acknowledged_at,
+                },
             )
             row = result.mappings().one_or_none()
             return FactoryAlert.model_validate(row) if row is not None else None
@@ -219,7 +428,8 @@ class SqlAlchemyRuntimeHistoryRepository:
                 text("""
                     select id, dedupe_key, severity::text severity, code,
                         status::text status, message, robot_id, task_id, operation_id,
-                        triggered_at timestamp, last_seen_at, cleared_at
+                        triggered_at timestamp, last_seen_at, cleared_at,
+                        acknowledged_at, acknowledged_by
                     from public.alerts order by triggered_at desc, id desc
                 """)
             )

@@ -1,5 +1,6 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -35,7 +36,10 @@ MONITOR = make_test_user(AppRole.MONITOR)
 
 
 async def setup(
-    *, sweep_seconds: float = 1.0
+    *,
+    sweep_seconds: float = 1.0,
+    apply_to_mock_runtime: bool = True,
+    invalidate_on_scenario_apply: bool = False,
 ) -> tuple[CommandService, ScenarioService, str, InMemoryRuntimeHistoryRepository]:
     manager = WebSocketManager()
     config = MockFactoryConfig()
@@ -54,6 +58,7 @@ async def setup(
     scenarios = ScenarioService(
         factory,
         layout_service=LayoutService(InMemoryLayoutRepository(include_default=True)),
+        apply_to_mock_runtime=apply_to_mock_runtime,
     )
     scenario = await scenarios.run(
         ScenarioRunRequest(
@@ -77,6 +82,8 @@ async def setup(
             InMemoryAuditRepository(),
             runtime_health,
             sweep_seconds=sweep_seconds,
+            factory_state=state,
+            invalidate_on_scenario_apply=invalidate_on_scenario_apply,
         ),
         scenarios,
         scenario.id,
@@ -108,6 +115,38 @@ async def test_positive_result_is_required_before_scenario_is_applied() -> None:
 
     assert completed.status == CommandStatus.COMPLETED
     assert (await scenarios.get(scenario_id)).status == ScenarioStatus.APPLIED
+
+
+@pytest.mark.asyncio
+async def test_ros_apply_invalidates_factory_snapshot_and_tracks_active_scenario() -> None:
+    commands, _, scenario_id, _ = await setup(
+        apply_to_mock_runtime=False,
+        invalidate_on_scenario_apply=True,
+    )
+    commands._websockets.broadcast = AsyncMock()  # type: ignore[method-assign]
+    command = await commands.apply(scenario_id, ApplyScenarioRequest(), MONITOR)
+    await commands.lease("edge-main")
+    await commands.acknowledge(
+        CommandAcknowledgementRequest(
+            operation_id=command.operation_id,
+            attempt_number=1,
+            bridge_id="edge-main",
+        )
+    )
+
+    await commands.result(
+        CommandResultRequest(
+            operation_id=command.operation_id,
+            attempt_number=1,
+            bridge_id="edge-main",
+            status=CommandStatus.COMPLETED,
+        )
+    )
+
+    events = [call.args[0] for call in commands._websockets.broadcast.await_args_list]
+    assert {event["type"] for event in events} >= {"command.updated", "factory.reset"}
+    assert commands._factory_state is not None
+    assert commands._factory_state.active_scenario_id == scenario_id
 
 
 @pytest.mark.asyncio

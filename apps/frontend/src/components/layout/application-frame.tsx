@@ -1,7 +1,7 @@
 "use client";
 
-import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, type ReactNode } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { DataProvider } from "@/components/layout/data-provider";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -10,6 +10,17 @@ import { NextActionStrip } from "@/components/workflow/next-action-strip";
 import { ToastContainer } from "@/components/ui/toast";
 import { OnboardingTour } from "@/components/onboarding/onboarding-tour";
 
+function SignInRedirect({ pathname }: { pathname: string }) {
+  const router = useRouter();
+
+  useEffect(() => {
+    const returnTo = `${pathname}${window.location.search}${window.location.hash}`;
+    router.replace(`/login?${new URLSearchParams({ returnTo }).toString()}`);
+  }, [pathname, router]);
+
+  return <main className="center-state">Redirecting to login…</main>;
+}
+
 function ProtectedAppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { user, isLoading, error, logout, refreshUser } = useAuth();
@@ -17,15 +28,14 @@ function ProtectedAppShell({ children }: { children: ReactNode }) {
 
   if (isLoading) return <main className="center-state">Restoring secure session…</main>;
   if (!user) {
+    if (!error) return <SignInRedirect pathname={pathname}/>;
     return (
       <main className="center-state">
-        <p>{error ?? "Redirecting to login…"}</p>
-        {error && (
-          <div className="button-row">
-            <button className="button" type="button" onClick={() => void logout()}>Sign out</button>
-            <button className="button primary" type="button" onClick={() => void refreshUser()}>Retry</button>
-          </div>
-        )}
+        <p>{error}</p>
+        <div className="button-row">
+          <button className="button" type="button" onClick={() => void logout()}>Sign out</button>
+          <button className="button primary" type="button" onClick={() => void refreshUser()}>Retry</button>
+        </div>
       </main>
     );
   }

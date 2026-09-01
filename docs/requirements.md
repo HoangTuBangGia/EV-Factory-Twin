@@ -14,36 +14,42 @@ docs và CI.
 
 | Capability CORE | Trạng thái | Bằng chứng hiện có / phần còn thiếu |
 |---|---|---|
-| Khu vực nhà máy với vài robot mô phỏng | Một phần | Có Gazebo world/AMR nền tảng; cần chạy ổn định ít nhất 2 AMR |
+| Khu vực nhà máy với vài robot mô phỏng | Đạt ở code | Gazebo world 120×40 m, hai AMR namespaced, station/route graph và launch đồng bộ; còn chạy acceptance trên host có ROS |
 | Vị trí và trạng thái realtime | Đạt MVP | REST cung cấp snapshot; WebSocket phát telemetry và event cập nhật |
 | Giao diện giám sát | Đạt MVP | Factory page hiển thị telemetry realtime trên layout APPLIED; fallback layout chuẩn khi chưa apply |
 | KPI authoritative | Đạt MVP | Scenario comparison hiển thị đủ chín KPI do Backend/SimPy tính |
 | Cảnh báo bất thường | Đạt MVP | Có low battery, robot error, backlog, stale telemetry, bridge disconnect, command timeout và congestion lifecycle |
 | Chạy và so sánh nhiều scenario | Đạt MVP | Scenario chọn layout version/route/config thật và có bounded optimization tối đa 64 candidate |
-| Human-in-the-loop trước khi apply | Một phần | Có approve/reject/apply và RBAC; cần E2E Designer/Monitor với ROS apply |
+| Human-in-the-loop trước khi apply | Đạt ở code | Có submit, approve/reject/revision/apply, separation-of-duty, RBAC và durable command; còn hosted acceptance hai user |
 | Thử thay đổi cấu hình vận hành | Đạt ở contract | Durable apply command có ACK/result/timeout/retry/audit và UI history; acceptance ROS thật còn ở M13 |
 | Cho phép đổi bố trí và chạy lại | Đạt MVP | Designer CRUD layout, tạo version immutable và dùng version đó cho SimPy/apply |
-| Giao diện 3D | Một phần | Có React Three Fiber scene nhưng route factory chính vẫn dùng 2D |
+| Giao diện 3D | Đạt MVP | Overview tự dùng React Three Fiber khi WebGL sẵn sàng và fallback 2D; Factory page cung cấp plant view 2D để thao tác chính xác |
 | Ít nhất hai vai trò Designer/Monitor | Đạt ở code | Backend JWT, profile role và FastAPI guard đã có; cần GCP E2E hai role |
 | ROS2/Gazebo và đồng bộ hai chiều | Đạt ở code | Có multi-AMR, fleet/task lifecycle, bridge registry/telemetry và apply command ACK/result; còn hosted GCP acceptance |
-| Tắc nghẽn mô phỏng | Một phần | Có waiting/backlog; cần zone occupancy/congestion score |
-| Va chạm mô phỏng | Chưa có | Chỉ cần route conflict/no-go validation mức MVP, không cần physics nâng cao |
+| Tắc nghẽn mô phỏng | Đạt ở code | Layout có congestion zone; backend tính occupancy từ canonical telemetry, dedupe/clear alert và FE render cùng projection |
+| Va chạm mô phỏng | Đạt mức phát hiện | Backend phát hiện footprint AMR giao nhau và quản lý alert lifecycle; tránh va chạm động/traffic reservation chưa thuộc checkpoint này |
 | Benchmark render và độ trễ realtime | Chưa có | Cần FPS, ROS-to-backend, backend-to-browser latency và dropped updates |
 | Bảo mật telemetry/cấu hình | Đạt ở code | REST dùng Bearer JWT + profile DB; WebSocket xác thực token trước khi đăng ký broadcast; chỉ Monitor được đổi/reset factory |
-| Persistence và telemetry history | Một phần | Scenario/audit/KPI đã có; còn layout, run, command, alert và telemetry partition/retention |
+| Persistence và telemetry history | Đạt ở code | Layout/scenario/audit/command/alert acknowledgement/task/KPI và telemetry downsample có migration, query API và retention; cần PostgreSQL acceptance |
 
 ## Ranh giới triển khai hiện tại
 
 Scenario benchmark trả lời câu hỏi về năng lực xử lý khi đổi số robot và các
 tham số thời gian. Nó chưa đại diện cho mô phỏng vật lý hoặc tối ưu layout thật.
 
-Khi apply scenario:
+Khi apply scenario vào mock runtime:
 
 - `num_robots` được ánh xạ sang số robot của Mock Factory.
 - `task_arrival_interval` được ánh xạ sang nhịp sinh task realtime.
 - `num_tasks`, `travel_time`, `loading_time` và `simulation_time` chỉ dùng trong
   benchmark, không thay đổi chuyển động realtime.
 - Factory được reset, vì vậy task, alert và KPI đang chạy sẽ bị xoá.
+
+Khi apply vào ROS/Gazebo, chỉ tốc độ robot là thay đổi live. Layout/version,
+route, robot count, charger count và demand cadence là topology bất biến của một
+process: bridge trả `REQUIRES_RELAUNCH`, operator cập nhật một `runtime.env` dùng
+chung cho simulation và bridge, restart cả hai, đợi heartbeat khớp rồi retry
+command. Backend chỉ đánh dấu scenario `APPLIED` sau result `COMPLETED`.
 
 ## Tiêu chí đóng MVP nâng cao
 

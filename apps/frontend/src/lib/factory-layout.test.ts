@@ -25,6 +25,11 @@ describe("factory layout", () => {
     expect(defaultFactoryLayout.routes[0].waypoints.map(({ x, y }) => [x, y])).toEqual([
       [32, 29], [32, 20], [40, 20], [52, 20], [52, 6],
     ]);
+    expect(defaultFactoryLayout.config).toMatchObject({
+      robot_count: 2,
+      robot_speed_mps: 1.2,
+      charger_count: 2,
+    });
   });
 
   it("rejects layout coordinates outside the factory footprint", () => {

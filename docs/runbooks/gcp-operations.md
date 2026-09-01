@@ -222,6 +222,19 @@ EDGE_TELEMETRY_SHARED_SECRET=<same value as GCP Secret Manager>
 BRIDGE_ID=gcp-edge-main
 ```
 
+Both systemd services also read `/etc/ev-factory-twin/runtime.env`. Start from
+`deploy/gcp/runtime.env.example` and keep the layout/version/route/config values
+identical to the approved scenario. A topology change is not complete until the
+simulation and bridge have both restarted with that file and the Backend
+compatibility endpoint reports `LIVE_APPLY`.
+
+```bash
+sudo install -o root -g root -m 0644 \
+  /opt/ev-factory-twin/deploy/gcp/runtime.env.example \
+  /etc/ev-factory-twin/runtime.env
+sudoedit /etc/ev-factory-twin/runtime.env
+```
+
 On the operator machine, retrieve the secret without printing it and copy it
 through IAP:
 

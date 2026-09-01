@@ -29,7 +29,7 @@ export default function SceneProbe() {
       <FactoryScene
         robots={robots} selectedRobotId="AMR-03" onSelect={() => undefined}
         bufferStock={4} resetSignal={0} layout={defaultFactoryLayout}
-        layers={{ stations: true, routes: true, noGoZones: true }}
+        layers={{ stations: true, routes: true, noGoZones: true, congestionZones: true }}
       />
     </div>
   </div>;

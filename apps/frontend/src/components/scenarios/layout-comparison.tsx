@@ -9,7 +9,9 @@ import type { LayoutVersion } from "@/schemas/layout";
 import type { Scenario } from "@/schemas/scenario";
 import { useFactoryStore } from "@/stores/factory-store";
 
-const ALL_LAYERS = { stations: true, routes: true, noGoZones: true } as const;
+const ALL_LAYERS = {
+  stations: true, routes: true, noGoZones: true, congestionZones: true,
+} as const;
 
 function MapFrame({ caption, version }: { caption: string; version: LayoutVersion }) {
   return (

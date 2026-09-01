@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
@@ -37,6 +38,24 @@ def test_default_config_has_two_unique_namespaced_spawn_poses() -> None:
         (31.0, 13.0, 0.0),
         (33.0, 13.0, 0.0),
     }
+
+
+def test_world_covers_canonical_footprint_and_models_the_no_go_obstacle() -> None:
+    root = ET.parse(Path(__file__).parents[1] / "worlds" / "amr_test.sdf").getroot()
+    models = {model.attrib["name"]: model for model in root.findall("./world/model")}
+
+    floor_size = models["factory_floor"].findtext(
+        "./link/visual/geometry/plane/size"
+    )
+
+    assert floor_size == "120 40"
+    assert {
+        "north_boundary",
+        "south_boundary",
+        "west_boundary",
+        "east_boundary",
+        "giga_press_obstacle",
+    } <= models.keys()
 
 
 @pytest.mark.parametrize(

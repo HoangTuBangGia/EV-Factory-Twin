@@ -77,6 +77,7 @@ async def test_writer_uses_wall_clock_cadence_without_overlapping_catch_up() -> 
         repository=repository,
         factory_state=make_state(),
         simulated_elapsed_seconds=lambda: 123.0,
+        scenario_id=lambda: "SCN-APPLIED",
         monotonic=clock.monotonic,
         sleep=clock.sleep,
     )
@@ -87,7 +88,7 @@ async def test_writer_uses_wall_clock_cadence_without_overlapping_catch_up() -> 
 
     assert clock.sleep_delays[:2] == [KPI_SNAPSHOT_INTERVAL_SECONDS, 5.0]
     assert repository.max_active_writes == 1
-    assert repository.snapshots[0].scenario_id is None
+    assert repository.snapshots[0].scenario_id == "SCN-APPLIED"
     assert repository.snapshots[0].simulated_elapsed_seconds == 123.0
     assert repository.snapshots[0].metrics.completed_tasks == 7
 

@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AuthActionError, useAuth } from "@/components/auth/auth-provider";
 import { defaultRouteForRole, safeReturnTo } from "@/lib/auth/return-to";
+import { env } from "@/lib/env";
 
 const DEMO_ACCOUNTS = [
   { role: "Designer", email: "designer@example.com", password: "Designer123!" },
@@ -13,9 +14,11 @@ const DEMO_ACCOUNTS = [
 export function LoginForm({
   returnTo,
   reason,
+  showDemoAccounts = env.showDemoCredentials,
 }: {
   returnTo?: string;
   reason?: string;
+  showDemoAccounts?: boolean;
 }) {
   const router = useRouter();
   const { user, login, isLoading, error: authError } = useAuth();
@@ -74,7 +77,7 @@ export function LoginForm({
         <div className="eyebrow">Secure operations workspace</div>
         <h1 id="login-title">Sign in</h1>
 
-        <section className="demo-accounts" aria-labelledby="demo-accounts-title">
+        {showDemoAccounts && <section className="demo-accounts" aria-labelledby="demo-accounts-title">
           <div className="demo-accounts-head">
             <h2 id="demo-accounts-title">Demo accounts</h2>
             <span>For evaluator access</span>
@@ -99,7 +102,7 @@ export function LoginForm({
               </div>;
             })}
           </article>)}
-        </section>
+        </section>}
 
         {reason === "session_expired" && (
           <div className="login-notice">Your session expired. Sign in again to continue.</div>

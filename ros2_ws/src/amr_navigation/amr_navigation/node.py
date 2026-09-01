@@ -1,8 +1,6 @@
-import json
 import math
 import threading
 import time
-from pathlib import Path
 
 import rclpy
 from amr_interfaces.action import NavigateToStation
@@ -16,37 +14,10 @@ from rclpy.node import Node
 from sensor_msgs.msg import BatteryState
 from std_msgs.msg import String
 
+from amr_navigation.config import load_navigation_config
+
 STATUSES = {"IDLE", "MOVING", "PICKING", "DELIVERING", "CHARGING", "ERROR", "OFFLINE"}
 MOVING_STATUSES = {"MOVING", "DELIVERING"}
-ARRIVAL_STATUS = {
-    "BATTERY_BUFFER": "PICKING",
-    "MARRIAGE_STATION": "IDLE",
-    "CHARGING_STATION": "CHARGING",
-}
-
-
-def load_stations(path: str | Path) -> dict[str, tuple[float, float]]:
-    with Path(path).open(encoding="utf-8") as config_file:
-        document = json.load(config_file)
-    source = document.get("stations") if isinstance(document, dict) else None
-    if not isinstance(source, dict) or not source:
-        raise ValueError("stations config must contain a non-empty stations object")
-    stations: dict[str, tuple[float, float]] = {}
-    for station_id, coordinates in source.items():
-        if not isinstance(station_id, str) or not station_id:
-            raise ValueError("station IDs must be non-empty strings")
-        if not isinstance(coordinates, dict):
-            raise ValueError(f"station {station_id} must be an object")
-        values = []
-        for axis in ("x", "y"):
-            value = coordinates.get(axis)
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
-                raise ValueError(f"station {station_id}.{axis} must be numeric")
-            if not math.isfinite(value):
-                raise ValueError(f"station {station_id}.{axis} must be finite")
-            values.append(float(value))
-        stations[station_id] = (values[0], values[1])
-    return stations
 
 
 def yaw_from_odometry(message: Odometry) -> float:
@@ -97,7 +68,8 @@ class NavigationSimulator(Node):
         stations_config = str(self.get_parameter("stations_config").value)
         if not stations_config:
             raise RuntimeError("stations_config parameter is required")
-        self._stations = load_stations(stations_config)
+        self._config = load_navigation_config(stations_config)
+        self._stations = self._config.station_positions()
         self._linear_speed = float(self.get_parameter("linear_speed").value)
         self._angular_speed = float(self.get_parameter("angular_speed").value)
         self._arrival_tolerance = float(self.get_parameter("arrival_tolerance").value)
@@ -181,20 +153,22 @@ class NavigationSimulator(Node):
     def _execute(self, goal_handle):
         result = NavigateToStation.Result()
         request = goal_handle.request
-        target = self._stations.get(request.station_id)
-        if target is None:
+        station = self._config.stations.get(request.station_id)
+        if station is None:
             return self._finish_failed(
                 goal_handle, result, f"unknown station: {request.station_id}"
             )
 
         started = self.get_clock().now()
         last_distance = math.inf
+        path: tuple[tuple[float, float], ...] | None = None
+        waypoint_index = 0
         with self._lock:
             self._task_id = request.task_id
             self._payload_id = request.payload_id
             self._status = (
                 "DELIVERING"
-                if request.station_id == "MARRIAGE_STATION" and request.payload_id
+                if station.arrival_status != "PICKING" and request.payload_id
                 else "MOVING"
             )
         try:
@@ -223,19 +197,37 @@ class NavigationSimulator(Node):
                     continue
 
                 x, y, yaw = self._world_pose(odom)
+                if path is None:
+                    try:
+                        path = self._config.path_to(
+                            (x, y), request.station_id, request.route_id
+                        )
+                    except ValueError as error:
+                        return self._finish_failed(goal_handle, result, str(error))
+                target = path[waypoint_index]
                 dx, dy = target[0] - x, target[1] - y
                 distance = math.hypot(dx, dy)
-                last_distance = distance
+                last_distance = distance + sum(
+                    math.hypot(end[0] - start[0], end[1] - start[1])
+                    for start, end in zip(
+                        path[waypoint_index:],
+                        path[waypoint_index + 1 :],
+                        strict=False,
+                    )
+                )
                 feedback = NavigateToStation.Feedback()
-                feedback.distance_remaining = distance
+                feedback.distance_remaining = last_distance
                 feedback.robot_status = status
                 feedback.battery_percent = battery * 100.0
                 goal_handle.publish_feedback(feedback)
                 if distance <= self._arrival_tolerance:
+                    waypoint_index += 1
+                    if waypoint_index < len(path):
+                        continue
                     self._stop()
                     with self._lock:
-                        self._status = ARRIVAL_STATUS[request.station_id]
-                        if request.station_id == "MARRIAGE_STATION":
+                        self._status = station.arrival_status
+                        if station.arrival_status != "PICKING":
                             self._task_id = ""
                             self._payload_id = ""
                     goal_handle.succeed()

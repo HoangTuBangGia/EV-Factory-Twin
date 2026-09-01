@@ -35,10 +35,13 @@ const layout = {
 } satisfies LayoutVersion;
 
 it("projects the immutable API layout into the shared map contract", () => {
-  expect(projectLayoutVersion(layout)).toMatchObject({
+  expect(projectLayoutVersion(layout, "DELIVERY")).toMatchObject({
     id: "LAYOUT-A",
     version: 2,
+    active_route_id: "DELIVERY",
     routes: [{ id: "DELIVERY", kind: "DELIVERY", waypoints: layout.routes[0].waypoints }],
+    congestion_zones: layout.congestion_zones,
+    config: layout.config,
   });
 });
 

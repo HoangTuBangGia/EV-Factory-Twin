@@ -44,6 +44,17 @@ const scenarioResponse = {
 };
 
 describe("scenarioSchema backend contract", () => {
+  it("uses the canonical runtime defaults for legacy scenario configs", () => {
+    const config = { ...scenarioResponse.config } as Partial<typeof scenarioResponse.config>;
+    delete config.robot_speed_mps;
+    delete config.charger_count;
+
+    const parsed = scenarioSchema.parse({ ...scenarioResponse, config });
+
+    expect(parsed.config.robot_speed_mps).toBe(1.2);
+    expect(parsed.config.charger_count).toBe(2);
+  });
+
   it("preserves workflow actors, timestamps, and optimistic-lock version", () => {
     const parsed = scenarioSchema.parse(scenarioResponse);
 

@@ -65,8 +65,8 @@ class LayoutRuntimeConfig(BaseModel):
 
     robot_count: int = Field(default=2, ge=2, le=50)
     demand_interval_seconds: float = Field(default=8.0, ge=0.1, le=3600.0)
-    robot_speed_mps: float = Field(default=1.0, gt=0.0, le=10.0)
-    charger_count: int = Field(default=1, ge=1, le=20)
+    robot_speed_mps: float = Field(default=1.2, gt=0.0, le=10.0)
+    charger_count: int = Field(default=2, ge=1, le=20)
 
 
 def _orientation(a: Point, b: Point, c: Point) -> float:

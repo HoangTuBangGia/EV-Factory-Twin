@@ -23,8 +23,9 @@ from ev_twin_api.schemas.command import (
 )
 from ev_twin_api.schemas.scenario import ScenarioStatus
 from ev_twin_api.schemas.task import CreateTransportTaskRequest
-from ev_twin_api.schemas.websocket import command_updated_event
+from ev_twin_api.schemas.websocket import command_updated_event, factory_reset_event
 from ev_twin_api.services.audit_service import AuditRepository, PendingAuditEvent
+from ev_twin_api.services.factory_state import FactoryState
 from ev_twin_api.services.runtime_health import RuntimeHealthService
 from ev_twin_api.services.scenario_service import (
     InvalidScenarioTransitionError,
@@ -40,6 +41,10 @@ class CommandNotFoundError(LookupError):
 
 
 class CommandConflictError(RuntimeError):
+    pass
+
+
+class InvalidTransportTaskError(ValueError):
     pass
 
 
@@ -479,6 +484,8 @@ class CommandService:
         runtime_health: RuntimeHealthService | None = None,
         *,
         sweep_seconds: float = 1.0,
+        factory_state: FactoryState | None = None,
+        invalidate_on_scenario_apply: bool = False,
     ) -> None:
         self._repository = repository
         self._scenarios = scenarios
@@ -486,6 +493,8 @@ class CommandService:
         self._audit_repository = audit_repository
         self._runtime_health = runtime_health
         self._sweep_seconds = sweep_seconds
+        self._factory_state = factory_state
+        self._invalidate_on_scenario_apply = invalidate_on_scenario_apply
         self._task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
@@ -542,6 +551,13 @@ class CommandService:
     async def create_transport_task(
         self, request: CreateTransportTaskRequest, actor: CurrentUser
     ) -> Command:
+        if self._factory_state is not None:
+            try:
+                self._factory_state.validate_transport_route(
+                    request.pickup_station_id, request.dropoff_station_id
+                )
+            except ValueError as error:
+                raise InvalidTransportTaskError(str(error)) from error
         now = datetime.now(UTC)
         command = await self._repository.create(
             Command(
@@ -550,8 +566,8 @@ class CommandService:
                 task_id=request.task_id,
                 status=CommandStatus.PENDING,
                 payload=request,
-                timeout_seconds=30.0,
-                max_retries=1,
+                timeout_seconds=request.navigation_timeout_seconds,
+                max_retries=request.max_retries,
                 attempts=[CommandAttempt(attempt_number=1, status=CommandStatus.PENDING)],
                 requested_by=actor.id,
                 created_at=now,
@@ -611,7 +627,12 @@ class CommandService:
             )
             scenario = await self._scenarios.get(command.scenario_id)
             if scenario.status == ScenarioStatus.APPROVED:
-                await self._scenarios.complete_apply(command.scenario_id, actor)
+                applied = await self._scenarios.complete_apply(command.scenario_id, actor)
+                if self._factory_state is not None:
+                    layout = await self._scenarios.get_applied_layout()
+                    assert layout is not None
+                    self._factory_state.apply_layout(layout, applied.config.route_id)
+                    self._factory_state.set_active_scenario(applied.id)
             elif scenario.status != ScenarioStatus.APPLIED:
                 raise CommandConflictError(
                     f"completed command cannot apply scenario from {scenario.status}"
@@ -623,6 +644,12 @@ class CommandService:
             else AuditAction.COMMAND_FAILED,
         )
         await self._broadcast(command)
+        if (
+            command.status == CommandStatus.COMPLETED
+            and command.command_type == CommandType.APPLY_SCENARIO
+            and self._invalidate_on_scenario_apply
+        ):
+            await self._websockets.broadcast(factory_reset_event())
         return command
 
     async def retry(self, operation_id: UUID) -> Command:

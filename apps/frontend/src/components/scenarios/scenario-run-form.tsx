@@ -43,8 +43,8 @@ export function scenarioDefaults(
     travel_time: 30,
     loading_time: 10,
     simulation_time: 3600,
-    robot_speed_mps: layout?.config.robot_speed_mps ?? 1,
-    charger_count: layout?.config.charger_count ?? 1,
+    robot_speed_mps: layout?.config.robot_speed_mps ?? 1.2,
+    charger_count: layout?.config.charger_count ?? 2,
   };
 }
 

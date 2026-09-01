@@ -26,6 +26,8 @@ export const factoryAlertSchema = z.object({
   timestamp: z.string().datetime({ offset: true }),
   last_seen_at: z.string().datetime({ offset: true }),
   cleared_at: z.string().datetime({ offset: true }).nullable(),
+  acknowledged_at: z.string().datetime({ offset: true }).nullable(),
+  acknowledged_by: z.string().uuid().nullable(),
 });
 
 export type FactoryAlert = z.infer<typeof factoryAlertSchema>;

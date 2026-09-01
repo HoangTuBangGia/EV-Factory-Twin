@@ -8,6 +8,7 @@ from ev_twin_api.schemas.telemetry import (
 )
 from ev_twin_api.schemas.websocket import robot_telemetry_event
 from ev_twin_api.services.factory_state import FactoryState
+from ev_twin_api.services.metrics_service import RuntimeMetricsPublisher
 from ev_twin_api.services.mock_factory import MockFactory
 from ev_twin_api.services.runtime_health import RuntimeHealthService
 from ev_twin_api.services.runtime_history import (
@@ -40,6 +41,7 @@ class TelemetryIngressService:
         history_repository: RuntimeHistoryRepository | None = None,
         runtime_health: RuntimeHealthService | None = None,
         persistence_worker: TelemetryPersistenceWorker | None = None,
+        runtime_metrics: RuntimeMetricsPublisher | None = None,
     ) -> None:
         self._factory_state = factory_state
         self._websocket_manager = websocket_manager
@@ -48,6 +50,7 @@ class TelemetryIngressService:
         self._history = history_repository or InMemoryRuntimeHistoryRepository()
         self._runtime_health = runtime_health
         self._persistence_worker = persistence_worker
+        self._runtime_metrics = runtime_metrics
 
     async def ingest(self, telemetry: RobotTelemetry) -> TelemetryIngressResponse:
         async with self._mock_factory.exclusive_control():
@@ -83,6 +86,8 @@ class TelemetryIngressService:
 
         if ordering_status == TelemetryIngressStatus.ACCEPTED:
             await self._websocket_manager.broadcast(robot_telemetry_event(telemetry))
+            if self._runtime_metrics is not None:
+                await self._runtime_metrics.refresh()
 
         if self._persistence_worker is not None:
             self._persistence_worker.submit(telemetry, ingested_at, ordering_status)

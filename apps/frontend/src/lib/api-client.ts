@@ -10,6 +10,7 @@ import {
 } from "@/schemas/command";
 import { factoryMetricsSchema } from "@/schemas/metric";
 import { mockFactoryConfigSchema, type MockFactoryConfig } from "@/schemas/factory";
+import { kpiHistoryPageSchema } from "@/schemas/history";
 import { robotSchema } from "@/schemas/robot";
 import {
   createLayoutRequestSchema,
@@ -137,10 +138,19 @@ export const apiClient = {
     factoryMetricsSchema,
     { signal },
   ),
+  getMetricHistory: () => request(
+    "/api/v1/history/metrics?limit=500",
+    kpiHistoryPageSchema,
+  ),
   getAlerts: (signal?: AbortSignal) => request(
     "/api/v1/alerts",
     z.array(factoryAlertSchema),
     { signal },
+  ),
+  acknowledgeAlert: (id: string) => request(
+    `/api/v1/alerts/${encodeURIComponent(id)}/acknowledge`,
+    factoryAlertSchema,
+    { method: "POST" },
   ),
   updateMockConfig: (config: MockFactoryConfig) =>
     request("/api/v1/mock/config", mockFactoryConfigSchema, {

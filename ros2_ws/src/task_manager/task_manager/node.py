@@ -22,6 +22,7 @@ TASK_STATUSES = {
     "FAILED",
     "TIMED_OUT",
 }
+DEFAULT_NAVIGATION_TIMEOUT_SECONDS = 120.0
 
 
 @dataclass
@@ -49,6 +50,23 @@ def should_retry(outcome: int, attempt: int, max_retries: int) -> bool:
     )
 
 
+def reserve_dispatch_batch(
+    queue: deque[str],
+    tasks: dict[str, TaskRecord],
+    active_task_ids: set[str],
+    max_concurrent_tasks: int,
+) -> list[TaskRecord]:
+    slots = max(0, max_concurrent_tasks - len(active_task_ids))
+    reserved = []
+    while slots > 0 and queue:
+        task = tasks[queue.popleft()]
+        active_task_ids.add(task.task_id)
+        task.attempt += 1
+        reserved.append(task)
+        slots -= 1
+    return reserved
+
+
 class TaskManager(Node):
     def __init__(self) -> None:
         super().__init__("task_manager")
@@ -56,7 +74,22 @@ class TaskManager(Node):
         self._tasks: dict[str, TaskRecord] = {}
         self._queue: deque[str] = deque()
         self._sequence = 0
-        self._active_task_id = ""
+        self.declare_parameter("max_concurrent_tasks", 2)
+        self.declare_parameter(
+            "default_navigation_timeout_seconds", DEFAULT_NAVIGATION_TIMEOUT_SECONDS
+        )
+        self._max_concurrent_tasks = int(self.get_parameter("max_concurrent_tasks").value)
+        self._default_navigation_timeout = float(
+            self.get_parameter("default_navigation_timeout_seconds").value
+        )
+        if self._max_concurrent_tasks < 1:
+            raise RuntimeError("max_concurrent_tasks must be positive")
+        if (
+            not math.isfinite(self._default_navigation_timeout)
+            or self._default_navigation_timeout <= 0.0
+        ):
+            raise RuntimeError("default_navigation_timeout_seconds must be positive and finite")
+        self._active_task_ids: set[str] = set()
         self._callback_group = ReentrantCallbackGroup()
         qos = QoSProfile(
             depth=100,
@@ -81,7 +114,7 @@ class TaskManager(Node):
     def _create_task(self, request, response):
         pickup = request.pickup_station_id or "BATTERY_BUFFER"
         dropoff = request.dropoff_station_id or "MARRIAGE_STATION"
-        timeout = request.navigation_timeout_seconds or 15.0
+        timeout = request.navigation_timeout_seconds or self._default_navigation_timeout
         if not math.isfinite(timeout) or timeout <= 0.0 or pickup == dropoff:
             response.accepted = False
             response.message = "invalid station or timeout"
@@ -113,30 +146,56 @@ class TaskManager(Node):
 
     def _dispatch(self) -> None:
         with self._lock:
-            if self._active_task_id or not self._queue:
-                return
-            task = self._tasks[self._queue.popleft()]
-            self._active_task_id = task.task_id
-            task.attempt += 1
+            tasks = reserve_dispatch_batch(
+                self._queue,
+                self._tasks,
+                self._active_task_ids,
+                self._max_concurrent_tasks,
+            )
+        if not tasks:
+            return
         if not self._fleet_client.wait_for_server(timeout_sec=0.0):
             with self._lock:
-                self._active_task_id = ""
-                task.attempt -= 1
-                self._queue.appendleft(task.task_id)
+                for task in reversed(tasks):
+                    self._active_task_ids.discard(task.task_id)
+                    task.attempt -= 1
+                    self._queue.appendleft(task.task_id)
             return
-        goal = ExecuteTransportTask.Goal()
-        goal.task_id = task.task_id
-        goal.payload_id = task.payload_id
-        goal.pickup_station_id = task.pickup_station_id
-        goal.dropoff_station_id = task.dropoff_station_id
-        goal.navigation_timeout_seconds = task.navigation_timeout_seconds
-        future = self._fleet_client.send_goal_async(goal, feedback_callback=self._on_feedback)
-        future.add_done_callback(
-            lambda result, task_id=task.task_id: self._goal_sent(task_id, result)
-        )
+        for task in tasks:
+            goal = ExecuteTransportTask.Goal()
+            goal.task_id = task.task_id
+            goal.payload_id = task.payload_id
+            goal.pickup_station_id = task.pickup_station_id
+            goal.dropoff_station_id = task.dropoff_station_id
+            goal.navigation_timeout_seconds = task.navigation_timeout_seconds
+            try:
+                future = self._fleet_client.send_goal_async(
+                    goal,
+                    feedback_callback=lambda message, task_id=task.task_id: self._on_feedback(
+                        task_id, message
+                    ),
+                )
+            except Exception as error:
+                self._finish_attempt(
+                    task.task_id,
+                    ExecuteTransportTask.Result.NO_ROBOT_AVAILABLE,
+                    f"failed to send goal: {error}",
+                )
+                continue
+            future.add_done_callback(
+                lambda result, task_id=task.task_id: self._goal_sent(task_id, result)
+            )
 
     def _goal_sent(self, task_id: str, future) -> None:
-        goal_handle = future.result()
+        try:
+            goal_handle = future.result()
+        except Exception as error:
+            self._finish_attempt(
+                task_id,
+                ExecuteTransportTask.Result.NO_ROBOT_AVAILABLE,
+                f"goal request failed: {error}",
+            )
+            return
         if goal_handle is None or not goal_handle.accepted:
             self._finish_attempt(
                 task_id, ExecuteTransportTask.Result.NO_ROBOT_AVAILABLE, "goal rejected"
@@ -149,10 +208,10 @@ class TaskManager(Node):
             )
         )
 
-    def _on_feedback(self, feedback_message) -> None:
+    def _on_feedback(self, task_id: str, feedback_message) -> None:
         feedback = feedback_message.feedback
         with self._lock:
-            task = self._tasks.get(self._active_task_id)
+            task = self._tasks.get(task_id)
             if task is None or feedback.status not in TASK_STATUSES:
                 return
             task.status = feedback.status
@@ -160,7 +219,15 @@ class TaskManager(Node):
         self._publish(task, feedback.message)
 
     def _execution_finished(self, task_id: str, future) -> None:
-        wrapped = future.result()
+        try:
+            wrapped = future.result()
+        except Exception as error:
+            self._finish_attempt(
+                task_id,
+                ExecuteTransportTask.Result.FAILED,
+                f"execution failed: {error}",
+            )
+            return
         if wrapped is None:
             self._finish_attempt(task_id, ExecuteTransportTask.Result.TIMED_OUT, "missing result")
             return
@@ -174,7 +241,7 @@ class TaskManager(Node):
     def _finish_attempt(self, task_id: str, outcome: int, message: str) -> None:
         with self._lock:
             task = self._tasks[task_id]
-            self._active_task_id = ""
+            self._active_task_ids.discard(task_id)
             if outcome == ExecuteTransportTask.Result.SUCCESS:
                 task.status = "COMPLETED"
             elif outcome == ExecuteTransportTask.Result.TIMED_OUT:

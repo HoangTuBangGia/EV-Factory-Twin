@@ -9,6 +9,7 @@ User=ev-twin
 Group=ev-twin
 WorkingDirectory=/opt/ev-factory-twin
 EnvironmentFile=/etc/ev-factory-twin/bridge.env
+EnvironmentFile=-/etc/ev-factory-twin/runtime.env
 ExecStart=/usr/bin/bash /opt/ev-factory-twin/scripts/edge/run-bridge.sh
 Restart=on-failure
 RestartSec=5
@@ -19,4 +20,3 @@ UMask=0077
 
 [Install]
 WantedBy=multi-user.target
-

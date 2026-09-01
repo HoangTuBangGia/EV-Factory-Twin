@@ -260,8 +260,8 @@ class TelemetryBridge(Node):
         self.declare_parameter("runtime_layout_id", "LAYOUT-DEFAULT")
         self.declare_parameter("runtime_layout_version", 3)
         self.declare_parameter("runtime_route_id", "BATTERY_DELIVERY")
-        self.declare_parameter("runtime_robot_speed_mps", 1.0)
-        self.declare_parameter("runtime_charger_count", 1)
+        self.declare_parameter("runtime_robot_speed_mps", 1.2)
+        self.declare_parameter("runtime_charger_count", 2)
         self.declare_parameter("runtime_demand_interval_seconds", 8.0)
         config = str(self.get_parameter("robots_config").value)
         if not config:

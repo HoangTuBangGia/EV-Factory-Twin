@@ -7,6 +7,7 @@ SIMULATION_SCRIPT = ROOT / "scripts/edge/run-simulation.sh"
 BRIDGE_SCRIPT = ROOT / "scripts/edge/run-bridge.sh"
 SIMULATION_UNIT = ROOT / "deploy/gcp/systemd/ev-twin-simulation.service"
 BRIDGE_UNIT = ROOT / "deploy/gcp/systemd/ev-twin-bridge.service"
+RUNTIME_ENV_EXAMPLE = ROOT / "deploy/gcp/runtime.env.example"
 
 
 def test_edge_shell_wrappers_have_valid_bash_syntax() -> None:
@@ -32,6 +33,7 @@ def test_gcp_edge_files_do_not_contain_developer_home_paths() -> None:
         SIMULATION_UNIT,
         BRIDGE_UNIT,
         ROOT / "deploy/gcp/bridge.env.example",
+        RUNTIME_ENV_EXAMPLE,
         ROOT / "docs/runbooks/gcp-edge.md",
         ROOT / "docs/runbooks/mvp-edge-acceptance.md",
     )
@@ -79,3 +81,21 @@ def test_services_are_non_root_and_restart_on_failure() -> None:
         assert "Group=ev-twin" in content
         assert "Restart=on-failure" in content
         assert "NoNewPrivileges=true" in content
+
+
+def test_simulation_and_bridge_share_the_declared_runtime_identity() -> None:
+    for unit in (SIMULATION_UNIT, BRIDGE_UNIT):
+        assert "EnvironmentFile=-/etc/ev-factory-twin/runtime.env" in unit.read_text()
+
+    expected_arguments = (
+        "runtime_layout_id",
+        "runtime_layout_version",
+        "runtime_route_id",
+        "runtime_robot_speed_mps",
+        "runtime_charger_count",
+        "runtime_demand_interval_seconds",
+    )
+    for script in (SIMULATION_SCRIPT, BRIDGE_SCRIPT):
+        content = script.read_text()
+        for argument in expected_arguments:
+            assert f'{argument}:="${{{argument}}}"' in content

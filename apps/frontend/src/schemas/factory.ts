@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { congestionZoneSchema, layoutRuntimeConfigSchema } from "./layout";
 
 const worldPointSchema = z.object({
   x: z.number().finite(),
@@ -33,16 +34,29 @@ export const factoryLayoutSchema = z.object({
   id: z.string().trim().min(1),
   name: z.string().trim().min(1),
   version: z.number().int().positive(),
+  active_route_id: z.string().trim().min(1),
   width: z.number().positive().finite(),
   height: z.number().positive().finite(),
   stations: z.array(factoryStationSchema),
   routes: z.array(factoryRouteSchema),
   no_go_zones: z.array(noGoZoneSchema),
+  congestion_zones: z.array(congestionZoneSchema),
+  config: layoutRuntimeConfigSchema,
 }).superRefine((layout, context) => {
+  if (!layout.routes.some((route) => (
+    route.id === layout.active_route_id && route.kind === "DELIVERY"
+  ))) {
+    context.addIssue({
+      code: "custom",
+      path: ["active_route_id"],
+      message: "Active route must reference a delivery route in the layout",
+    });
+  }
   const points = [
     ...layout.stations,
     ...layout.routes.flatMap((route) => route.waypoints),
     ...layout.no_go_zones.flatMap((zone) => zone.points),
+    ...layout.congestion_zones.flatMap((zone) => zone.points),
   ];
   for (const point of points) {
     if (point.x < 0 || point.x > layout.width || point.y < 0 || point.y > layout.height) {
@@ -58,6 +72,7 @@ export type WorldPoint = z.infer<typeof worldPointSchema>;
 export type FactoryStation = z.infer<typeof factoryStationSchema>;
 export type FactoryRoute = z.infer<typeof factoryRouteSchema>;
 export type NoGoZone = z.infer<typeof noGoZoneSchema>;
+export type CongestionZone = z.infer<typeof congestionZoneSchema>;
 export type FactoryLayout = z.infer<typeof factoryLayoutSchema>;
 
 export const mockFactoryConfigSchema = z.object({

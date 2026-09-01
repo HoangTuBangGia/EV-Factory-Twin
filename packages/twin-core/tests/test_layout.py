@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 from twin_core.default_layout import default_layout_content
-from twin_core.models.layout import LayoutVersionContent, RouteKind
+from twin_core.models.layout import LayoutRuntimeConfig, LayoutVersionContent, RouteKind
 from twin_core.routing import shortest_station_path
 
 
@@ -9,7 +9,7 @@ def test_canonical_layout_matches_full_factory_footprint() -> None:
     layout = default_layout_content()
 
     assert (layout.width, layout.height) == (120, 40)
-    assert layout.config.robot_count == 5
+    assert layout.config.robot_count == 2
     assert len(layout.routes) == 3
     assert layout.routes[0].kind == RouteKind.DELIVERY
     assert (
@@ -62,6 +62,15 @@ def test_valid_layout_contract() -> None:
     assert layout.config.robot_count == 2
     assert layout.routes[0].start_station_id == "BATTERY_BUFFER"
     assert layout.routes[0].kind == RouteKind.DELIVERY
+
+
+def test_runtime_config_defaults_match_canonical_edge_runtime() -> None:
+    config = LayoutRuntimeConfig()
+
+    assert config.robot_count == 2
+    assert config.demand_interval_seconds == 8.0
+    assert config.robot_speed_mps == 1.2
+    assert config.charger_count == 2
 
 
 def test_canonical_route_network_reaches_delivery_and_charging_stations() -> None:

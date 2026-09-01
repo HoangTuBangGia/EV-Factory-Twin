@@ -11,6 +11,7 @@ import type { FactoryMapLayers } from "../factory-map";
 import { Amr } from "./amr";
 import { BatteryBuffer } from "./battery-buffer";
 import { ChargingStation } from "./charging-station";
+import { CongestionZone } from "./congestion-zone";
 import { MarriageStation } from "./marriage-station";
 import { NoGoZone } from "./no-go-zone";
 import { RouteLanes } from "./route-lanes";
@@ -101,6 +102,9 @@ export function FactoryScene({
     </>}
     {layers.noGoZones && layout.no_go_zones.map((zone) => (
       <NoGoZone key={zone.id} zone={zone} layout={layout}/>
+    ))}
+    {layers.congestionZones && layout.congestion_zones.map((zone) => (
+      <CongestionZone key={zone.id} zone={zone} layout={layout}/>
     ))}
 
     {robots.map((robot) => <Amr

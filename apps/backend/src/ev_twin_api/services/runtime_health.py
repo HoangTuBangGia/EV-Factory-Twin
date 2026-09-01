@@ -29,6 +29,10 @@ SEVERITY_BY_CODE = {
 }
 
 
+class AlertNotFoundError(LookupError):
+    pass
+
+
 class RuntimeHealthService:
     def __init__(
         self,
@@ -163,6 +167,13 @@ class RuntimeHealthService:
 
     async def list_alerts(self) -> list[FactoryAlert]:
         return await self._repository.list_alerts()
+
+    async def acknowledge_alert(self, alert_id: UUID, actor_id: UUID) -> FactoryAlert:
+        alert = await self._repository.acknowledge_alert(alert_id, actor_id, self._clock())
+        if alert is None:
+            raise AlertNotFoundError(f"Alert '{alert_id}' not found")
+        await self._websockets.broadcast(alert_updated_event(alert))
+        return alert
 
     async def _check_congestion(self) -> None:
         robots = [

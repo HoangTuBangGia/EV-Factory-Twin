@@ -58,7 +58,7 @@ describe("LayoutsPage", () => {
     expect(api.createLayout.mock.calls[0]?.[0]).toMatchObject({
       name: "Battery logistics candidate",
       content: {
-        config: { robot_count: 5 },
+        config: { robot_count: 2 },
         congestion_zones: [{ id: "WAREHOUSE_PRODUCTION_DOOR" }],
       },
     });

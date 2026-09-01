@@ -1,14 +1,21 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { apiClient } from "@/lib/api-client";
 import { fixtureAlerts } from "@/lib/fixtures";
 import { useFactoryStore } from "@/stores/factory-store";
 import { useToastStore } from "@/stores/toast-store";
 import { AlertList } from "./alert-list";
 
+vi.mock("@/components/auth/auth-provider", () => ({
+  useAuth: () => ({ user: { role: "MONITOR" } }),
+}));
+vi.mock("@/lib/api-client", () => ({ apiClient: { acknowledgeAlert: vi.fn() } }));
+
 describe("AlertList", () => {
   beforeEach(() => {
     useFactoryStore.getState().reset();
     useToastStore.setState({ toasts: [] });
+    vi.clearAllMocks();
   });
 
   it("removes a cleared alert after its realtime lifecycle update", () => {
@@ -49,21 +56,43 @@ describe("AlertList", () => {
     expect(screen.getByText("Marriage Station supply risk detected")).toBeInTheDocument();
   });
 
-  it("acknowledges locally, hides the alert, and can show it again", () => {
+  it("keeps fixture acknowledgement local without calling the API", () => {
     useFactoryStore.getState().setAlerts(fixtureAlerts);
     render(<AlertList/>);
 
     fireEvent.click(screen.getByRole("button", { name: "Acknowledge WARNING LOW_BATTERY" }));
     expect(screen.queryByText("AMR-05 battery below 20%")).not.toBeInTheDocument();
     expect(useFactoryStore.getState().acknowledgedAlertIds).toEqual([fixtureAlerts[0].id]);
-    expect(useToastStore.getState().toasts).toEqual([
-      expect.objectContaining({ type: "info", message: "Acknowledged locally" }),
-    ]);
+    expect(apiClient.acknowledgeAlert).not.toHaveBeenCalled();
+    expect(useToastStore.getState().toasts).toEqual([expect.objectContaining({
+      type: "info", message: "Acknowledged in fixture mode",
+    })]);
 
     fireEvent.click(screen.getByRole("checkbox", { name: "Show acknowledged" }));
     const alert = screen.getByText("AMR-05 battery below 20%").closest("article")!;
-    expect(within(alert).getByText("Acknowledged locally")).toBeInTheDocument();
+    expect(within(alert).getByText("Acknowledged in fixture mode")).toBeInTheDocument();
     expect(within(alert).queryByRole("button", { name: /Acknowledge/ })).not.toBeInTheDocument();
+  });
+
+  it("persists acknowledgement through the API and stores the server result", async () => {
+    const active = fixtureAlerts[0];
+    const acknowledged = {
+      ...active,
+      acknowledged_at: "2026-08-11T04:01:00.000Z",
+      acknowledged_by: "22222222-2222-4222-8222-222222222222",
+    };
+    vi.mocked(apiClient.acknowledgeAlert).mockResolvedValue(acknowledged);
+    useFactoryStore.getState().setAlerts([active]);
+    render(<AlertList fixtureMode={false}/>);
+
+    fireEvent.click(screen.getByRole("button", { name: "Acknowledge WARNING LOW_BATTERY" }));
+
+    await waitFor(() => expect(apiClient.acknowledgeAlert).toHaveBeenCalledWith(active.id));
+    expect(useFactoryStore.getState().alerts[0]).toEqual(acknowledged);
+    expect(screen.queryByText(active.message)).not.toBeInTheDocument();
+    expect(useToastStore.getState().toasts).toEqual([expect.objectContaining({
+      type: "success", message: "Alert acknowledged",
+    })]);
   });
 
   it("sorts newest first by default and can prioritize severity", () => {

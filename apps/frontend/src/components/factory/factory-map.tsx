@@ -15,10 +15,12 @@ const FactoryScene = dynamic(
 );
 
 const LEGEND = [
+  { label: "Reference plant", color: "#64748b" },
   { label: "Battery buffer", color: "#2f7d8f" },
   { label: "Marriage station", color: "#3f6ea8" },
   { label: "Charging", color: "#2f8f7a" },
   { label: "No-go", color: "#fb7185" },
+  { label: "Congestion", color: "#f59e0b" },
   { label: "AMR route", color: "#7fe9dc" },
 ] as const;
 
@@ -35,13 +37,42 @@ export interface FactoryMapLayers {
   stations: boolean;
   routes: boolean;
   noGoZones: boolean;
+  congestionZones: boolean;
 }
 
 export const DEFAULT_FACTORY_MAP_LAYERS: FactoryMapLayers = {
   stations: true,
   routes: true,
   noGoZones: true,
+  congestionZones: true,
 };
+
+const LAYER_BUTTONS = [
+  ["stations", "Stations"],
+  ["routes", "Routes"],
+  ["noGoZones", "No-go zones"],
+  ["congestionZones", "Congestion zones"],
+] as const;
+
+export function FactoryMapLayerControls({ layers, onChange }: {
+  layers: FactoryMapLayers;
+  onChange: (layers: FactoryMapLayers) => void;
+}) {
+  const allLayersVisible = Object.values(layers).every(Boolean);
+  return <div className="factory-layer-controls" role="group" aria-label="Factory map layers">
+    <button
+      type="button" className={`filter ${allLayersVisible ? "active" : ""}`}
+      aria-pressed={allLayersVisible}
+      onClick={() => onChange({ ...DEFAULT_FACTORY_MAP_LAYERS })}
+    >All layers</button>
+    {LAYER_BUTTONS.map(([layer, label]) => <button
+      key={layer}
+      type="button" className={`filter ${layers[layer] ? "active" : ""}`}
+      aria-pressed={layers[layer]}
+      onClick={() => onChange({ ...layers, [layer]: !layers[layer] })}
+    >{label}</button>)}
+  </div>;
+}
 
 function detectWebGL(): boolean {
   try {
@@ -95,11 +126,13 @@ export function FactoryMap({
           layers={layers} layout={layout}
         />)}
 
-    {twoDimensionalVariant !== "plant" && <div className="map-hud" aria-hidden="true">
+    {twoDimensionalVariant !== "plant" && <div className="map-hud">
       <ul className="map-legend">
         {LEGEND.filter((item) => {
           if (item.label === "AMR route") return layers.routes;
           if (item.label === "No-go") return layers.noGoZones;
+          if (item.label === "Congestion") return layers.congestionZones;
+          if (item.label === "Reference plant") return true;
           return layers.stations;
         }).map((item) => <li key={item.label}>
           <i style={{ background: item.color }}/>{item.label}
@@ -107,8 +140,8 @@ export function FactoryMap({
       </ul>
       <div className="map-scale">
         {support === "webgl"
-          ? `${EV_FACTORY_WIDTH} × ${EV_FACTORY_DEPTH} m · live zone ${layout.width} × ${layout.height} m`
-          : `${layout.width} × ${layout.height} m · 1 m grid`}
+          ? `Reference plant ${EV_FACTORY_WIDTH} × ${EV_FACTORY_DEPTH} m · applied layout ${layout.width} × ${layout.height} m`
+          : `Applied layout ${layout.width} × ${layout.height} m · reference background`}
       </div>
       {support === "webgl" && <div className="map-hint">Drag to orbit · scroll to zoom</div>}
     </div>}

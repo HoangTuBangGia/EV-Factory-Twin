@@ -6,6 +6,7 @@ export const defaultFactoryLayout = factoryLayoutSchema.parse({
   id: "LAYOUT-DEFAULT",
   name: "EV battery intralogistics plant",
   version: 3,
+  active_route_id: "BATTERY_DELIVERY",
   width: 120,
   height: 40,
   stations: [
@@ -47,6 +48,20 @@ export const defaultFactoryLayout = factoryLayoutSchema.parse({
     id: "GIGA_PRESS_CLEARANCE",
     points: [{ x: 44, y: 27 }, { x: 58, y: 27 }, { x: 58, y: 37 }, { x: 44, y: 37 }],
   }],
+  congestion_zones: [{
+    id: "WAREHOUSE_PRODUCTION_DOOR",
+    delay_multiplier: 1.25,
+    points: [
+      { x: 38, y: 17.5 }, { x: 42, y: 17.5 },
+      { x: 42, y: 22.5 }, { x: 38, y: 22.5 },
+    ],
+  }],
+  config: {
+    robot_count: 2,
+    demand_interval_seconds: 8,
+    robot_speed_mps: 1.2,
+    charger_count: 2,
+  },
 });
 
 export const LANE_WIDTH = 1.8;

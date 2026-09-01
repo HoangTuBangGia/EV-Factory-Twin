@@ -1,7 +1,32 @@
 {
+  "layout_id": "LAYOUT-DEFAULT",
+  "layout_version": 3,
+  "width": 120,
+  "height": 40,
   "stations": {
-    "BATTERY_BUFFER": {"x": 31.25, "y": 13.0},
-    "MARRIAGE_STATION": {"x": 31.39, "y": 13.0},
-    "CHARGING_STATION": {"x": 33.0, "y": 13.0}
-  }
+    "BATTERY_BUFFER": {"type": "BATTERY_BUFFER", "x": 31.25, "y": 13.0},
+    "MARRIAGE_STATION": {"type": "MARRIAGE_STATION", "x": 31.39, "y": 13.0},
+    "CHARGING_STATION": {"type": "CHARGING_STATION", "x": 33.0, "y": 13.0}
+  },
+  "routes": [
+    {
+      "id": "BATTERY_DELIVERY",
+      "start_station_id": "BATTERY_BUFFER",
+      "end_station_id": "MARRIAGE_STATION",
+      "waypoints": [
+        {"x": 31.25, "y": 13.0},
+        {"x": 31.39, "y": 13.0}
+      ]
+    },
+    {
+      "id": "CHARGER_LINK",
+      "start_station_id": "CHARGING_STATION",
+      "end_station_id": "BATTERY_BUFFER",
+      "waypoints": [
+        {"x": 33.0, "y": 13.0},
+        {"x": 31.25, "y": 13.0}
+      ]
+    }
+  ],
+  "no_go_zones": []
 }
