@@ -4,20 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
-import { can, type Permission } from "@/lib/auth/permissions";
+import { can } from "@/lib/auth/permissions";
 import { usesMockData } from "@/lib/env";
+import { NAVIGATION_ITEMS } from "@/lib/navigation";
 import { useFactoryStore } from "@/stores/factory-store";
-
-const links: Array<{ label: string; href: string; permission: Permission }> = [
-  { label: "Overview", href: "/", permission: "operations:view" },
-  { label: "Factory", href: "/factory", permission: "operations:view" },
-  { label: "Fleet", href: "/fleet", permission: "operations:view" },
-  { label: "Tasks", href: "/tasks", permission: "operations:view" },
-  { label: "Analytics", href: "/analytics", permission: "operations:view" },
-  { label: "Layouts", href: "/layouts", permission: "layout:edit" },
-  { label: "Scenarios", href: "/scenarios", permission: "scenarios:view" },
-  { label: "Commands", href: "/commands", permission: "commands:view" },
-];
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -26,7 +16,7 @@ export function Sidebar() {
   const [open, setOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const visibleLinks = links.filter((link) => can(user?.role, link.permission));
+  const visibleLinks = NAVIGATION_ITEMS.filter((link) => can(user?.role, link.permission));
 
   useEffect(() => setOpen(false), [pathname]);
 

@@ -76,6 +76,7 @@ export function commitFactorySnapshot(snapshot: FactorySnapshot) {
   store.setTasks(snapshot.tasks);
   store.setMetrics(snapshot.metrics);
   store.setAlerts(snapshot.alerts);
+  store.markDataUpdated();
 }
 
 export async function refetchFactorySnapshot(options?: FactorySnapshotOptions) {

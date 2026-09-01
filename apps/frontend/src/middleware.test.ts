@@ -31,6 +31,22 @@ describe("frontend auth middleware", () => {
     expect(response.headers.get("location")).toBeNull();
   });
 
+  it("sends a signed-out root request to the public homepage", async () => {
+    mocks.refresh.mockResolvedValue({ response: NextResponse.next(), user: null });
+    const response = await middleware(new NextRequest("http://localhost:3000/"));
+
+    expect(response.status).toBe(307);
+    expect(new URL(response.headers.get("location")!).pathname).toBe("/homepage");
+  });
+
+  it("keeps the homepage public", async () => {
+    mocks.refresh.mockResolvedValue({ response: NextResponse.next(), user: null });
+    const response = await middleware(new NextRequest("http://localhost:3000/homepage"));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("location")).toBeNull();
+  });
+
   it("allows an authenticated dashboard request", async () => {
     mocks.refresh.mockResolvedValue({
       response: NextResponse.next(),

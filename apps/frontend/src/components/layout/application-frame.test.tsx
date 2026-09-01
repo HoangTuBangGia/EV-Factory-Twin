@@ -11,6 +11,14 @@ vi.mock("@/components/auth/auth-provider", () => ({
 vi.mock("@/components/layout/data-provider", () => ({ DataProvider: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock("@/components/layout/sidebar", () => ({ Sidebar: () => <div>navigation toggle</div> }));
 vi.mock("@/components/layout/topbar", () => ({ Topbar: () => <div>application topbar</div> }));
+vi.mock("@/components/onboarding/onboarding-tour", () => ({
+  OnboardingTour: () => <div>onboarding tour</div>,
+}));
+vi.mock("@/components/workflow/next-action-strip", () => ({
+  NextActionStrip: ({ floating }: { floating?: boolean }) => (
+    <div>next step strip{floating ? " floating" : ""}</div>
+  ),
+}));
 
 describe("ApplicationFrame", () => {
   beforeEach(() => { pathname = "/"; });
@@ -19,11 +27,14 @@ describe("ApplicationFrame", () => {
     const { rerender } = render(<ApplicationFrame><div>page content</div></ApplicationFrame>);
 
     expect(screen.queryByText("application topbar")).not.toBeInTheDocument();
+    expect(screen.getByText("onboarding tour")).toBeInTheDocument();
     expect(screen.getByRole("main")).toHaveClass("cockpit-content");
+    expect(screen.getByText("next step strip floating")).toBeInTheDocument();
 
     pathname = "/fleet";
     rerender(<ApplicationFrame><div>page content</div></ApplicationFrame>);
     expect(screen.getByText("application topbar")).toBeInTheDocument();
     expect(screen.getByRole("main")).not.toHaveClass("cockpit-content");
+    expect(screen.getByText("next step strip")).toBeInTheDocument();
   });
 });

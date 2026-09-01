@@ -281,6 +281,10 @@ def test_application_enums_match_the_api_contract() -> None:
         MIGRATION_DIRECTORY / "20260822000350_add_submitted_scenario_status.sql"
     ).read_text()
     assert "add value if not exists 'submitted'" in lifecycle_migration.lower()
+    revision_status_migration = (
+        MIGRATION_DIRECTORY / "20260828000100_add_revision_requested_status.sql"
+    ).read_text()
+    assert "add value if not exists 'revision_requested'" in revision_status_migration.lower()
     assert enums["public.command_status"] == (
         "PENDING",
         "ACKNOWLEDGED",
@@ -290,6 +294,20 @@ def test_application_enums_match_the_api_contract() -> None:
     )
     assert enums["public.alert_severity"] == ("INFO", "WARNING", "CRITICAL")
     assert enums["public.alert_status"] == ("ACTIVE", "CLEARED")
+
+
+def test_scenario_revision_workflow_is_persisted_and_audited() -> None:
+    migration = (
+        (MIGRATION_DIRECTORY / "20260828000200_add_scenario_revision_workflow.sql")
+        .read_text()
+        .lower()
+    )
+
+    assert "add column if not exists review_note text" in migration
+    assert "add column if not exists revision_of text" in migration
+    assert "revision_of text references public.scenarios (id)" in migration
+    assert "revision_requested" in migration
+    assert "new.review_note" in migration
 
 
 def test_runtime_history_uses_partman_and_bounded_retention() -> None:

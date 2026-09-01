@@ -114,6 +114,22 @@ describe("factory store realtime updates", () => {
     expect(useFactoryStore.getState().alerts).toEqual([event.data]);
   });
 
+  it("keeps local acknowledgement separate and clears it with the alert lifecycle", () => {
+    const active = fixtureAlerts[0];
+    useFactoryStore.getState().setAlerts([active]);
+    useFactoryStore.getState().acknowledgeAlert(active.id);
+    useFactoryStore.getState().acknowledgeAlert(active.id);
+    expect(useFactoryStore.getState().acknowledgedAlertIds).toEqual([active.id]);
+
+    useFactoryStore.getState().addAlert({
+      ...active,
+      status: "CLEARED",
+      last_seen_at: "2026-08-13T08:01:00.000Z",
+      cleared_at: "2026-08-13T08:01:00.000Z",
+    });
+    expect(useFactoryStore.getState().acknowledgedAlertIds).toEqual([]);
+  });
+
   it("updates current metrics immediately but samples chart history every five seconds", () => {
     useFactoryStore.getState().setMetrics({
       ...fixtureMetrics,
@@ -182,6 +198,24 @@ describe("factory store realtime updates", () => {
     expect(useFactoryStore.getState().factoryRevision).toBe(before + 1);
   });
 
+  it("records and resets the latest applied data timestamp", () => {
+    useFactoryStore.getState().markDataUpdated(1234);
+    expect(useFactoryStore.getState().lastUpdateAt).toBe(1234);
+    useFactoryStore.getState().reset();
+    expect(useFactoryStore.getState().lastUpdateAt).toBeNull();
+  });
+
+  it("toggles live-update pause and clears it on reset", () => {
+    useFactoryStore.getState().togglePaused();
+    expect(useFactoryStore.getState().paused).toBe(true);
+    useFactoryStore.getState().setPaused(false);
+    expect(useFactoryStore.getState().paused).toBe(false);
+    useFactoryStore.getState().setPaused(true);
+
+    useFactoryStore.getState().reset();
+    expect(useFactoryStore.getState().paused).toBe(false);
+  });
+
   it("clears user-scoped factory data on logout", () => {
     useFactoryStore.getState().setMetrics(fixtureMetrics);
     useFactoryStore.getState().selectRobot(fixtureRobots[0].id);
@@ -193,7 +227,9 @@ describe("factory store realtime updates", () => {
     expect(state.metrics).toBeNull();
     expect(state.metricsHistory).toEqual([]);
     expect(state.alerts).toEqual([]);
+    expect(state.acknowledgedAlertIds).toEqual([]);
     expect(state.commands).toEqual({});
+    expect(state.lastUpdateAt).toBeNull();
     expect(state.selectedRobotId).toBeNull();
     expect(state.connectionStatus).toBe("OFFLINE");
   });

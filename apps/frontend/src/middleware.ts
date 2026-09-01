@@ -8,9 +8,17 @@ function copyCookies(source: NextResponse, target: NextResponse) {
 
 export async function middleware(request: NextRequest) {
   const { response, user } = await refreshSupabaseSession(request, false);
-  const isLogin = request.nextUrl.pathname === "/login";
+  const pathname = request.nextUrl.pathname;
+  const isPublic = pathname === "/homepage" || pathname === "/login";
 
-  if (!user && !isLogin) {
+  if (!user && pathname === "/") {
+    const homepageUrl = request.nextUrl.clone();
+    homepageUrl.pathname = "/homepage";
+    homepageUrl.search = "";
+    return copyCookies(response, NextResponse.redirect(homepageUrl));
+  }
+
+  if (!user && !isPublic) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.search = "";

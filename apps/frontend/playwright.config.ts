@@ -52,6 +52,13 @@ export default defineConfig({
     trace: "off",
     screenshot: "off",
     video: "off",
+    launchOptions: {
+      args: [
+        "--use-gl=angle",
+        "--use-angle=swiftshader",
+        "--enable-unsafe-swiftshader",
+      ],
+    },
   },
   projects: [
     {

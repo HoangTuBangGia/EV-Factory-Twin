@@ -6,6 +6,9 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { DataProvider } from "@/components/layout/data-provider";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
+import { NextActionStrip } from "@/components/workflow/next-action-strip";
+import { ToastContainer } from "@/components/ui/toast";
+import { OnboardingTour } from "@/components/onboarding/onboarding-tour";
 
 function ProtectedAppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -33,8 +36,13 @@ function ProtectedAppShell({ children }: { children: ReactNode }) {
         <Sidebar />
         <div className="workspace">
           {!isOverview && <Topbar />}
-          <main className={`content${isOverview ? " cockpit-content" : ""}`}>{children}</main>
+          <main className={`content${isOverview ? " cockpit-content" : ""}`}>
+            <NextActionStrip floating={isOverview} />
+            {children}
+          </main>
         </div>
+        <OnboardingTour user={user} />
+        <ToastContainer />
       </div>
     </DataProvider>
   );
@@ -42,6 +50,8 @@ function ProtectedAppShell({ children }: { children: ReactNode }) {
 
 export function ApplicationFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  if (pathname === "/login" || pathname === "/scene-probe") return children;
+  if (pathname === "/homepage" || pathname === "/login" || pathname === "/scene-probe") {
+    return children;
+  }
   return <ProtectedAppShell>{children}</ProtectedAppShell>;
 }

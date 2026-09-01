@@ -9,6 +9,7 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import type { FactoryLayout, WorldPoint } from "@/schemas/factory";
+import type { LayoutVersionContent } from "@/schemas/layout";
 import type { Robot } from "@/schemas/robot";
 import type { FactoryMapLayers } from "./factory-map";
 import {
@@ -38,9 +39,14 @@ export interface FactoryPlantMapEditor {
   routeDrawing: boolean;
   routeDraft: WorldPoint[];
   selectedRouteId: string;
+  zoneDrawing: boolean;
+  zoneDraft: WorldPoint[];
+  congestionZones: LayoutVersionContent["congestion_zones"];
+  selectedZone: { kind: "no_go_zones" | "congestion_zones"; id: string } | null;
   onStationMove: (stationId: string, point: WorldPoint) => void;
   onRoutePoint: (point: WorldPoint) => void;
   onRouteStation: (stationId: string) => void;
+  onZonePoint: (point: WorldPoint) => void;
 }
 
 const FULL_VIEW: ViewBox = { x: -10, y: -26, width: 140, height: 52 };
@@ -158,6 +164,10 @@ export function FactoryPlantMap2D({
     if (event.button !== 0) return;
     if (editor?.routeDrawing) {
       editor.onRoutePoint(screenToLayout(event.clientX, event.clientY));
+      return;
+    }
+    if (editor?.zoneDrawing) {
+      editor.onZonePoint(screenToLayout(event.clientX, event.clientY));
       return;
     }
     if (isMeasuring) {
@@ -371,12 +381,37 @@ export function FactoryPlantMap2D({
       {layers.noGoZones && <g className="plant-no-go">
         {layout.no_go_zones.map((zone) => <polygon
           key={zone.id}
+          className={editor?.selectedZone?.kind === "no_go_zones"
+            && editor.selectedZone.id === zone.id ? "selected" : undefined}
           points={zone.points.map((point) => {
             const mapped = livePoint(point, layout);
             return `${mapped.x},${mapped.z}`;
           }).join(" ")}
           fill="url(#plant-hazard)" fillOpacity=".45" stroke="#fb7185" strokeWidth=".15"
         />)}
+      </g>}
+
+      {editor && <g className="plant-congestion-zones">
+        {editor.congestionZones.map((zone) => <polygon
+          key={zone.id}
+          className={editor.selectedZone?.kind === "congestion_zones"
+            && editor.selectedZone.id === zone.id ? "selected" : undefined}
+          points={zone.points.map((point) => {
+            const mapped = livePoint(point, layout);
+            return `${mapped.x},${mapped.z}`;
+          }).join(" ")}
+        />)}
+      </g>}
+
+      {editor?.zoneDrawing && editor.zoneDraft.length > 0 && <g className="plant-zone-draft">
+        <polyline points={editor.zoneDraft.map((point) => {
+          const mapped = livePoint(point, layout);
+          return `${mapped.x},${mapped.z}`;
+        }).join(" ")}/>
+        {editor.zoneDraft.map((point, index) => {
+          const mapped = livePoint(point, layout);
+          return <circle key={`${point.x}-${point.y}-${index}`} cx={mapped.x} cy={mapped.z} r=".42"/>;
+        })}
       </g>}
 
       {layers.routes && <g className="plant-routes">

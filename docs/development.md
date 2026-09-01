@@ -224,8 +224,9 @@ canvas bounds, the five-robot fixture input, and absence of browser console/page
 
 Playwright chạy trình duyệt với frontend Next.js và backend FastAPI ở local,
 nhưng xác thực bằng hai tài khoản thật (`DESIGNER`, `MONITOR`) trong một Supabase
-project staging dành riêng cho development/E2E. Suite tạo scenario, approve/apply và
-kiểm tra quyền, vì vậy không chạy nó với database production.
+project staging dành riêng cho development/E2E. Suite tạo scenario, request revision, chạy và
+submit child candidate, approve/apply và kiểm tra quyền, vì vậy không chạy nó với database
+production.
 
 Chuẩn bị trước:
 
@@ -272,3 +273,7 @@ skip và không cố truy cập Supabase.
 
 Suite hosted cố ý tắt trace, screenshot và video: request đăng nhập chứa password
 và response chứa token, nên các artifact đó không được lưu hoặc upload lên CI.
+Trước khi chạy flow revision, staging database phải có migrations `20260828000100` và
+`20260828000200`. Human acceptance sau E2E dùng checklist
+`docs/runbooks/workflow-usability-acceptance.md`; không dùng kết quả unit/E2E thay cho sáu phiên
+usability được yêu cầu.

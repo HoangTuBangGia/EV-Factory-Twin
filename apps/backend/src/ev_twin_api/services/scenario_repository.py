@@ -52,6 +52,8 @@ created_at,
 created_by,
 reviewed_at,
 reviewed_by,
+review_note,
+revision_of,
 applied_at,
 applied_by,
 version
@@ -87,6 +89,7 @@ INSERT INTO public.scenarios (
     average_delivery_delay,
     duration_ms,
     created_by,
+    revision_of,
     created_at
 )
 VALUES (
@@ -118,6 +121,7 @@ VALUES (
     :average_delivery_delay,
     :duration_ms,
     :created_by,
+    :revision_of,
     :created_at
 )
 RETURNING {SCENARIO_COLUMNS_SQL}
@@ -131,6 +135,7 @@ SET
     status = CAST(:new_status AS public.scenario_status),
     reviewed_by = :actor_id,
     reviewed_at = :occurred_at,
+    review_note = :review_note,
     version = version + 1
 WHERE id = :scenario_id
   AND status = 'SUBMITTED'::public.scenario_status
@@ -191,6 +196,7 @@ class ScenarioRepository(Protocol):
         actor: CurrentUser,
         request_id: UUID,
         created_at: datetime,
+        revision_of: str | None = None,
     ) -> Scenario: ...
 
     async def list(self) -> list[Scenario]: ...
@@ -206,6 +212,7 @@ class ScenarioRepository(Protocol):
         actor: CurrentUser,
         request_id: UUID,
         occurred_at: datetime,
+        review_note: str | None = None,
         before_commit: TransitionHook | None = None,
     ) -> Scenario: ...
 
@@ -219,6 +226,7 @@ def _audit_action_for_status(status: ScenarioStatus) -> AuditAction:
         ScenarioStatus.SUBMITTED: AuditAction.SCENARIO_SUBMITTED,
         ScenarioStatus.APPROVED: AuditAction.SCENARIO_APPROVED,
         ScenarioStatus.REJECTED: AuditAction.SCENARIO_REJECTED,
+        ScenarioStatus.REVISION_REQUESTED: AuditAction.SCENARIO_REVISION_REQUESTED,
         ScenarioStatus.APPLIED: AuditAction.SCENARIO_APPLIED,
     }
     try:
@@ -289,6 +297,8 @@ def _scenario_from_mapping(row: Any) -> Scenario:
         created_by=row["created_by"],
         reviewed_at=row["reviewed_at"],
         reviewed_by=row["reviewed_by"],
+        review_note=row["review_note"],
+        revision_of=row["revision_of"],
         applied_at=row["applied_at"],
         applied_by=row["applied_by"],
         version=int(row["version"]),
@@ -314,6 +324,7 @@ class InMemoryScenarioRepository:
         actor: CurrentUser,
         request_id: UUID,
         created_at: datetime,
+        revision_of: str | None = None,
     ) -> Scenario:
         async with self._lock:
             scenario_id = f"SCN-{self._next_id:04d}"
@@ -326,6 +337,7 @@ class InMemoryScenarioRepository:
                 duration_ms=duration_ms,
                 created_at=created_at,
                 created_by=actor.id,
+                revision_of=revision_of,
                 version=1,
             )
             await self.audit_repository.record(
@@ -367,6 +379,7 @@ class InMemoryScenarioRepository:
         actor: CurrentUser,
         request_id: UUID,
         occurred_at: datetime,
+        review_note: str | None = None,
         before_commit: TransitionHook | None = None,
     ) -> Scenario:
         async with self._lock:
@@ -386,14 +399,21 @@ class InMemoryScenarioRepository:
                 raise ScenarioRepositoryConflictError(
                     f"Scenario '{before.id}' creator cannot review or apply their own scenario"
                 )
+            if new_status == ScenarioStatus.REVISION_REQUESTED and not review_note:
+                raise ValueError("REVISION_REQUESTED requires review_note")
 
             if new_status == ScenarioStatus.SUBMITTED:
                 after = current.with_status(new_status)
-            elif new_status in {ScenarioStatus.APPROVED, ScenarioStatus.REJECTED}:
+            elif new_status in {
+                ScenarioStatus.APPROVED,
+                ScenarioStatus.REJECTED,
+                ScenarioStatus.REVISION_REQUESTED,
+            }:
                 after = current.with_status(
                     new_status,
                     reviewed_at=occurred_at,
                     reviewed_by=actor.id,
+                    review_note=review_note,
                 )
             elif new_status == ScenarioStatus.APPLIED:
                 after = current.with_status(
@@ -446,6 +466,7 @@ class SqlAlchemyScenarioRepository:
         actor: CurrentUser,
         request_id: UUID,
         created_at: datetime,
+        revision_of: str | None = None,
     ) -> Scenario:
         params: dict[str, object] = {
             "name": name,
@@ -453,6 +474,7 @@ class SqlAlchemyScenarioRepository:
             **metrics.model_dump(),
             "duration_ms": duration_ms,
             "created_by": actor.id,
+            "revision_of": revision_of,
             "created_at": created_at,
         }
         async with self._database.session() as session, session.begin():
@@ -499,13 +521,17 @@ class SqlAlchemyScenarioRepository:
         actor: CurrentUser,
         request_id: UUID,
         occurred_at: datetime,
+        review_note: str | None = None,
         before_commit: TransitionHook | None = None,
     ) -> Scenario:
+        if new_status == ScenarioStatus.REVISION_REQUESTED and not review_note:
+            raise ValueError("REVISION_REQUESTED requires review_note")
         if expected_status == ScenarioStatus.SIMULATED and new_status == ScenarioStatus.SUBMITTED:
             statement = SCENARIO_SUBMIT_SQL
         elif expected_status == ScenarioStatus.SUBMITTED and new_status in {
             ScenarioStatus.APPROVED,
             ScenarioStatus.REJECTED,
+            ScenarioStatus.REVISION_REQUESTED,
         }:
             statement = SCENARIO_REVIEW_SQL
         elif expected_status == ScenarioStatus.APPROVED and new_status == ScenarioStatus.APPLIED:
@@ -519,6 +545,7 @@ class SqlAlchemyScenarioRepository:
             "new_status": new_status.value,
             "actor_id": actor.id,
             "occurred_at": occurred_at,
+            "review_note": review_note,
         }
         async with self._database.session() as session, session.begin():
             result = await session.execute(text(statement), params)

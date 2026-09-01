@@ -26,6 +26,13 @@ describe("role permission matrix", () => {
     expect(can("MONITOR", "commands:retry")).toBe(true);
   });
 
+  it("lets both roles read geometry while only Designer authors it", () => {
+    expect(can("DESIGNER", "layout:view")).toBe(true);
+    expect(can("DESIGNER", "layout:edit")).toBe(true);
+    expect(can("MONITOR", "layout:view")).toBe(true);
+    expect(can("MONITOR", "layout:edit")).toBe(false);
+  });
+
   it("denies every permission when no role is available", () => {
     expect(permissions.every((permission) => !can(null, permission))).toBe(true);
   });
