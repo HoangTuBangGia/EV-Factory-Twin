@@ -298,8 +298,10 @@ def test_application_enums_match_the_api_contract() -> None:
 
 def test_scenario_revision_workflow_is_persisted_and_audited() -> None:
     migration = (
-        MIGRATION_DIRECTORY / "20260828000200_add_scenario_revision_workflow.sql"
-    ).read_text().lower()
+        (MIGRATION_DIRECTORY / "20260828000200_add_scenario_revision_workflow.sql")
+        .read_text()
+        .lower()
+    )
 
     assert "add column if not exists review_note text" in migration
     assert "add column if not exists revision_of text" in migration
