@@ -50,6 +50,8 @@ function ProtectedAppShell({ children }: { children: ReactNode }) {
 
 export function ApplicationFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  if (pathname === "/login" || pathname === "/scene-probe") return children;
+  if (pathname === "/homepage" || pathname === "/login" || pathname === "/scene-probe") {
+    return children;
+  }
   return <ProtectedAppShell>{children}</ProtectedAppShell>;
 }

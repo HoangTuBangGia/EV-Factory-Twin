@@ -46,6 +46,10 @@ export class AuthActionError extends Error {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function isPublicPath(pathname: string) {
+  return pathname === "/homepage" || pathname === "/login" || pathname === "/scene-probe";
+}
+
 function profileError(error: unknown) {
   if (error instanceof ApiError && error.status === 403) {
     return new AuthActionError("PROFILE", "This account is inactive or does not have access.");
@@ -90,7 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const redirectToLogin = useCallback((reason: "session_expired" | "access_revoked") => {
-    if (pathnameRef.current === "/scene-probe") return;
+    if (isPublicPath(pathnameRef.current)) return;
     const params = new URLSearchParams({ reason });
     if (pathnameRef.current !== "/login") params.set("returnTo", pathnameRef.current);
     replace(`/login?${params.toString()}`);
@@ -174,11 +178,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearAuth();
       setError(null);
       setIsLoading(false);
-      if (pathnameRef.current !== "/login") redirectToLogin("session_expired");
+      if (!isPublicPath(pathnameRef.current)) redirectToLogin("session_expired");
       return;
     }
     await hydrateSession(data.session);
-    if (!data.session && pathnameRef.current !== "/login") redirectToLogin("session_expired");
+    if (!data.session && !isPublicPath(pathnameRef.current)) redirectToLogin("session_expired");
   }, [clearAuth, hydrateSession, redirectToLogin]);
 
   const refreshSession = useCallback(async () => {
@@ -208,7 +212,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void refreshUser();
     const { data: { subscription } } = client.auth.onAuthStateChange((event, nextSession) => {
       if (event === "SIGNED_OUT" || !nextSession) {
-        const shouldRedirect = !logoutInProgressRef.current && pathnameRef.current !== "/login";
+        const shouldRedirect = !logoutInProgressRef.current && !isPublicPath(pathnameRef.current);
         clearAuth();
         setError(null);
         setIsLoading(false);
