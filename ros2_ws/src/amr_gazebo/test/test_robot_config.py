@@ -34,8 +34,8 @@ def test_default_config_has_two_unique_namespaced_spawn_poses() -> None:
     assert [entry["robot_id"] for entry in robots] == ["AMR-01", "AMR-02"]
     assert [entry["namespace"] for entry in robots] == ["amr_01", "amr_02"]
     assert {(entry["x"], entry["y"], entry["yaw"]) for entry in robots} == {
-        (0.0, -1.0, 0.0),
-        (0.0, 1.0, 0.0),
+        (31.0, 13.0, 0.0),
+        (33.0, 13.0, 0.0),
     }
 
 

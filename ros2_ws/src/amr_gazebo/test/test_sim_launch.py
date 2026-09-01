@@ -259,6 +259,16 @@ class TestSimRuntime(unittest.TestCase):
             failed_result = self._send_goal(node, amr_02_action, failed_goal)
             assert failed_result.outcome == NavigateToStation.Result.FAILED
 
+            settle_start = len(odom["amr_02"])
+            settle_deadline = time.monotonic() + 2.0
+            while time.monotonic() < settle_deadline and not (
+                len(odom["amr_02"]) > settle_start
+                and abs(odom["amr_02"][-1].twist.twist.linear.x) < 0.05
+            ):
+                rclpy.spin_once(node, timeout_sec=0.05)
+            assert len(odom["amr_02"]) > settle_start
+            assert abs(odom["amr_02"][-1].twist.twist.linear.x) < 0.05
+
             samples_before_command = {
                 namespace: len(messages) for namespace, messages in odom.items()
             }

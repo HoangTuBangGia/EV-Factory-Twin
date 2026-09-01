@@ -72,7 +72,7 @@ def load_robot_config(path: str | Path) -> list[dict[str, str | float]]:
 
 def _robot_actions(context):
     config_path = LaunchConfiguration("robots_config").perform(context)
-    stations_config = LaunchConfiguration("stations_config")
+    stations_config = LaunchConfiguration("stations_config").perform(context)
     description = PathJoinSubstitution(
         [FindPackageShare("amr_description"), "urdf", "amr.urdf.xacro"]
     )
