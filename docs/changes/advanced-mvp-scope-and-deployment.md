@@ -26,7 +26,7 @@ benchmark latency/FPS.
 - `docs/architecture.md`
 - `docs/deployment.md`
 - `docs/development.md`
-- `docs/evaluation.md`
+- `evaluation/README.md`
 - `docs/presentation/README.md`
 - `docs/requirements.md`
 - `docs/team-plan.md`

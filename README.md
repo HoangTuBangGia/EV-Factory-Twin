@@ -250,7 +250,7 @@ npm run build
 - [API contract](docs/api.md)
 - [Môi trường phát triển](docs/development.md)
 - [Yêu cầu hệ thống](docs/requirements.md)
-- [Đánh giá và benchmark](docs/evaluation.md)
+- [Đánh giá và benchmark](evaluation/README.md)
 - [Quy trình đóng góp](CONTRIBUTING.md)
 
 ## Thành viên
